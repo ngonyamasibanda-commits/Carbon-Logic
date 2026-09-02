@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #0E1117;
+    --card: #161A22;
+    --foreground: #FAFAFA;
+    --muted: #1F2937;
+    --border: #333333;
+    --primary: #64748B;
+    --secondary: #475569;
+    --accent: #10B981;
+    --destructive: #EF4444;
+    --warning: #F59E0B;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Roboto', 'Segoe UI', sans-serif;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card border border-border/60 shadow-sm;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .aurora-hero {
+    @apply rounded-3xl p-6 relative overflow-hidden;
+    background: linear-gradient(135deg, #64748B 0%, #475569 50%, #10B981 100%);
+  }
+
+  .aurora-hero::before {
+    content: '';
+    @apply absolute inset-0 rounded-3xl;
+    background: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0) 60%);
+  }
+
+  .metric-num {
+    font-feature-settings: 'tnum';
+    font-variant-numeric: tabular-nums;
+  }
+
+  .xp-bar-fill {
+    background: linear-gradient(90deg, #64748B 0%, #10B981 100%);
+  }
+
+  .gold-shimmer {
+    background: linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24);
+    background-size: 200% auto;
+    animation: shimmer 2s linear infinite;
+  }
+
+  @keyframes shimmer {
+    to {
+      background-position: 200% center;
+    }
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
