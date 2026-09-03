@@ -18,6 +18,11 @@ app does not update Postgres — this repair has to run on the live database.
 It drops leftover function overloads, recreates `invite_member`, adds
 `invite_org_member`, and reloads PostgREST's schema cache.
 
+To stop tenant users creating extra organisations, also run
+`supabase/fix_org_create_owners.sql`. Only `ngonyamasibanda@gmail.com`,
+`founders@usecarbonlogic.com` and `founders@carbonlogichq.com` can call
+`create_organization` after that.
+
 If you also need existing accounts to be added immediately, run
 `supabase/fix_people_access.sql` after that.
 
@@ -47,11 +52,14 @@ After that, refresh the app and everything you had before is there, now owned by
 Each company is its own tenant. People you invite join **the organisation you currently
 have selected**, not every organisation in the app.
 
-- **A new company** signs up, lands on “No workspace yet”, names their organisation,
-  and becomes its owner. They then invite colleagues from **People & Access**.
-- **An extra organisation** (a second company, a subsidiary, a client workspace) is
-  created from the account menu in the header: **Create organisation**. You become
-  owner of that one too, then switch to it and invite its people.
+- **A new company** is created only by Carbon Logic owners
+  (`ngonyamasibanda@gmail.com`, `founders@usecarbonlogic.com`,
+  `founders@carbonlogichq.com`). They name the organisation from the account menu
+  or the empty-workspace screen, then invite that company’s people from
+  **People & Access**.
+- **Everyone else** joins by invitation. Signing up with an invited email lands
+  them in that organisation. Tenant owners and managers cannot add further
+  organisations — they can only invite people into the one they belong to.
 - **Someone already invited** signs up with the same email. They skip the empty
   workspace screen and land in that organisation.
 

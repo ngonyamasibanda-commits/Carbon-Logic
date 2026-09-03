@@ -44,6 +44,7 @@ export type AuthContextValue = {
   signOutEverywhere: () => Promise<void>
   switchOrganization: (organizationId: string) => void
   createOrganization: (name: string) => Promise<AuthResult>
+  canCreateOrganizations: boolean
   reloadWorkspace: () => Promise<void>
   refreshMfaState: () => Promise<void>
 }

@@ -57,7 +57,7 @@ function ForcedMfaEnrollment() {
 }
 
 function NoOrganization() {
-  const { user, createOrganization, signOut, reloadWorkspace } = useAuth()
+  const { user, createOrganization, canCreateOrganizations, signOut, reloadWorkspace } = useAuth()
   const [name, setName] = useState('Carbon Logic')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -91,10 +91,11 @@ function NoOrganization() {
     >
       <div className="space-y-4">
         <Alert tone="info">
-          If a colleague has invited you, ask them to send the invitation to this exact address, then
-          choose &ldquo;Check again&rdquo;. Otherwise create your own organisation below and invite
-          your team.
+          {canCreateOrganizations
+            ? 'If a colleague has invited you, ask them to send the invitation to this exact address, then choose “Check again”. Otherwise create an organisation below and invite your team.'
+            : 'If a colleague has invited you, ask them to send the invitation to this exact address, then choose “Check again”. Only Carbon Logic owners can add new organisations.'}
         </Alert>
+        {canCreateOrganizations ? (
         <form onSubmit={submit} className="space-y-4">
           {error ? <Alert tone="error">{error}</Alert> : null}
           <FormField label="Organisation name">
@@ -111,6 +112,9 @@ function NoOrganization() {
             {busy ? 'Creating…' : 'Create organisation'}
           </button>
         </form>
+        ) : error ? (
+          <Alert tone="error">{error}</Alert>
+        ) : null}
       </div>
     </AuthLayout>
   )

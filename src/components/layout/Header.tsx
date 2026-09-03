@@ -5,7 +5,7 @@ import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '../../lib/auth'
 import { useAuth } from '../../lib/auth-context'
 
 export default function Header() {
-  const { profile, user, organization, memberships, role, switchOrganization, createOrganization, signOut, hasVerifiedMfa } =
+  const { profile, user, organization, memberships, role, switchOrganization, createOrganization, canCreateOrganizations, signOut, hasVerifiedMfa } =
     useAuth()
   const [open, setOpen] = useState(false)
   const [creatingOrg, setCreatingOrg] = useState(false)
@@ -120,7 +120,7 @@ export default function Header() {
                   ) : null}
                 </button>
               ))}
-              {creatingOrg ? (
+              {canCreateOrganizations && creatingOrg ? (
                 <form onSubmit={(event) => void submitNewOrg(event)} className="space-y-2 px-4 py-2">
                   <input
                     type="text"
@@ -153,7 +153,7 @@ export default function Header() {
                     </button>
                   </div>
                 </form>
-              ) : (
+              ) : canCreateOrganizations ? (
                 <button
                   type="button"
                   role="menuitem"
@@ -163,7 +163,7 @@ export default function Header() {
                   <Plus size={14} />
                   Create organisation
                 </button>
-              )}
+              ) : null}
             </div>
 
             <div className="py-1.5">

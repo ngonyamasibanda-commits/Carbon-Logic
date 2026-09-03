@@ -134,6 +134,9 @@ async function main() {
   console.log('\nProvisioning users\n')
   const users = await db.query<{ id: string; email: string }>(`
     insert into auth.users (email, raw_user_meta_data) values
+      ('ngonyamasibanda@gmail.com', '{"full_name":"Founder"}'),
+      ('founders@usecarbonlogic.com', '{"full_name":"Founders Use"}'),
+      ('founders@carbonlogichq.com', '{"full_name":"Founders HQ"}'),
       ('owner@acme.test', '{"full_name":"Olive Owner"}'),
       ('editor@acme.test', '{"full_name":"Eddie Editor"}'),
       ('viewer@acme.test', '{"full_name":"Vera Viewer"}'),
@@ -145,19 +148,35 @@ async function main() {
   const profileCount = await countOf('select count(*) from public.profiles')
   check(
     'sign-up trigger created a profile for every user',
-    profileCount === 4,
+    profileCount === 7,
     `got ${profileCount}`,
   )
 
   console.log('\nOrganizations and membership\n')
 
-  const acme = await asUser(id['owner@acme.test'], async () => {
-    const result = await db.query<{ create_organization: string }>(
-      "select public.create_organization('Acme Construction')",
+  async function provisionOrg(name: string, ownerEmail: string): Promise<string> {
+    const orgId = await asUser(id['ngonyamasibanda@gmail.com'], async () => {
+      const result = await db.query<{ create_organization: string }>(
+        'select public.create_organization($1)',
+        [name],
+      )
+      return result.rows[0].create_organization
+    })
+    await asUser(id['ngonyamasibanda@gmail.com'], async () => {
+      await db.query('select public.invite_member($1, $2, $3)', [orgId, ownerEmail, 'owner'])
+    })
+    const founderMembership = await db.query<{ id: string }>(
+      'select id from public.memberships where organization_id = $1 and user_id = $2',
+      [orgId, id['ngonyamasibanda@gmail.com']],
     )
-    return result.rows[0].create_organization
-  })
-  check('a signed-in user can create an organization', Boolean(acme))
+    await asUser(id['ngonyamasibanda@gmail.com'], async () => {
+      await db.query('select public.remove_member($1)', [founderMembership.rows[0].id])
+    })
+    return orgId
+  }
+
+  const acme = await provisionOrg('Acme Construction', 'owner@acme.test')
+  check('a platform owner can create an organization', Boolean(acme))
 
   const ownerRole = await db.query<{ role: string }>(
     'select role from public.memberships where organization_id = $1 and user_id = $2',
@@ -165,11 +184,21 @@ async function main() {
   )
   check('creator becomes owner', ownerRole.rows[0]?.role === 'owner')
 
-  const rivalOrg = await asUser(id['rival@other.test'], async () => {
-    const result = await db.query<{ create_organization: string }>(
-      "select public.create_organization('Rival Ltd')",
+  const rivalOrg = await provisionOrg('Rival Ltd', 'rival@other.test')
+
+  await asUser(id['owner@acme.test'], () =>
+    expectFailure(
+      'a tenant owner cannot create another organisation',
+      () => db.query("select public.create_organization('Shadow Ltd')"),
+      /Only Carbon Logic owners/,
+    ),
+  )
+
+  await asUser(id['founders@usecarbonlogic.com'], async () => {
+    const extra = await db.query<{ create_organization: string }>(
+      "select public.create_organization('Logic Extra')",
     )
-    return result.rows[0].create_organization
+    check('another platform owner can create an organisation', Boolean(extra.rows[0]?.create_organization))
   })
 
   await asUser(id['owner@acme.test'], async () => {

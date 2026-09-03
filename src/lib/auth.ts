@@ -74,9 +74,20 @@ export const IDLE_WARNING_SECONDS = 90
 
 export const HOME_ORGANIZATION_NAME = 'Carbon Logic'
 export const FOUNDER_EMAIL = 'ngonyamasibanda@gmail.com'
+export const PLATFORM_OWNER_EMAILS = [
+  FOUNDER_EMAIL,
+  'founders@usecarbonlogic.com',
+  'founders@carbonlogichq.com',
+] as const
+
+export function isPlatformOwnerEmail(email: string | null | undefined): boolean {
+  return PLATFORM_OWNER_EMAILS.includes(
+    (email ?? '').trim().toLowerCase() as (typeof PLATFORM_OWNER_EMAILS)[number],
+  )
+}
 
 export function isFounderEmail(email: string | null | undefined): boolean {
-  return (email ?? '').trim().toLowerCase() === FOUNDER_EMAIL
+  return isPlatformOwnerEmail(email)
 }
 
 export type Organization = {

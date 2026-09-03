@@ -8,6 +8,7 @@ import {
   ensureHomeOrganization,
   fetchMemberships,
   fetchProfile,
+  isPlatformOwnerEmail,
   recordAuditEvent,
   roleAllows,
   type Membership,
@@ -47,6 +48,9 @@ function friendlyError(message: string): string {
   }
   if (normalised.includes('rate limit') || normalised.includes('too many')) {
     return 'Too many attempts. Wait a minute before trying again.'
+  }
+  if (normalised.includes('only carbon logic owners')) {
+    return 'Only Carbon Logic owners can add organisations. Ask to be invited to an existing workspace instead.'
   }
   return message
 }
@@ -352,13 +356,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const createOrganization = useCallback(
     async (name: string) => {
+      if (!isPlatformOwnerEmail(user?.email ?? profile?.email)) {
+        return { error: 'Only Carbon Logic owners can add organisations. Ask to be invited to an existing workspace instead.' }
+      }
       const { data, error } = await supabase.rpc('create_organization', { p_name: name.trim() })
       if (error) return { error: friendlyError(error.message) }
       const createdId = typeof data === 'string' ? data : null
       if (userId) await loadWorkspace(userId, user?.email, createdId)
       return { error: null }
     },
-    [userId, user?.email, loadWorkspace],
+    [userId, user?.email, profile?.email, loadWorkspace],
   )
 
   const reloadWorkspace = useCallback(async () => {
@@ -388,6 +395,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOutEverywhere,
       switchOrganization,
       createOrganization,
+      canCreateOrganizations: isPlatformOwnerEmail(user?.email ?? profile?.email),
       reloadWorkspace,
       refreshMfaState,
     }),

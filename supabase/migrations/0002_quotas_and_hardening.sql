@@ -304,6 +304,27 @@ drop policy if exists "admins delete invitations" on public.invitations;
 -- 5. RPCs: seed quotas, consume limits, keep the same external signatures
 -- ---------------------------------------------------------------------------
 
+create or replace function public.is_platform_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(
+    lower((select email from auth.users where id = (select auth.uid())))
+    in (
+      'ngonyamasibanda@gmail.com',
+      'founders@usecarbonlogic.com',
+      'founders@carbonlogichq.com'
+    ),
+    false
+  );
+$$;
+
+revoke all on function public.is_platform_owner() from public;
+grant execute on function public.is_platform_owner() to authenticated;
+
 create or replace function public.create_organization(p_name text)
 returns uuid
 language plpgsql
@@ -317,6 +338,9 @@ declare
 begin
   if v_user is null then
     raise exception 'Not authenticated';
+  end if;
+  if not public.is_platform_owner() then
+    raise exception 'Only Carbon Logic owners can create organisations';
   end if;
 
   perform public.consume_user_quota('org_create');
@@ -436,6 +460,7 @@ end;
 $$;
 
 grant execute on function public.create_organization(text) to authenticated;
+grant execute on function public.is_platform_owner() to authenticated;
 grant execute on function public.invite_member(uuid, text, text) to authenticated;
 
 create or replace function public.invite_org_member(
