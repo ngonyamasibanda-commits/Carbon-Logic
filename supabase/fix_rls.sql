@@ -88,7 +88,10 @@ create policy "update own profile" on public.profiles
 drop policy if exists "read memberships in your organizations" on public.memberships;
 create policy "read memberships in your organizations" on public.memberships
   for select to authenticated
-  using (organization_id in (select public.user_org_ids()));
+  using (
+    user_id = (select auth.uid())
+    or organization_id in (select public.user_org_ids())
+  );
 
 drop policy if exists "admins read invitations" on public.invitations;
 create policy "admins read invitations" on public.invitations

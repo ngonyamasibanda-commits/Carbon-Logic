@@ -119,7 +119,9 @@ export default function PeoplePage() {
           <p className="mt-2 max-w-3xl text-sm text-muted">
             CEOs and managers control who can see and change this organisation only. Emissions,
             factors, sites and people from other companies never appear here — that isolation is
-            enforced in the database.
+            enforced in the database. Switch organisation from the account menu to invite a
+            different company’s team, or create a new organisation there if they do not have one
+            yet.
           </p>
           <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand-soft px-3 py-1.5 text-sm text-brand">
             <Building2 size={14} />

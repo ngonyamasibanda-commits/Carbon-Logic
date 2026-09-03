@@ -170,22 +170,33 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
   }
 }
 
-function localFounderMembership(userId: string): Membership {
+function mapMembershipRow(row: unknown): Membership {
+  const record = row as {
+    id: string
+    organization_id: string
+    user_id: string
+    role: OrgRole
+    created_at: string
+    organizations?: OrganizationRow | OrganizationRow[] | null
+  }
+  const orgRow = Array.isArray(record.organizations) ? record.organizations[0] : record.organizations
   return {
-    id: `local-membership-${userId}`,
-    organizationId: `local-org-${userId}`,
-    userId,
-    role: 'owner',
-    createdAt: new Date().toISOString(),
-    organization: {
-      id: `local-org-${userId}`,
-      name: HOME_ORGANIZATION_NAME,
-      slug: 'carbon-logic',
-      allowedEmailDomains: ['gmail.com'],
-      requireMfa: false,
-      sessionIdleMinutes: DEFAULT_IDLE_MINUTES,
-      sessionAbsoluteHours: DEFAULT_ABSOLUTE_HOURS,
-    },
+    id: record.id,
+    organizationId: record.organization_id,
+    userId: record.user_id,
+    role: record.role,
+    createdAt: record.created_at,
+    organization: orgRow
+      ? toOrganization(orgRow)
+      : {
+          id: record.organization_id,
+          name: HOME_ORGANIZATION_NAME,
+          slug: 'workspace',
+          allowedEmailDomains: [],
+          requireMfa: false,
+          sessionIdleMinutes: DEFAULT_IDLE_MINUTES,
+          sessionAbsoluteHours: DEFAULT_ABSOLUTE_HOURS,
+        },
   }
 }
 
@@ -194,9 +205,8 @@ export function isLocalOrganizationId(organizationId: string | null | undefined)
 }
 
 /**
- * Makes sure the signed-in founder has Carbon Logic. Prefers the database RPC so
- * the membership is real; if the tenancy migration has not been applied yet, fall
- * back to a local workspace so they are not locked out of the app.
+ * Loads real database memberships. Never invents a local workspace — that path
+ * cannot invite people or persist access.
  */
 export async function ensureHomeOrganization(
   userId: string,
@@ -207,42 +217,43 @@ export async function ensureHomeOrganization(
   if (!isFounderEmail(email)) return existing
 
   const { error } = await supabase.rpc('create_organization', { p_name: HOME_ORGANIZATION_NAME })
-  if (!error) {
-    const created = await fetchMemberships(userId)
-    if (created.length > 0) return created
-  }
-
-  return [localFounderMembership(userId)]
+  if (error) return existing
+  return fetchMemberships(userId)
 }
 
 export async function fetchMemberships(userId: string): Promise<Membership[]> {
-  const { data, error } = await supabase
-    .from('memberships')
-    .select(
-      'id, organization_id, user_id, role, created_at, organizations!inner(id, name, slug, allowed_email_domains, require_mfa, session_idle_minutes, session_absolute_hours)',
-    )
-    .eq('user_id', userId)
+  const selects = [
+    'id, organization_id, user_id, role, created_at, organizations!inner(id, name, slug, allowed_email_domains, require_mfa, session_idle_minutes, session_absolute_hours)',
+    'id, organization_id, user_id, role, created_at, organizations!inner(id, name, slug)',
+    'id, organization_id, user_id, role, created_at',
+  ]
 
-  if (error || !data) return []
+  for (const select of selects) {
+    const { data, error } = await supabase.from('memberships').select(select).eq('user_id', userId)
+    if (error || !data) continue
+    const mapped = data.map((row) => mapMembershipRow(row))
+    const missingOrg = mapped.filter((membership) => membership.organization.slug === 'workspace')
+    if (missingOrg.length === 0) return mapped
 
-  return data.map((row) => {
-    const record = row as unknown as {
-      id: string
-      organization_id: string
-      user_id: string
-      role: OrgRole
-      created_at: string
-      organizations: OrganizationRow
-    }
-    return {
-      id: record.id,
-      organizationId: record.organization_id,
-      userId: record.user_id,
-      role: record.role,
-      createdAt: record.created_at,
-      organization: toOrganization(record.organizations),
-    }
-  })
+    const ids = [...new Set(missingOrg.map((membership) => membership.organizationId))]
+    const { data: orgs } = await supabase.from('organizations').select('id, name, slug').in('id', ids)
+    const byId = new Map((orgs ?? []).map((org) => [org.id as string, org]))
+    return mapped.map((membership) => {
+      const org = byId.get(membership.organizationId)
+      if (!org) return membership
+      return {
+        ...membership,
+        organization: {
+          ...membership.organization,
+          id: org.id as string,
+          name: (org.name as string) ?? membership.organization.name,
+          slug: (org.slug as string) ?? membership.organization.slug,
+        },
+      }
+    })
+  }
+
+  return []
 }
 
 export async function fetchOrgMembers(organizationId: string): Promise<OrgMember[]> {
@@ -301,7 +312,7 @@ export async function inviteMember(
   if (isLocalOrganizationId(organizationId)) {
     return {
       error:
-        'This workspace is still running locally, so invitations cannot be saved. Run supabase/migrations/0001_auth_and_tenancy.sql in the Supabase SQL editor, then sign out and back in.',
+        'This tab is still on a local workspace, which cannot invite people. Run supabase/fix_invite_rpc.sql in the Supabase SQL editor, then refresh — do not stay on a workspace named from this browser only.',
       addedImmediately: false,
     }
   }
@@ -311,20 +322,28 @@ export async function inviteMember(
     return { error: 'Enter a valid work email address.', addedImmediately: false }
   }
 
-  const { error: rpcError } = await supabase.rpc('invite_member', {
-    p_org: organizationId,
-    p_email: normalised,
-    p_role: role,
-  })
-  if (!rpcError) {
-    const members = await fetchOrgMembers(organizationId)
-    return {
-      error: null,
-      addedImmediately: members.some((member) => member.email.toLowerCase() === normalised),
+  const attempts: Array<{ name: string; args: Record<string, string> }> = [
+    { name: 'invite_org_member', args: { p_org: organizationId, p_email: normalised, p_role: role } },
+    { name: 'invite_member', args: { p_org: organizationId, p_email: normalised, p_role: role } },
+  ]
+
+  let lastMessage = ''
+  for (const attempt of attempts) {
+    const { error: rpcError } = await supabase.rpc(attempt.name, attempt.args)
+    if (!rpcError) {
+      const members = await fetchOrgMembers(organizationId)
+      return {
+        error: null,
+        addedImmediately: members.some((member) => member.email.toLowerCase() === normalised),
+      }
+    }
+    lastMessage = rpcError.message
+    if (!/could not find the function|schema cache/i.test(rpcError.message)) {
+      return { error: explainInviteFailure(rpcError.message), addedImmediately: false }
     }
   }
 
-  return { error: explainInviteFailure(rpcError.message), addedImmediately: false }
+  return { error: explainInviteFailure(lastMessage), addedImmediately: false }
 }
 
 export async function setMemberRole(membershipId: string, role: OrgRole): Promise<{ error: string | null }> {
@@ -351,7 +370,7 @@ function explainInviteFailure(message: string): string {
     return 'This organisation has reached its hourly invite limit. Wait before sending more.'
   }
   if (/schema cache|could not find the function|row-level security|violates row-level/i.test(message)) {
-    return 'The invite function is not loaded in the database yet. Open the Supabase SQL editor, run supabase/fix_people_access.sql and supabase/fix_quotas.sql, then try again.'
+    return 'Invites are not registered on the database yet. In the Supabase dashboard open SQL → New query, paste the full contents of supabase/fix_invite_rpc.sql, click Run, then refresh this page. Saving the app does not install that function.'
   }
   return message
 }

@@ -12,7 +12,8 @@ function securityHeaders(strict: boolean): Record<string, string> {
     "img-src 'self' data: blob:",
     "font-src 'self' https://fonts.gstatic.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "script-src 'self'",
+    // Vite's React refresh preamble is an inline module; eval is used for HMR.
+    strict ? "script-src 'self'" : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

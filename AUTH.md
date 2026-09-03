@@ -11,10 +11,15 @@ get you from here to a working login.
 Open the Supabase SQL editor and run `supabase/migrations/0001_auth_and_tenancy.sql`.
 It is idempotent, so re-running it is safe.
 
-If inviting people fails with a "schema cache" error, or you need existing
-accounts to be added immediately, run `supabase/fix_people_access.sql` in the
-SQL editor. That recreates `invite_member`, adds `revoke_invitation`, and
-reloads the API schema cache.
+If inviting people fails with *Could not find the function
+public.invite_member(p_email, p_org, p_role) in the schema cache*, paste
+`supabase/fix_invite_rpc.sql` into the SQL editor and run it. Deploying the
+app does not update Postgres — this repair has to run on the live database.
+It drops leftover function overloads, recreates `invite_member`, adds
+`invite_org_member`, and reloads PostgREST's schema cache.
+
+If you also need existing accounts to be added immediately, run
+`supabase/fix_people_access.sql` after that.
 
 It creates organisations, profiles, memberships, invitations and an audit log; replaces
 the wide-open `anon` policies on `emission_entries` and `emission_factors` with
@@ -36,6 +41,22 @@ your email and organisation name in it, and run it. That creates the organisatio
 makes you the owner, and moves every legacy `default_user` emissions row into it.
 
 After that, refresh the app and everything you had before is there, now owned by you.
+
+### How organisations work
+
+Each company is its own tenant. People you invite join **the organisation you currently
+have selected**, not every organisation in the app.
+
+- **A new company** signs up, lands on “No workspace yet”, names their organisation,
+  and becomes its owner. They then invite colleagues from **People & Access**.
+- **An extra organisation** (a second company, a subsidiary, a client workspace) is
+  created from the account menu in the header: **Create organisation**. You become
+  owner of that one too, then switch to it and invite its people.
+- **Someone already invited** signs up with the same email. They skip the empty
+  workspace screen and land in that organisation.
+
+Data never crosses organisations. Switching in the header only changes which
+workspace you are looking at.
 
 ## Supabase dashboard settings worth changing
 

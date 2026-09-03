@@ -1,20 +1,29 @@
-import { useEffect, useRef, useState } from 'react'
-import { BookOpen, Building2, Check, LogOut, ShieldCheck, UserRound } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { BookOpen, Building2, Check, LogOut, Plus, ShieldCheck, UserRound } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '../../lib/auth'
 import { useAuth } from '../../lib/auth-context'
 
 export default function Header() {
-  const { profile, user, organization, memberships, role, switchOrganization, signOut, hasVerifiedMfa } =
+  const { profile, user, organization, memberships, role, switchOrganization, createOrganization, signOut, hasVerifiedMfa } =
     useAuth()
   const [open, setOpen] = useState(false)
+  const [creatingOrg, setCreatingOrg] = useState(false)
+  const [newOrgName, setNewOrgName] = useState('')
+  const [orgBusy, setOrgBusy] = useState(false)
+  const [orgError, setOrgError] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const displayName = profile?.fullName || user?.email || 'Account'
   const initial = displayName.trim().charAt(0).toUpperCase() || 'U'
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setCreatingOrg(false)
+      setNewOrgName('')
+      setOrgError(null)
+      return
+    }
     function onPointerDown(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false)
     }
@@ -28,6 +37,24 @@ export default function Header() {
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [open])
+
+  async function submitNewOrg(event: FormEvent) {
+    event.preventDefault()
+    const name = newOrgName.trim()
+    if (!name) return
+    setOrgBusy(true)
+    setOrgError(null)
+    try {
+      const { error } = await createOrganization(name)
+      if (error) {
+        setOrgError(error)
+        return
+      }
+      setOpen(false)
+    } finally {
+      setOrgBusy(false)
+    }
+  }
 
   return (
     <header className="flex h-14 items-center justify-end gap-3 border-b border-line bg-white px-6">
@@ -72,30 +99,72 @@ export default function Header() {
               {role ? <div className="mt-1.5 text-xs text-muted">{ROLE_DESCRIPTIONS[role]}</div> : null}
             </div>
 
-            {memberships.length > 1 ? (
-              <div className="border-b border-line py-1.5">
-                <div className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                  Organisations
-                </div>
-                {memberships.map((membership) => (
-                  <button
-                    key={membership.id}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      switchOrganization(membership.organizationId)
-                      setOpen(false)
-                    }}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-page"
-                  >
-                    <span className="truncate">{membership.organization.name}</span>
-                    {membership.organizationId === organization?.id ? (
-                      <Check size={14} className="shrink-0 text-accent-dark" />
-                    ) : null}
-                  </button>
-                ))}
+            <div className="border-b border-line py-1.5">
+              <div className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
+                Organisations
               </div>
-            ) : null}
+              {memberships.map((membership) => (
+                <button
+                  key={membership.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    switchOrganization(membership.organizationId)
+                    setOpen(false)
+                  }}
+                  className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-page"
+                >
+                  <span className="truncate">{membership.organization.name}</span>
+                  {membership.organizationId === organization?.id ? (
+                    <Check size={14} className="shrink-0 text-accent-dark" />
+                  ) : null}
+                </button>
+              ))}
+              {creatingOrg ? (
+                <form onSubmit={(event) => void submitNewOrg(event)} className="space-y-2 px-4 py-2">
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={newOrgName}
+                    onChange={(event) => setNewOrgName(event.target.value)}
+                    placeholder="New organisation name"
+                    className="w-full rounded-md border border-line px-2 py-1.5 text-sm"
+                  />
+                  {orgError ? <p className="text-xs text-red-700">{orgError}</p> : null}
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={orgBusy || !newOrgName.trim()}
+                      className="rounded-md bg-brand px-2 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      {orgBusy ? 'Creating…' : 'Create'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreatingOrg(false)
+                        setNewOrgName('')
+                        setOrgError(null)
+                      }}
+                      className="rounded-md border border-line px-2 py-1 text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => setCreatingOrg(true)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-brand hover:bg-page"
+                >
+                  <Plus size={14} />
+                  Create organisation
+                </button>
+              )}
+            </div>
 
             <div className="py-1.5">
               <Link

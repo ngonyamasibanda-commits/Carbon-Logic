@@ -438,6 +438,24 @@ $$;
 grant execute on function public.create_organization(text) to authenticated;
 grant execute on function public.invite_member(uuid, text, text) to authenticated;
 
+create or replace function public.invite_org_member(
+  p_org uuid,
+  p_email text,
+  p_role text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  return public.invite_member(p_org, p_email, p_role);
+end;
+$$;
+
+revoke all on function public.invite_org_member(uuid, text, text) from public;
+grant execute on function public.invite_org_member(uuid, text, text) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 6. Privileges: authenticated may not write quota/usage, and may only patch
 --    the profile/org columns the UI is allowed to change.

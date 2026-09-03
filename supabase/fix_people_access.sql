@@ -125,7 +125,24 @@ begin
 end;
 $$;
 
+create or replace function public.invite_org_member(
+  p_org uuid,
+  p_email text,
+  p_role text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  return public.invite_member(p_org, p_email, p_role);
+end;
+$$;
+
+revoke all on function public.invite_org_member(uuid, text, text) from public;
 grant execute on function public.invite_member(uuid, text, text) to authenticated;
+grant execute on function public.invite_org_member(uuid, text, text) to authenticated;
 grant execute on function public.revoke_invitation(uuid) to authenticated;
 
 drop policy if exists "admins delete invitations" on public.invitations;

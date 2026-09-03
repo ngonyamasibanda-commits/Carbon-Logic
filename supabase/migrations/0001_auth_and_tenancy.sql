@@ -550,8 +550,26 @@ revoke all on function public.record_audit_event(uuid, text, text, text, jsonb) 
 
 revoke all on function public.revoke_invitation(uuid) from public;
 
+create or replace function public.invite_org_member(
+  p_org uuid,
+  p_email text,
+  p_role text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  return public.invite_member(p_org, p_email, p_role);
+end;
+$$;
+
+revoke all on function public.invite_org_member(uuid, text, text) from public;
+
 grant execute on function public.create_organization(text) to authenticated;
 grant execute on function public.invite_member(uuid, text, text) to authenticated;
+grant execute on function public.invite_org_member(uuid, text, text) to authenticated;
 grant execute on function public.set_member_role(uuid, text) to authenticated;
 grant execute on function public.remove_member(uuid) to authenticated;
 grant execute on function public.revoke_invitation(uuid) to authenticated;
@@ -599,7 +617,10 @@ create policy "update own profile" on public.profiles
 drop policy if exists "read memberships in your organizations" on public.memberships;
 create policy "read memberships in your organizations" on public.memberships
   for select to authenticated
-  using (organization_id in (select public.user_org_ids()));
+  using (
+    user_id = (select auth.uid())
+    or organization_id in (select public.user_org_ids())
+  );
 
 drop policy if exists "admins read invitations" on public.invitations;
 create policy "admins read invitations" on public.invitations

@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => localStorage.getItem(ACTIVE_ORG_KEY),
   )
   const [bootstrapping, setBootstrapping] = useState(true)
-  const [workspaceLoading, setWorkspaceLoading] = useState(false)
+  const [workspaceLoading, setWorkspaceLoading] = useState(true)
   const [aal, setAal] = useState<{ current: string | null; next: string | null }>({
     current: null,
     next: null,
@@ -79,42 +79,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setVerifiedFactors(totp.filter((factor) => factor.status === 'verified').length)
   }, [])
 
-  const loadWorkspace = useCallback(async (userId: string, email?: string | null) => {
-    setWorkspaceLoading(true)
-    try {
-      const [nextProfile, loadedMemberships] = await Promise.all([
-        fetchProfile(userId),
-        fetchMemberships(userId),
-      ])
-      const resolvedEmail = email ?? nextProfile?.email
-      const nextMemberships = await ensureHomeOrganization(userId, resolvedEmail, loadedMemberships)
-      setProfile(
-        nextProfile ??
-          (resolvedEmail
-            ? {
-                id: userId,
-                email: resolvedEmail,
-                fullName: resolvedEmail.split('@')[0] ?? '',
-                jobTitle: '',
-              }
-            : null),
-      )
-      setMemberships(nextMemberships)
-      setActiveOrgId((current) => {
-        const stillValid = nextMemberships.some((m) => m.organizationId === current)
-        const next = stillValid ? current : (nextMemberships[0]?.organizationId ?? null)
-        if (next) localStorage.setItem(ACTIVE_ORG_KEY, next)
-        else localStorage.removeItem(ACTIVE_ORG_KEY)
-        return next
-      })
-      void supabase
-        .from('profiles')
-        .update({ last_seen_at: new Date().toISOString() })
-        .eq('id', userId)
-    } finally {
-      setWorkspaceLoading(false)
-    }
-  }, [])
+  const loadWorkspace = useCallback(
+    async (userId: string, email?: string | null, preferredOrgId?: string | null) => {
+      setWorkspaceLoading(true)
+      try {
+        const [nextProfile, loadedMemberships] = await Promise.all([
+          fetchProfile(userId),
+          fetchMemberships(userId),
+        ])
+        const resolvedEmail = email ?? nextProfile?.email
+        const nextMemberships = await ensureHomeOrganization(userId, resolvedEmail, loadedMemberships)
+        setProfile(
+          nextProfile ??
+            (resolvedEmail
+              ? {
+                  id: userId,
+                  email: resolvedEmail,
+                  fullName: resolvedEmail.split('@')[0] ?? '',
+                  jobTitle: '',
+                }
+              : null),
+        )
+        setMemberships(nextMemberships)
+        setActiveOrgId((current) => {
+          const realMemberships = nextMemberships.filter((m) => !m.organizationId.startsWith('local-org-'))
+          const preferredOk =
+            preferredOrgId && realMemberships.some((m) => m.organizationId === preferredOrgId)
+          const stillValid = realMemberships.some((m) => m.organizationId === current)
+          const next = preferredOk
+            ? preferredOrgId
+            : stillValid
+              ? current
+              : (realMemberships[0]?.organizationId ?? nextMemberships[0]?.organizationId ?? null)
+          if (next) localStorage.setItem(ACTIVE_ORG_KEY, next)
+          else localStorage.removeItem(ACTIVE_ORG_KEY)
+          return next
+        })
+        void supabase
+          .from('profiles')
+          .update({ last_seen_at: new Date().toISOString() })
+          .eq('id', userId)
+      } finally {
+        setWorkspaceLoading(false)
+      }
+    },
+    [],
+  )
 
   // Session lifecycle. onAuthStateChange also fires from other tabs, so a sign-out
   // anywhere propagates here without extra plumbing.
@@ -161,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       setProfile(null)
       setMemberships([])
+      setWorkspaceLoading(false)
       return
     }
     void loadWorkspace(userId, user?.email)
@@ -341,9 +352,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const createOrganization = useCallback(
     async (name: string) => {
-      const { error } = await supabase.rpc('create_organization', { p_name: name.trim() })
+      const { data, error } = await supabase.rpc('create_organization', { p_name: name.trim() })
       if (error) return { error: friendlyError(error.message) }
-      if (userId) await loadWorkspace(userId, user?.email)
+      const createdId = typeof data === 'string' ? data : null
+      if (userId) await loadWorkspace(userId, user?.email, createdId)
       return { error: null }
     },
     [userId, user?.email, loadWorkspace],
