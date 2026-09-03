@@ -43,7 +43,23 @@ export default function ResultsTable({ entries, onDelete }: Props) {
                     {entry.emissions_tco2e.toFixed(2)}
                   </td>
                   <td className="px-4 py-3">
-                    <div>{entry.details}</div>
+                    {(() => {
+                      const parts = entry.details.split(' | ')
+                      const activity = parts[0]
+                      const calc = parts.length > 1 ? parts[1] : null
+                      const factorSource = parts.length > 2 ? parts[2] : null
+                      return (
+                        <>
+                          <div>{activity}</div>
+                          {calc ? (
+                            <div className="mt-1 font-mono text-xs text-muted">{calc}</div>
+                          ) : null}
+                          {factorSource ? (
+                            <div className="mt-0.5 text-xs text-brand-mid">{factorSource}</div>
+                          ) : null}
+                        </>
+                      )
+                    })()}
                     {entry.customFields.length > 0 ? (
                       <div className="mt-1 text-xs text-muted">
                         {entry.customFields

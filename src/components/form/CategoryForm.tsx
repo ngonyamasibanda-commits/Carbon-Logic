@@ -103,7 +103,7 @@ export default function CategoryForm({ category }: Props) {
         emissions_tco2e: totalTco2e,
         details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
-        }`,
+        } | ${activityAmount.toLocaleString()} ${factor.unit} × ${factor.conversionValue} kg CO₂e/${factor.unit} ÷ 1000 = ${totalTco2e.toFixed(4)} tCO₂e | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
         amount: activityAmount,
         unit: category.resolveUnit(values),
         ...additional,
