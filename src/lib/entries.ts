@@ -3,8 +3,39 @@ import { supabase } from './supabase'
 import type { EmissionEntry } from './types'
 
 const TABLE = 'emission_entries'
-const USER_ID = 'default_user'
-const LOCAL_KEY = 'carbon-logic-entries'
+
+/** Identifies whose data this is. Both values come from the verified session. */
+export type Tenant = { organizationId: string; userId: string }
+
+// Namespaced per organisation so switching workspaces cannot show the wrong cache,
+// and cleared entirely on sign-out.
+function localKey(organizationId: string) {
+  return `carbon-logic-entries:${organizationId}`
+}
+
+/**
+ * A refusal from Row Level Security means the user genuinely is not allowed to do
+ * this. Falling back to local storage would hide that behind a fake success, so we
+ * only fall back for connectivity problems.
+ */
+function isPermissionError(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false
+  if (error.code === '42501' || error.code === 'PGRST301') return true
+  const message = (error.message ?? '').toLowerCase()
+  return (
+    message.includes('row-level security') ||
+    message.includes('violates row level') ||
+    message.includes('jwt') ||
+    message.includes('permission denied')
+  )
+}
+
+export class PermissionDeniedError extends Error {
+  constructor(message = 'You do not have permission to change emissions data.') {
+    super(message)
+    this.name = 'PermissionDeniedError'
+  }
+}
 
 function extrasFrom(row: Partial<EmissionEntry>) {
   return {
@@ -36,9 +67,9 @@ function fromRow(row: Record<string, unknown>): EmissionEntry {
   })
 }
 
-function readLocal(): EmissionEntry[] {
+function readLocal(organizationId: string): EmissionEntry[] {
   try {
-    const raw = localStorage.getItem(LOCAL_KEY)
+    const raw = localStorage.getItem(localKey(organizationId))
     const rows = raw ? (JSON.parse(raw) as EmissionEntry[]) : []
     return rows.map((row) => applyMeta({ ...extrasFrom(row), ...row }))
   } catch {
@@ -46,15 +77,15 @@ function readLocal(): EmissionEntry[] {
   }
 }
 
-function writeLocal(entries: EmissionEntry[]) {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(entries))
+function writeLocal(organizationId: string, entries: EmissionEntry[]) {
+  localStorage.setItem(localKey(organizationId), JSON.stringify(entries))
 }
 
-export async function fetchEntries(category?: string): Promise<EmissionEntry[]> {
+export async function fetchEntries(tenant: Tenant, category?: string): Promise<EmissionEntry[]> {
   const query = supabase
     .from(TABLE)
     .select('*')
-    .eq('user_id', USER_ID)
+    .eq('organization_id', tenant.organizationId)
     .order('created_at', { ascending: false })
   const { data, error } = await Promise.race([
     query,
@@ -68,14 +99,18 @@ export async function fetchEntries(category?: string): Promise<EmissionEntry[]> 
     return category ? rows.filter((r) => r.category === category) : rows
   }
 
-  const local = readLocal()
+  const local = readLocal(tenant.organizationId)
   return category ? local.filter((r) => r.category === category) : local
 }
 
-export async function saveEntry(input: Omit<EmissionEntry, 'id' | 'created_at'>): Promise<EmissionEntry> {
+export async function saveEntry(
+  tenant: Tenant,
+  input: Omit<EmissionEntry, 'id' | 'created_at'>,
+): Promise<EmissionEntry> {
   const extras = extrasFrom(input)
   const payload = {
-    user_id: USER_ID,
+    organization_id: tenant.organizationId,
+    owner_id: tenant.userId,
     category: input.category,
     scope: input.scope,
     emissions_tco2e: input.emissions_tco2e,
@@ -92,8 +127,9 @@ export async function saveEntry(input: Omit<EmissionEntry, 'id' | 'created_at'>)
     setEntryMeta(saved.id, extras)
     return applyMeta({ ...saved, ...extras })
   }
+  if (isPermissionError(error)) throw new PermissionDeniedError()
 
-  const local = readLocal()
+  const local = readLocal(tenant.organizationId)
   const entry: EmissionEntry = {
     ...input,
     ...extras,
@@ -101,15 +137,22 @@ export async function saveEntry(input: Omit<EmissionEntry, 'id' | 'created_at'>)
     created_at: new Date().toISOString(),
   }
   setEntryMeta(entry.id, extras)
-  writeLocal([entry, ...local])
+  writeLocal(tenant.organizationId, [entry, ...local])
   return entry
 }
 
-export async function deleteEntry(id: string): Promise<void> {
-  deleteEntryMeta(id)
+export async function deleteEntry(tenant: Tenant, id: string): Promise<void> {
   if (!id.startsWith('local-')) {
     const { error } = await supabase.from(TABLE).delete().eq('id', id)
-    if (!error) return
+    if (isPermissionError(error)) throw new PermissionDeniedError()
+    if (!error) {
+      deleteEntryMeta(id)
+      return
+    }
   }
-  writeLocal(readLocal().filter((row) => row.id !== id))
+  deleteEntryMeta(id)
+  writeLocal(
+    tenant.organizationId,
+    readLocal(tenant.organizationId).filter((row) => row.id !== id),
+  )
 }

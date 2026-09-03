@@ -132,20 +132,30 @@ export async function loadFactorLibrary(): Promise<Map<string, EmissionFactor>> 
   return mergeFactorMaps(FACTOR_CATALOG, remote, readLocal())
 }
 
-export async function persistFactors(factors: EmissionFactor[]): Promise<void> {
+export async function persistFactors(
+  factors: EmissionFactor[],
+  organizationId?: string,
+): Promise<void> {
   writeLocal(factors)
   const kept = new Set(factors.map((factor) => factor.key))
   writeDeleted([
     ...readDeleted().filter((key) => !kept.has(key)),
     ...FACTOR_CATALOG.map((factor) => factor.key).filter((key) => !kept.has(key)),
   ])
+  // Factors with no organisation are the shared published catalogue, which is
+  // read-only from the app. Only an organisation's own overrides get written back.
+  if (!organizationId) return
+
   const payload = factors.map((factor) => ({
     activity_type: factor.key,
     co2e_factor: factor.conversionValue,
     unit: factor.unit,
     source: factor.sourceFamily ? `${factor.sourceFamily} — ${factor.source}` : factor.source,
+    organization_id: organizationId,
   }))
-  void supabase.from('emission_factors').upsert(payload, { onConflict: 'activity_type' })
+  void supabase
+    .from('emission_factors')
+    .upsert(payload, { onConflict: 'activity_type,organization_id' })
 }
 
 export function factorsToCsv(factors: EmissionFactor[]) {

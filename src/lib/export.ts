@@ -71,11 +71,11 @@ export function printReport(title: string, entries: EmissionEntry[]) {
   const html = `<!doctype html>
 <html><head><title>${title}</title>
 <style>
-  body { font-family: Inter, sans-serif; padding: 24px; color: #1f2933; }
-  h1 { margin: 0 0 8px; }
+  body { font-family: Inter, sans-serif; padding: 24px; color: #0f1e33; }
+  h1 { margin: 0 0 8px; color: #02234e; border-bottom: 3px solid #6cbe2c; padding-bottom: 8px; }
   table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
-  th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
-  th { background: #f4f5f7; }
+  th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
+  th { background: #02234e; color: #ffffff; }
 </style></head>
 <body>
   <h1>${title}</h1>

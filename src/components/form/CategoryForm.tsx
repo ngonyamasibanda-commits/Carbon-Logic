@@ -5,6 +5,7 @@ import { adjacentCategory } from '../../lib/categories'
 import { calculateTco2e, lookupFactor } from '../../lib/calculate'
 import { CATEGORY_ICONS } from '../../lib/icons'
 import { useEntries } from '../../lib/entries-context'
+import { useAuth } from '../../lib/auth-context'
 import { emptyAdditional, type AdditionalState, type CategoryConfig } from '../../lib/types'
 import AdditionalData from './AdditionalData'
 import BulkUpload from './BulkUpload'
@@ -17,6 +18,8 @@ type Props = {
 
 export default function CategoryForm({ category }: Props) {
   const { entries, factors, addEntry, removeEntry } = useEntries()
+  const { can } = useAuth()
+  const canWrite = can('entries:write')
   const navigate = useNavigate()
   const { prev, next } = adjacentCategory(category.id)
   const Icon = CATEGORY_ICONS[category.id]
@@ -90,6 +93,12 @@ export default function CategoryForm({ category }: Props) {
 
   return (
     <div>
+      {!canWrite ? (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          You have read-only access, so this form is disabled. Ask an admin for the editor role to
+          log emissions data.
+        </p>
+      ) : null}
       {showTutorial ? (
         <Tutorial categoryName={category.name} onClose={() => setShowTutorial(false)} />
       ) : null}
@@ -185,7 +194,7 @@ export default function CategoryForm({ category }: Props) {
         <button
           form={`${category.id}-form`}
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !canWrite}
           className="inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
         >
           <Grid2x2 size={16} />

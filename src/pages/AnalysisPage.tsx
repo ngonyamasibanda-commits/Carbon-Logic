@@ -7,10 +7,10 @@ import { useEntries } from '../lib/entries-context'
 import { useOrg } from '../providers/OrgProvider'
 
 const SCOPE_COLORS: Record<string, string> = {
-  'Scope 1': '#2aa198',
-  'Scope 2': '#e67e22',
-  'Scope 3': '#8e44ad',
-  Custom: '#64748b',
+  'Scope 1': '#02234e',
+  'Scope 2': '#14396d',
+  'Scope 3': '#6cbe2c',
+  Custom: '#94a3b8',
 }
 
 export default function AnalysisPage() {
@@ -175,7 +175,7 @@ export default function AnalysisPage() {
                       key={entry.name}
                       fill={
                         SCOPE_COLORS[entry.name] ??
-                        ['#2aa198', '#8e44ad', '#e67e22', '#3498db', '#27ae60'][index % 5]
+                        ['#02234e', '#6cbe2c', '#14396d', '#55a01f', '#4b6ea8'][index % 5]
                       }
                     />
                   ))}

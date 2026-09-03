@@ -1,0 +1,151 @@
+# Authentication and access control
+
+## What you need to do
+
+The application now refuses to render anything until someone is signed in, and the
+database refuses to return anything the signed-in user is not entitled to. Three steps
+get you from here to a working login.
+
+### 1. Run the migration
+
+Open the Supabase SQL editor and run `supabase/migrations/0001_auth_and_tenancy.sql`.
+It is idempotent, so re-running it is safe.
+
+It creates organisations, profiles, memberships, invitations and an audit log; replaces
+the wide-open `anon` policies on `emission_entries` and `emission_factors` with
+membership-scoped ones; and adds `organization_id` / `owner_id` to the emissions tables.
+
+It also drops the old `user_id` column, but only after checking that every row still
+says `default_user`. If you have rows with any other value it leaves the column alone
+and you should look at why before continuing.
+
+### 2. Create the first account
+
+Start the app, go to `/login`, choose **Create one** and sign up. Confirm the email if
+Supabase asks you to. You will land on a "No workspace yet" screen — that is expected.
+
+### 3. Claim your existing data
+
+Back in the SQL editor, uncomment the block at the bottom of the migration file, put
+your email and organisation name in it, and run it. That creates the organisation,
+makes you the owner, and moves every legacy `default_user` emissions row into it.
+
+After that, refresh the app and everything you had before is there, now owned by you.
+
+## Supabase dashboard settings worth changing
+
+| Setting | Where | Why |
+| --- | --- | --- |
+| Site URL and redirect URLs | Authentication → URL Configuration | Add your production origin plus `/auth/callback` and `/auth/reset`, otherwise magic links and password resets bounce. |
+| Confirm email | Authentication → Providers → Email | Leave on. It stops someone signing up as an address they do not control and being auto-added to an organisation by a pending invitation. |
+| Minimum password length | Authentication → Policies | Set to 12 to match the client-side check. |
+| Leaked password protection | Authentication → Policies | Checks new passwords against Have I Been Pwned. Worth turning on. |
+| SMTP | Project Settings → Auth | The built-in email sender is rate-limited and not for production. Point it at your own provider before you rely on invitations or resets. |
+| MFA enforcement | per organisation | Set `require_mfa = true` on the row in `organizations` and every member is forced through TOTP enrolment before they can use the app. |
+
+## Enterprise SSO
+
+The login page has a SAML path already wired to `signInWithSSO`. It will tell the user
+"single sign-on is not set up for yourdomain.com" until you do two things:
+
+1. Be on a Supabase plan that includes SAML (Pro or above).
+2. Register your identity provider, e.g.
+
+   ```
+   supabase sso add --project-ref <ref> \
+     --type saml \
+     --metadata-url 'https://your-idp/app/metadata' \
+     --domains yourcompany.com
+   ```
+
+Once the domain is registered, anyone typing a `@yourcompany.com` address and choosing
+single sign-on is redirected to your IdP. Supabase creates the user on first login, and
+the sign-up trigger gives them a profile plus any organisation their address was
+invited to.
+
+Note that SAML gives you authentication, not deprovisioning. Removing someone in Okta
+stops them getting a new session but does not delete their membership here, so removing
+them under **People & Access** is still part of your offboarding.
+
+## How it is put together
+
+### Authorization lives in the database
+
+This is a static single-page app. The anon key is in the JavaScript bundle, so anyone
+can read it and call the REST API directly. Everything in `src/components/auth/` is
+therefore user experience, not security — the actual rules are the Row Level Security
+policies in the migration.
+
+Concretely: `RequireRole` stops a viewer *seeing* the People page, and the policy on
+`memberships` stops a viewer *changing* anyone's role even if they call the API by hand.
+
+Membership changes do not go through RLS at all. They go through `SECURITY DEFINER`
+functions (`invite_member`, `set_member_role`, `remove_member`) because rules like "you
+cannot grant a role above your own" and "an organisation must keep an owner" are much
+clearer as procedural code than as policy predicates. Those functions pin
+`search_path = ''` and schema-qualify every name, which is what stops the classic
+`SECURITY DEFINER` privilege-escalation trick.
+
+The membership lookup helpers are also `SECURITY DEFINER` for a second reason: a policy
+on `memberships` that reads `memberships` re-enters itself and Postgres aborts with
+"infinite recursion detected in policy".
+
+### Roles
+
+| Role | Can |
+| --- | --- |
+| viewer | Read dashboards, reports and factors |
+| editor | Everything above, plus log and edit emissions data |
+| admin | Everything above, plus manage people, factors, targets and read the audit log |
+| owner | Everything above, plus organisation settings |
+
+Nobody can grant a role above their own, and the last owner cannot be demoted or
+removed.
+
+### Sessions
+
+Tokens are handled by Supabase using PKCE, with rotating refresh tokens and reuse
+detection. Sessions are revocable server-side, so signing out genuinely ends the
+session rather than just forgetting it locally.
+
+The honest caveat: OWASP and the OAuth working group recommend a backend-for-frontend
+for SPAs, so that tokens never reach the browser at all. That needs a server, which
+this app does not have. Rotation with reuse detection plus short-lived access tokens is
+the strongest position available without one. If you later put an API server in front
+of Supabase, moving to a `__Host-` prefixed HttpOnly cookie session is the upgrade path.
+
+Idle and absolute timeouts are per organisation, in `organizations.session_idle_minutes`
+(default 30) and `session_absolute_hours` (default 12). OWASP suggests 15–30 minutes
+idle for low-risk applications and 4–8 hours absolute; emissions reporting is business
+data rather than money movement, so the defaults sit at the permissive end. Lower them
+by updating the row.
+
+Activity is shared between tabs, so working in one tab will not let another time you
+out, and a warning appears 90 seconds before the cut-off.
+
+### Passwords
+
+Following NIST SP 800-63B: a 12 character minimum, a blocklist of common and
+context-specific words, and no forced composition rules or expiry, both of which that
+guidance now advises against. Turn on leaked password protection in the dashboard to
+add a breach-corpus check.
+
+Sign-in failures never say whether an address exists, and magic-link and reset requests
+always report success, so neither form can be used to enumerate accounts.
+
+### Audit log
+
+`audit_log` is append-only: members can insert through `record_audit_event`, admins can
+read, and there is no update or delete policy for anyone. Sign-outs, invitations, role
+changes, removals and MFA changes are recorded.
+
+## Testing
+
+```
+npm run verify:migration
+```
+
+Runs the migration against a real Postgres (PGlite, compiled to WASM) layered on a
+replica of the pre-migration schema, then exercises the rules as ordinary users: tenant
+isolation, role enforcement, privilege escalation attempts, and the legacy data
+handover. 35 checks.

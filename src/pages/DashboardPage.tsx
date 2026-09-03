@@ -10,8 +10,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { LogoLockup } from '../components/brand/Logo'
 import { useEntries } from '../lib/entries-context'
 import { useOrg } from '../providers/OrgProvider'
+import { useAuth } from '../lib/auth-context'
 
 function greeting() {
   const hour = new Date().getHours()
@@ -28,11 +30,13 @@ function ytd(date: string) {
   return new Date(date).getFullYear() === new Date().getFullYear()
 }
 
-const BAR = '#2d5a27'
+const NAVY = '#02234e'
+const GREEN = '#6cbe2c'
 
 export default function DashboardPage() {
   const { entries } = useEntries()
   const { profile, updateProfile, sites } = useOrg()
+  const { profile: account, user } = useAuth()
   const [baselineDraft, setBaselineDraft] = useState(String(profile.baselineYtdTco2e || ''))
 
   const yearEntries = useMemo(
@@ -83,13 +87,19 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl bg-white px-6 py-8 text-center">
-        <h1 className="text-3xl font-semibold text-ink">
-          {greeting()}, {firstName(profile.displayName)}
-        </h1>
-        <p className="mt-2 text-sm text-muted">
-          Track YTD emissions, Scope 3, and progress vs baseline.
-        </p>
+      <section className="overflow-hidden rounded-2xl border border-line bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-6 px-6 py-8">
+          <div>
+            <h1 className="text-3xl font-semibold text-brand">
+              {greeting()}, {firstName(account?.fullName || user?.email || '')}
+            </h1>
+            <p className="mt-2 text-sm text-muted">
+              Track YTD emissions, Scope 3, and progress vs baseline.
+            </p>
+          </div>
+          <LogoLockup width={132} className="hidden sm:block" />
+        </div>
+        <div className="h-1.5 bg-gradient-to-r from-brand to-accent" />
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
@@ -105,12 +115,12 @@ export default function DashboardPage() {
         <ChartCard title="Emissions by Scope">
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={scopeData} margin={{ top: 24, right: 8, left: 0, bottom: 8 }}>
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey="name" tick={{ fill: '#4b5563', fontSize: 12 }} />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 12 }} />
+              <CartesianGrid stroke="#e2e8f0" vertical={false} />
+              <XAxis dataKey="name" tick={{ fill: '#475569', fontSize: 12 }} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
               <Tooltip formatter={(value) => `${Number(value ?? 0).toFixed(3)} tCO2e`} />
-              <Bar dataKey="emissions" fill={BAR} radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="emissions" position="top" fill="#1f2933" fontSize={12} />
+              <Bar dataKey="emissions" fill={NAVY} radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="emissions" position="top" fill="#0f1e33" fontSize={12} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -118,19 +128,19 @@ export default function DashboardPage() {
         <ChartCard title="Emissions by Facility">
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={facilityData} margin={{ top: 24, right: 8, left: 0, bottom: 24 }}>
-              <CartesianGrid stroke="#e5e7eb" vertical={false} />
+              <CartesianGrid stroke="#e2e8f0" vertical={false} />
               <XAxis
                 dataKey="name"
                 interval={0}
-                tick={{ fill: '#4b5563', fontSize: 11 }}
+                tick={{ fill: '#475569', fontSize: 11 }}
                 tickFormatter={(value: string) =>
                   value.length > 16 ? `${value.slice(0, 15)}…` : value
                 }
               />
-              <YAxis tick={{ fill: '#6b7280', fontSize: 12 }} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
               <Tooltip formatter={(value) => `${Number(value ?? 0).toFixed(3)} tCO2e`} />
-              <Bar dataKey="emissions" fill={BAR} radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="emissions" position="top" fill="#1f2933" fontSize={12} />
+              <Bar dataKey="emissions" fill={GREEN} radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="emissions" position="top" fill="#0f1e33" fontSize={12} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -170,16 +180,19 @@ export default function DashboardPage() {
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-[#f3f4f6] px-6 py-7">
-      <div className="text-4xl font-semibold tracking-tight text-ink">{value}</div>
-      <div className="mt-3 text-sm text-muted">{label}</div>
+    <div className="rounded-2xl border border-line bg-white px-6 py-7">
+      <div className="text-4xl font-semibold tracking-tight text-brand">{value}</div>
+      <div className="mt-3 flex items-center gap-2 text-sm text-muted">
+        <span className="h-2 w-2 rounded-full bg-accent" />
+        {label}
+      </div>
     </div>
   )
 }
 
 function ChartCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <article className="rounded-2xl bg-[#f3f4f6] p-5">
+    <article className="rounded-2xl border border-line bg-white p-5">
       <h2 className="mb-3 text-lg font-semibold text-ink">{title}</h2>
       {children}
     </article>

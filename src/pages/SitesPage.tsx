@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react'
+import { Users } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useOrg } from '../providers/OrgProvider'
-import type { Site, TeamMember } from '../lib/org'
+import type { Site } from '../lib/org'
 
 export default function SitesPage() {
-  const { sites, team, addSite, removeSite, addMember, removeMember } = useOrg()
+  const { sites, addSite, removeSite } = useOrg()
   const [siteForm, setSiteForm] = useState({ name: '', type: 'construction_site', region: 'United Kingdom' })
-  const [memberForm, setMemberForm] = useState({ name: '', email: '', role: 'editor' })
 
   function onAddSite(event: FormEvent) {
     event.preventDefault()
@@ -16,17 +17,6 @@ export default function SitesPage() {
       region: siteForm.region,
     })
     setSiteForm({ name: '', type: 'construction_site', region: 'United Kingdom' })
-  }
-
-  function onAddMember(event: FormEvent) {
-    event.preventDefault()
-    if (!memberForm.name.trim() || !memberForm.email.trim()) return
-    addMember({
-      name: memberForm.name.trim(),
-      email: memberForm.email.trim(),
-      role: memberForm.role as TeamMember['role'],
-    })
-    setMemberForm({ name: '', email: '', role: 'editor' })
   }
 
   return (
@@ -97,60 +87,19 @@ export default function SitesPage() {
 
       <section className="rounded-xl border border-line bg-white p-5">
         <h2 className="text-lg font-semibold">Team</h2>
-        <form onSubmit={onAddMember} className="mt-3 grid gap-2 sm:grid-cols-4">
-          <input
-            value={memberForm.name}
-            onChange={(event) => setMemberForm({ ...memberForm, name: event.target.value })}
-            placeholder="Name"
-            className="rounded-md border border-line px-3 py-2 text-sm"
-            required
-          />
-          <input
-            type="email"
-            value={memberForm.email}
-            onChange={(event) => setMemberForm({ ...memberForm, email: event.target.value })}
-            placeholder="Email"
-            className="rounded-md border border-line px-3 py-2 text-sm"
-            required
-          />
-          <select
-            value={memberForm.role}
-            onChange={(event) => setMemberForm({ ...memberForm, role: event.target.value })}
-            className="rounded-md border border-line px-3 py-2 text-sm"
-          >
-            <option value="admin">Admin</option>
-            <option value="editor">Editor</option>
-            <option value="viewer">Viewer</option>
-          </select>
-          <button type="submit" className="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white">
-            Invite
-          </button>
-        </form>
-        <table className="mt-4 w-full text-sm">
-          <thead>
-            <tr className="border-b border-line text-left text-muted">
-              <th className="py-2">Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {team.map((member) => (
-              <tr key={member.id} className="border-b border-line">
-                <td className="py-2">{member.name}</td>
-                <td>{member.email}</td>
-                <td className="capitalize">{member.role}</td>
-                <td>
-                  <button type="button" className="text-red-600" onClick={() => removeMember(member.id)}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <p className="mt-2 text-sm text-muted">
+          People and their roles now live under People &amp; Access, where they are backed by real
+          accounts and enforced by the database rather than stored in this browser.
+        </p>
+        <Link
+          to="/people"
+          className="mt-3 inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white"
+        >
+          <Users size={15} />
+          Manage people and access
+        </Link>
       </section>
+
     </div>
   )
 }

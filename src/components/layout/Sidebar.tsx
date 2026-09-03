@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, Leaf } from 'lucide-react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { ChevronDown, Users } from 'lucide-react'
+import { Link, NavLink, useLocation } from 'react-router-dom'
+import { LogoMark } from '../brand/Logo'
 import { INPUT_CATEGORIES, SCOPE3_CATEGORIES } from '../../lib/categories'
 import { CATEGORY_ICONS } from '../../lib/icons'
 import { useEntries } from '../../lib/entries-context'
-import { useOrg } from '../../providers/OrgProvider'
+import { useAuth } from '../../lib/auth-context'
 
 function countLabel(count: number) {
   return count === 1 ? '(1 entry)' : `(${count} entries)`
@@ -19,8 +20,9 @@ function navClass(active: boolean) {
 
 export default function Sidebar() {
   const { entries } = useEntries()
-  const { profile } = useOrg()
+  const { profile, user, organization, can } = useAuth()
   const location = useLocation()
+  const displayName = profile?.fullName || user?.email || 'Account'
   const [inputOpen, setInputOpen] = useState(true)
   const [scope3Open, setScope3Open] = useState(true)
 
@@ -35,15 +37,17 @@ export default function Sidebar() {
   return (
     <aside className="flex w-[260px] shrink-0 flex-col border-r border-line bg-white">
       <div className="border-b border-line px-5 py-4">
-        <div className="flex items-center gap-2 text-brand-dark">
-          <Leaf size={22} />
+        <Link to="/" className="flex items-center gap-2.5">
+          <LogoMark size={34} />
           <div>
-            <div className="text-lg font-bold leading-none tracking-tight">Carbon Logic</div>
-            <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            <div className="text-lg font-bold leading-none tracking-tight text-brand">
+              Carbon Logic
+            </div>
+            <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-accent-dark">
               Construction & logistics
             </div>
           </div>
-        </div>
+        </Link>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-3">
@@ -93,6 +97,18 @@ export default function Sidebar() {
               <>
                 <Icon size={16} className={isActive ? 'text-brand' : 'text-muted'} />
                 Emission Factors
+              </>
+            )
+          }}
+        </NavLink>
+
+        <NavLink to="/targets" className={({ isActive }) => navClass(isActive)}>
+          {({ isActive }) => {
+            const Icon = CATEGORY_ICONS.targets
+            return (
+              <>
+                <Icon size={16} className={isActive ? 'text-brand' : 'text-muted'} />
+                Science Based Targets
               </>
             )
           }}
@@ -199,19 +215,29 @@ export default function Sidebar() {
               )
             }}
           </NavLink>
+          {can('members:manage') ? (
+            <NavLink to="/people" className={({ isActive }) => navClass(isActive)}>
+              {({ isActive }) => (
+                <>
+                  <Users size={16} className={isActive ? 'text-brand' : 'text-muted'} />
+                  People &amp; Access
+                </>
+              )}
+            </NavLink>
+          ) : null}
         </div>
       </nav>
 
       <div className="border-t border-line px-4 py-3">
-        <div className="flex items-center gap-3">
+        <Link to="/account" className="flex items-center gap-3 rounded-md p-1 hover:bg-page">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-sm font-semibold text-white">
-            {profile.displayName.trim().charAt(0).toUpperCase() || 'N'}
+            {displayName.trim().charAt(0).toUpperCase() || 'N'}
           </div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{profile.displayName}</div>
-            <div className="truncate text-xs text-muted">{profile.organisation}</div>
+            <div className="truncate text-sm font-semibold">{displayName}</div>
+            <div className="truncate text-xs text-muted">{organization?.name ?? 'No organisation'}</div>
           </div>
-        </div>
+        </Link>
       </div>
     </aside>
   )
