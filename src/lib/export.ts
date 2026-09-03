@@ -1,4 +1,5 @@
 import { getCategory } from './categories'
+import { escapeHtml } from './safe'
 import type { EmissionEntry } from './types'
 
 function csvEscape(value: string) {
@@ -55,21 +56,22 @@ export function downloadCsv(filename: string, entries: EmissionEntry[]) {
 export function printReport(title: string, entries: EmissionEntry[]) {
   const total = entries.reduce((sum, row) => sum + row.emissions_tco2e, 0)
   const rows = entries
-    .map(
-      (entry) => `
+    .map((entry) => {
+      const name = getCategory(entry.category)?.name ?? entry.category
+      return `
       <tr>
-        <td>${entry.created_at.slice(0, 10)}</td>
-        <td>${getCategory(entry.category)?.name ?? entry.category}</td>
-        <td>${entry.scope}</td>
-        <td>${entry.site || '—'}</td>
+        <td>${escapeHtml(entry.created_at.slice(0, 10))}</td>
+        <td>${escapeHtml(name)}</td>
+        <td>${escapeHtml(entry.scope)}</td>
+        <td>${escapeHtml(entry.site || '—')}</td>
         <td>${entry.emissions_tco2e.toFixed(4)}</td>
-        <td>${entry.details}</td>
-      </tr>`,
-    )
+        <td>${escapeHtml(entry.details)}</td>
+      </tr>`
+    })
     .join('')
 
   const html = `<!doctype html>
-<html><head><title>${title}</title>
+<html><head><title>${escapeHtml(title)}</title>
 <style>
   body { font-family: Inter, sans-serif; padding: 24px; color: #0f1e33; }
   h1 { margin: 0 0 8px; color: #02234e; border-bottom: 3px solid #6cbe2c; padding-bottom: 8px; }
@@ -78,7 +80,7 @@ export function printReport(title: string, entries: EmissionEntry[]) {
   th { background: #02234e; color: #ffffff; }
 </style></head>
 <body>
-  <h1>${title}</h1>
+  <h1>${escapeHtml(title)}</h1>
   <p>Total: <strong>${total.toFixed(4)} tCO2e</strong> · ${entries.length} entries</p>
   <table>
     <thead><tr><th>Date</th><th>Category</th><th>Scope</th><th>Site</th><th>tCO2e</th><th>Details</th></tr></thead>

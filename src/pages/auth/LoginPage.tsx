@@ -34,6 +34,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   const passwordCheck = assessPassword(password, email)
   const signedOutNotice =
@@ -80,6 +81,10 @@ export default function LoginPage() {
         return
       }
 
+      if (!acceptedTerms) {
+        setError('You must accept the Terms & Conditions to create an account.')
+        return
+      }
       if (!passwordCheck.valid) {
         setError(passwordCheck.problems[0])
         return
@@ -192,7 +197,30 @@ export default function LoginPage() {
 
         {mode === 'signup' && password ? <PasswordMeter score={passwordCheck.score} problems={passwordCheck.problems} /> : null}
 
-        <button type="submit" disabled={busy} className={primaryButtonClass}>
+        {mode === 'signup' ? (
+          <label className="flex items-start gap-2 text-xs leading-5 text-muted">
+            <input
+              type="checkbox"
+              required
+              checked={acceptedTerms}
+              onChange={(event) => setAcceptedTerms(event.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              I agree to the{' '}
+              <a href="/terms" target="_blank" rel="noreferrer" className="font-medium text-brand hover:underline">
+                Terms &amp; Conditions
+              </a>
+              , including the calculator disclaimer, liability limits, and privacy notice.
+            </span>
+          </label>
+        ) : null}
+
+        <button
+          type="submit"
+          disabled={busy || (mode === 'signup' && !acceptedTerms)}
+          className={primaryButtonClass}
+        >
           {busy ? 'Working…' : copy.cta}
         </button>
 

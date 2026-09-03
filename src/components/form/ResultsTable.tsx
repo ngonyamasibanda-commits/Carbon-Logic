@@ -1,4 +1,5 @@
 import { Paperclip, Trash2 } from 'lucide-react'
+import { safeDownloadUrl } from '../../lib/safe'
 import type { EmissionEntry } from '../../lib/types'
 
 type Props = {
@@ -74,17 +75,21 @@ export default function ResultsTable({ entries, onDelete }: Props) {
                     <div className="mt-1 text-violet-700">{entry.tags.join(', ') || ''}</div>
                     {entry.files.length > 0 ? (
                       <div className="mt-1 flex flex-wrap gap-1 text-sky-700">
-                        {entry.files.map((file) => (
+                        {entry.files.map((file) => {
+                          const href = safeDownloadUrl(file.dataUrl)
+                          if (!href) return null
+                          return (
                           <a
                             key={file.name}
-                            href={file.dataUrl}
+                            href={href}
                             download={file.name}
                             className="inline-flex items-center gap-1 hover:underline"
                           >
                             <Paperclip size={11} />
                             {file.name}
                           </a>
-                        ))}
+                          )
+                        })}
                       </div>
                     ) : null}
                   </td>

@@ -1,4 +1,5 @@
 import { Paperclip, Plus, Tag, X } from 'lucide-react'
+import { safeDownloadUrl } from '../../lib/safe'
 import type { AdditionalState, AttachedFile } from '../../lib/types'
 import { useOrg } from '../../providers/OrgProvider'
 
@@ -90,7 +91,7 @@ export default function AdditionalData({ value, onChange }: Props) {
         <ul className="mt-2 space-y-1 text-xs text-ink">
           {value.files.map((file, index) => (
             <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
-              <a href={file.dataUrl} download={file.name} className="truncate text-sky-700 hover:underline">
+              <a href={safeDownloadUrl(file.dataUrl)} download={file.name} className="truncate text-sky-700 hover:underline">
                 {file.name}
               </a>
               <button

@@ -1,31 +1,37 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { MailPlus, Trash2 } from 'lucide-react'
+import { Building2, MailPlus, Search, Shield, Trash2, UserMinus } from 'lucide-react'
 import { Alert, FormField, inputClass } from '../components/auth/AuthLayout'
 import {
   ORG_ROLES,
   ROLE_DESCRIPTIONS,
+  ROLE_LABELS,
   ROLE_RANK,
   fetchAuditLog,
   fetchOrgMembers,
   fetchPendingInvitations,
+  inviteMember,
+  removeOrgMember,
+  revokeInvitation,
+  setMemberRole,
   type AuditEvent,
   type OrgMember,
   type OrgRole,
   type PendingInvitation,
 } from '../lib/auth'
 import { useAuth } from '../lib/auth-context'
-import { supabase } from '../lib/supabase'
 
 export default function PeoplePage() {
   const { organization, role, user, reloadWorkspace } = useAuth()
   const [members, setMembers] = useState<OrgMember[]>([])
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])
   const [audit, setAudit] = useState<AuditEvent[]>([])
+  const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const orgId = organization?.id
+  const canManage = role === 'owner' || role === 'admin'
 
   const load = useCallback(async () => {
     if (!orgId) return
@@ -48,37 +54,60 @@ export default function PeoplePage() {
     void load()
   }, [load])
 
-  // The database enforces this too; mirroring it here keeps impossible options hidden.
   const grantableRoles = useMemo(
     () => ORG_ROLES.filter((candidate) => (role ? ROLE_RANK[candidate] <= ROLE_RANK[role] : false)),
     [role],
   )
 
+  const visibleMembers = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) return members
+    return members.filter(
+      (member) =>
+        member.email.toLowerCase().includes(needle) ||
+        member.fullName.toLowerCase().includes(needle) ||
+        member.role.includes(needle) ||
+        ROLE_LABELS[member.role].toLowerCase().includes(needle),
+    )
+  }, [members, query])
+
   async function changeRole(membershipId: string, nextRole: OrgRole) {
     setError(null)
     setNotice(null)
-    const { error: rpcError } = await supabase.rpc('set_member_role', {
-      p_membership: membershipId,
-      p_role: nextRole,
-    })
-    if (rpcError) setError(rpcError.message)
+    const { error: rpcError } = await setMemberRole(membershipId, nextRole)
+    if (rpcError) setError(rpcError)
     else {
-      setNotice('Role updated.')
+      setNotice('Access updated.')
       await load()
       await reloadWorkspace()
     }
   }
 
-  async function removeMember(membershipId: string, email: string) {
-    if (!window.confirm(`Remove ${email} from ${organization?.name}?`)) return
+  async function removeMember(membershipId: string, email: string, isSelf: boolean) {
+    const label = isSelf
+      ? `Leave ${organization?.name}? You will lose access to this organisation’s data.`
+      : `Remove ${email} from ${organization?.name}? They will immediately lose access to this organisation’s data.`
+    if (!window.confirm(label)) return
     setError(null)
     setNotice(null)
-    const { error: rpcError } = await supabase.rpc('remove_member', { p_membership: membershipId })
-    if (rpcError) setError(rpcError.message)
+    const { error: rpcError } = await removeOrgMember(membershipId)
+    if (rpcError) setError(rpcError)
     else {
-      setNotice(`${email} was removed.`)
+      setNotice(isSelf ? 'You left the organisation.' : `${email} was removed.`)
       await load()
       await reloadWorkspace()
+    }
+  }
+
+  async function cancelInvite(id: string, email: string) {
+    if (!window.confirm(`Revoke the invitation to ${email}?`)) return
+    setError(null)
+    setNotice(null)
+    const { error: rpcError } = await revokeInvitation(id)
+    if (rpcError) setError(rpcError)
+    else {
+      setNotice(`Invitation to ${email} was revoked.`)
+      await load()
     }
   }
 
@@ -88,9 +117,15 @@ export default function PeoplePage() {
         <div className="px-6 py-7">
           <h1 className="text-2xl font-semibold text-brand">People and access</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            Roles are enforced by the database, not the interface. Someone with the viewer role
-            cannot write emissions data even if they call the API directly.
+            CEOs and managers control who can see and change this organisation only. Emissions,
+            factors, sites and people from other companies never appear here — that isolation is
+            enforced in the database.
           </p>
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand-soft px-3 py-1.5 text-sm text-brand">
+            <Building2 size={14} />
+            <span className="font-semibold">{organization?.name ?? 'No organisation'}</span>
+            <span className="text-brand/70">· {members.length} people</span>
+          </div>
         </div>
         <div className="h-1.5 bg-gradient-to-r from-brand to-accent" />
       </section>
@@ -98,12 +133,39 @@ export default function PeoplePage() {
       {error ? <Alert tone="error">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
 
-      <InviteCard organizationId={orgId} grantableRoles={grantableRoles} onInvited={load} />
+      {canManage ? (
+        <InviteCard
+          organizationId={orgId}
+          grantableRoles={grantableRoles}
+          onInvited={load}
+        />
+      ) : (
+        <p className="rounded-xl border border-line bg-white px-4 py-3 text-sm text-muted">
+          You can view who belongs to {organization?.name}, but only a manager or CEO can change
+          access.
+        </p>
+      )}
 
       <section className="rounded-2xl border border-line bg-white p-5">
-        <h2 className="text-lg font-semibold text-ink">Members</h2>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Members</h2>
+            <p className="mt-1 text-xs text-muted">Only people in {organization?.name}.</p>
+          </div>
+          <label className="flex min-w-[220px] items-center gap-2 rounded-md border border-line bg-page px-3 py-2 text-sm">
+            <Search size={14} className="text-muted" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search name, email or role"
+              className="w-full bg-transparent outline-none"
+            />
+          </label>
+        </div>
         {loading ? (
           <p className="mt-3 text-sm text-muted">Loading…</p>
+        ) : visibleMembers.length === 0 ? (
+          <p className="mt-4 text-sm text-muted">No people match that search.</p>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -111,15 +173,16 @@ export default function PeoplePage() {
                 <tr>
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">Role</th>
+                  <th className="px-3 py-2">Access</th>
                   <th className="px-3 py-2">Joined</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
-                {members.map((member) => {
+                {visibleMembers.map((member) => {
                   const isSelf = member.userId === user?.id
-                  const canEdit = role ? ROLE_RANK[member.role] <= ROLE_RANK[role] : false
+                  const canEditOther =
+                    canManage && role !== null && ROLE_RANK[member.role] <= ROLE_RANK[role] && !isSelf
                   return (
                     <tr key={member.membershipId} className="border-t border-line">
                       <td className="px-3 py-2 font-medium">
@@ -128,37 +191,45 @@ export default function PeoplePage() {
                       </td>
                       <td className="px-3 py-2 text-muted">{member.email}</td>
                       <td className="px-3 py-2">
-                        <select
-                          value={member.role}
-                          disabled={!canEdit}
-                          onChange={(event) =>
-                            void changeRole(member.membershipId, event.target.value as OrgRole)
-                          }
-                          className="rounded-md border border-line px-2 py-1 text-sm disabled:bg-page disabled:text-muted"
-                        >
-                          {grantableRoles.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                          {!grantableRoles.includes(member.role) ? (
-                            <option value={member.role}>{member.role}</option>
-                          ) : null}
-                        </select>
+                        {canEditOther ? (
+                          <select
+                            value={member.role}
+                            onChange={(event) =>
+                              void changeRole(member.membershipId, event.target.value as OrgRole)
+                            }
+                            className="rounded-md border border-line px-2 py-1 text-sm"
+                            aria-label={`Access for ${member.email}`}
+                          >
+                            {grantableRoles.map((option) => (
+                              <option key={option} value={option}>
+                                {ROLE_LABELS[option]}
+                              </option>
+                            ))}
+                            {!grantableRoles.includes(member.role) ? (
+                              <option value={member.role}>{ROLE_LABELS[member.role]}</option>
+                            ) : null}
+                          </select>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-page px-2 py-1 text-xs font-medium">
+                            <Shield size={11} className="text-brand" />
+                            {ROLE_LABELS[member.role]}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-muted">
                         {new Date(member.createdAt).toLocaleDateString()}
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          disabled={!canEdit && !isSelf}
-                          onClick={() => void removeMember(member.membershipId, member.email)}
-                          className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
-                        >
-                          <Trash2 size={13} />
-                          {isSelf ? 'Leave' : 'Remove'}
-                        </button>
+                        {canEditOther || isSelf ? (
+                          <button
+                            type="button"
+                            onClick={() => void removeMember(member.membershipId, member.email, isSelf)}
+                            className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                          >
+                            {isSelf ? <UserMinus size={13} /> : <Trash2 size={13} />}
+                            {isSelf ? 'Leave' : 'Remove access'}
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   )
@@ -170,53 +241,73 @@ export default function PeoplePage() {
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {ORG_ROLES.map((option) => (
             <div key={option} className="rounded-lg bg-page px-3 py-2">
-              <div className="text-xs font-semibold uppercase tracking-wide text-brand">{option}</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-brand">
+                {ROLE_LABELS[option]}
+              </div>
               <p className="mt-1 text-xs text-muted">{ROLE_DESCRIPTIONS[option]}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {invitations.length > 0 ? (
+      {canManage ? (
         <section className="rounded-2xl border border-line bg-white p-5">
           <h2 className="text-lg font-semibold text-ink">Pending invitations</h2>
-          <ul className="mt-3 divide-y divide-line text-sm">
-            {invitations.map((invitation) => (
-              <li key={invitation.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <span className="font-medium">{invitation.email}</span>
-                <span className="text-muted">
-                  {invitation.role} · expires {new Date(invitation.expiresAt).toLocaleDateString()}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {invitations.length === 0 ? (
+            <p className="mt-3 text-sm text-muted">No outstanding invitations for this organisation.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-line text-sm">
+              {invitations.map((invitation) => (
+                <li key={invitation.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <div>
+                    <span className="font-medium">{invitation.email}</span>
+                    <span className="ml-2 text-muted">
+                      {ROLE_LABELS[invitation.role]} · expires{' '}
+                      {new Date(invitation.expiresAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void cancelInvite(invitation.id, invitation.email)}
+                    className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 size={12} />
+                    Revoke
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="mt-3 text-xs text-muted">
-            An invitation is redeemed automatically when that address signs up.
+            If they already have a Carbon Logic account, they are added immediately. Otherwise they
+            join this organisation automatically when they sign up with that email.
           </p>
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-line bg-white p-5">
-        <h2 className="text-lg font-semibold text-ink">Activity log</h2>
-        <p className="mt-1 text-sm text-muted">
-          Append-only record of access changes. Nobody, including owners, can edit or delete entries.
-        </p>
-        {audit.length === 0 ? (
-          <p className="mt-3 text-sm text-muted">Nothing recorded yet.</p>
-        ) : (
-          <ul className="mt-3 divide-y divide-line text-sm">
-            {audit.map((event) => (
-              <li key={event.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
-                <span>
-                  <span className="font-mono text-xs text-brand">{event.action}</span>
-                  {event.actorEmail ? <span className="ml-2 text-muted">by {event.actorEmail}</span> : null}
-                </span>
-                <span className="text-xs text-muted">{new Date(event.createdAt).toLocaleString()}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {canManage ? (
+        <section className="rounded-2xl border border-line bg-white p-5">
+          <h2 className="text-lg font-semibold text-ink">Activity log</h2>
+          <p className="mt-1 text-sm text-muted">
+            Access changes for {organization?.name} only. Entries cannot be edited or deleted.
+          </p>
+          {audit.length === 0 ? (
+            <p className="mt-3 text-sm text-muted">Nothing recorded yet.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-line text-sm">
+              {audit.map((event) => (
+                <li key={event.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                  <span>
+                    <span className="font-mono text-xs text-brand">{event.action}</span>
+                    {event.actorEmail ? <span className="ml-2 text-muted">by {event.actorEmail}</span> : null}
+                  </span>
+                  <span className="text-xs text-muted">{new Date(event.createdAt).toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
     </div>
   )
 }
@@ -243,16 +334,16 @@ function InviteCard({
     setError(null)
     setNotice(null)
     try {
-      const { error: rpcError } = await supabase.rpc('invite_member', {
-        p_org: organizationId,
-        p_email: email.trim().toLowerCase(),
-        p_role: role,
-      })
-      if (rpcError) {
-        setError(rpcError.message)
+      const result = await inviteMember(organizationId, email, role)
+      if (result.error) {
+        setError(result.error)
         return
       }
-      setNotice(`${email} can now join as ${role} by signing up with that address.`)
+      setNotice(
+        result.addedImmediately
+          ? `${email} already had an account and now has ${ROLE_LABELS[role]} access to this organisation.`
+          : `${email} has been invited as ${ROLE_LABELS[role]}. They join automatically when they sign up.`,
+      )
       setEmail('')
       await onInvited()
     } finally {
@@ -262,7 +353,10 @@ function InviteCard({
 
   return (
     <section className="rounded-2xl border border-line bg-white p-5">
-      <h2 className="text-lg font-semibold text-ink">Invite someone</h2>
+      <h2 className="text-lg font-semibold text-ink">Add or invite someone</h2>
+      <p className="mt-1 text-sm text-muted">
+        Grant access to this organisation only. They will not see any other company’s data.
+      </p>
       <form onSubmit={submit} className="mt-4 flex flex-wrap items-end gap-3">
         <div className="min-w-[240px] flex-1">
           <FormField label="Work email">
@@ -276,8 +370,8 @@ function InviteCard({
             />
           </FormField>
         </div>
-        <div className="w-40">
-          <FormField label="Role">
+        <div className="w-48">
+          <FormField label="Access level">
             <select
               value={role}
               onChange={(event) => setRole(event.target.value as OrgRole)}
@@ -285,7 +379,7 @@ function InviteCard({
             >
               {grantableRoles.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {ROLE_LABELS[option]}
                 </option>
               ))}
             </select>
@@ -297,11 +391,19 @@ function InviteCard({
           className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
           <MailPlus size={15} />
-          {busy ? 'Inviting…' : 'Send invitation'}
+          {busy ? 'Saving…' : 'Grant access'}
         </button>
       </form>
-      {error ? <div className="mt-3"><Alert tone="error">{error}</Alert></div> : null}
-      {notice ? <div className="mt-3"><Alert tone="success">{notice}</Alert></div> : null}
+      {error ? (
+        <div className="mt-3">
+          <Alert tone="error">{error}</Alert>
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="mt-3">
+          <Alert tone="success">{notice}</Alert>
+        </div>
+      ) : null}
     </section>
   )
 }

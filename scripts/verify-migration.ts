@@ -46,16 +46,22 @@ async function expectFailure(name: string, run: () => Promise<unknown>, expect?:
 }
 
 /** Impersonates a signed-in user the way PostgREST does. */
-async function asUser<T>(userId: string, run: () => Promise<T>): Promise<T> {
+async function asUser<T>(
+  userId: string,
+  run: () => Promise<T>,
+  headers: Record<string, string> = {},
+): Promise<T> {
+  const headerJson = JSON.stringify(headers).replace(/\\/g, '\\\\').replace(/'/g, "''")
   // Session-scoped rather than `set local`, because each statement here autocommits.
   await db.exec(`
     set role authenticated;
     set request.jwt.claims = '{"sub":"${userId}","role":"authenticated"}';
+    set request.headers = '${headerJson}';
   `)
   try {
     return await run()
   } finally {
-    await db.exec("reset role; set request.jwt.claims = '';")
+    await db.exec("reset role; set request.jwt.claims = ''; set request.headers = '';")
   }
 }
 
@@ -113,6 +119,18 @@ async function main() {
     grant usage, select on all sequences in schema public to authenticated;
   `)
 
+  const quotas = readFileSync(join(root, 'supabase/migrations/0002_quotas_and_hardening.sql'), 'utf8')
+  await db.exec(quotas)
+  check('quota migration applies cleanly', true)
+  await db.exec(quotas)
+  check('quota migration is idempotent (second run is clean)', true)
+
+  const ipLimits = readFileSync(join(root, 'supabase/migrations/0003_ip_rate_limits.sql'), 'utf8')
+  await db.exec(ipLimits)
+  check('IP rate-limit migration applies cleanly', true)
+  await db.exec(ipLimits)
+  check('IP rate-limit migration is idempotent (second run is clean)', true)
+
   console.log('\nProvisioning users\n')
   const users = await db.query<{ id: string; email: string }>(`
     insert into auth.users (email, raw_user_meta_data) values
@@ -156,16 +174,33 @@ async function main() {
 
   await asUser(id['owner@acme.test'], async () => {
     await db.query('select public.invite_member($1, $2, $3)', [acme, 'editor@acme.test', 'editor'])
+  })
+  const immediate = await db.query<{ role: string }>(
+    'select role from public.memberships where organization_id = $1 and user_id = $2',
+    [acme, id['editor@acme.test']],
+  )
+  check(
+    'inviting an existing account grants access immediately',
+    immediate.rows[0]?.role === 'editor',
+  )
+
+  await asUser(id['owner@acme.test'], async () => {
+    await db.query('select public.invite_member($1, $2, $3)', [acme, 'newhire@acme.test', 'viewer'])
+  })
+  const pending = await db.query<{ email: string }>(
+    "select email from public.invitations where organization_id = $1 and accepted_at is null and email = 'newhire@acme.test'",
+    [acme],
+  )
+  check('unknown addresses get a pending invitation', pending.rows.length === 1)
+
+  const hired = await db.query<{ id: string }>(`
+    insert into auth.users (email) values ('newhire@acme.test') returning id
+  `)
+  id['newhire@acme.test'] = hired.rows[0].id
+
+  await asUser(id['owner@acme.test'], async () => {
     await db.query('select public.invite_member($1, $2, $3)', [acme, 'viewer@acme.test', 'viewer'])
   })
-
-  // Invitations are redeemed on sign-up, so re-create the invited users to simulate it.
-  await db.exec("delete from auth.users where email in ('editor@acme.test','viewer@acme.test')")
-  const reinvited = await db.query<{ id: string; email: string }>(`
-    insert into auth.users (email) values ('editor@acme.test'), ('viewer@acme.test')
-    returning id, email
-  `)
-  for (const row of reinvited.rows) id[row.email] = row.id
 
   const redeemed = await db.query<{ role: string; user_id: string }>(
     'select role, user_id from public.memberships where organization_id = $1 order by role',
@@ -173,8 +208,7 @@ async function main() {
   )
   check(
     'invitations are redeemed automatically on sign-up',
-    redeemed.rows.length === 3,
-    `got ${redeemed.rows.length} memberships`,
+    redeemed.rows.some((r) => r.user_id === hired.rows[0].id && r.role === 'viewer'),
   )
   check(
     'invited users get exactly the role they were offered',
@@ -334,7 +368,7 @@ async function main() {
            values ($1, $2, 'fuels', 'Scope 1', 9)`,
           [rivalOrg, id['editor@acme.test']],
         ),
-      /row-level security/i,
+      /row-level security|not a member/i,
     ),
   )
 
@@ -419,7 +453,7 @@ async function main() {
     const emails = rows.rows.map((r) => r.email).sort()
     check(
       'a member sees colleague profiles but not strangers',
-      emails.length === 3 && !emails.includes('rival@other.test'),
+      emails.length === 4 && !emails.includes('rival@other.test'),
       emails.join(', '),
     )
   })
@@ -430,6 +464,294 @@ async function main() {
       ['Hacked', 'owner@acme.test'],
     )
     check('nobody can edit another user profile', result.rows.length === 0)
+  })
+
+  console.log('\nRow Level Security configuration\n')
+
+  const coverage = await db.query<{
+    table_name: string
+    rls_enabled: boolean
+    rls_forced: boolean
+    policy_count: string | number
+  }>(`
+    select
+      c.relname as table_name,
+      c.relrowsecurity as rls_enabled,
+      c.relforcerowsecurity as rls_forced,
+      count(p.polname) as policy_count
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    left join pg_policy p on p.polrelid = c.oid
+    where n.nspname = 'public' and c.relkind = 'r'
+    group by c.relname, c.relrowsecurity, c.relforcerowsecurity
+    order by c.relname
+  `)
+  const uncovered = coverage.rows.filter(
+    (row) => !row.rls_enabled || !row.rls_forced || Number(row.policy_count) === 0,
+  )
+  check(
+    'every public table has RLS forced on and at least one policy',
+    uncovered.length === 0,
+    uncovered.map((row) => row.table_name).join(', '),
+  )
+
+  const openPolicies = await db.query<{ policyname: string; tablename: string }>(`
+    select tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and (qual = 'true' or with_check = 'true' or 'anon' = any (roles))
+  `)
+  check(
+    'no USING (true) or anon-targeted policies remain',
+    openPolicies.rows.length === 0,
+    openPolicies.rows.map((row) => `${row.tablename}:${row.policyname}`).join(', '),
+  )
+
+  await db.exec('grant usage on schema public to anon')
+  await expectFailure(
+    'anon has no table grant on emission_entries',
+    async () => {
+      await db.exec('set role anon')
+      try {
+        await db.query('select * from public.emission_entries')
+      } finally {
+        await db.exec('reset role')
+      }
+    },
+    /permission denied/i,
+  )
+
+  // Recreate the original misconfiguration, then prove the repair script closes it.
+  await db.exec(`
+    grant select, insert, delete on public.emission_entries to anon;
+    create policy "Allow anon read emission_entries"
+      on public.emission_entries for select to anon using (true);
+    create policy "Allow anon insert emission_entries"
+      on public.emission_entries for insert to anon with check (true);
+  `)
+  await db.exec('set role anon')
+  const leaked = await db.query('select * from public.emission_entries')
+  await db.exec('reset role')
+  check(
+    'the legacy anon USING (true) policy would expose every row',
+    leaked.rows.length > 0,
+  )
+
+  await db.exec(readFileSync(join(root, 'supabase/fix_rls.sql'), 'utf8'))
+  check('RLS repair script applies cleanly', true)
+
+  await db.exec('grant select, insert on public.emission_entries to anon')
+  await db.exec('set role anon')
+  const afterRepair = await db.query('select * from public.emission_entries')
+  await db.exec('reset role')
+  check(
+    'after repair, anon cannot read entries even with a table grant',
+    afterRepair.rows.length === 0,
+  )
+
+  await expectFailure(
+    'after repair, anon cannot insert entries',
+    async () => {
+      await db.exec('set role anon')
+      try {
+        await db.query(
+          `insert into public.emission_entries (category, scope, emissions_tco2e)
+           values ('fuels', 'Scope 1', 1)`,
+        )
+      } finally {
+        await db.exec('reset role')
+      }
+    },
+    /row-level security|permission denied/i,
+  )
+
+  await asUser(id['owner@acme.test'], async () => {
+    const rows = await db.query('select * from public.emission_entries')
+    check('repair does not lock out signed-in members', rows.rows.length >= 2)
+  })
+
+  await db.exec(readFileSync(join(root, 'supabase_schema.sql'), 'utf8'))
+  const reopened = await db.query<{ policyname: string }>(`
+    select policyname from pg_policies
+    where schemaname = 'public'
+      and (qual = 'true' or with_check = 'true' or 'anon' = any (roles))
+  `)
+  check(
+    're-running supabase_schema.sql does not reopen anon access',
+    reopened.rows.length === 0,
+    reopened.rows.map((row) => row.policyname).join(', '),
+  )
+
+  console.log('\nQuotas, column grants, and cross-organisation isolation\n')
+
+  const billingOnProfiles = await db.query<{ column_name: string }>(`
+    select column_name from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles'
+      and column_name in (
+        'plan', 'subscription', 'subscription_status', 'is_premium',
+        'rate_limit', 'rate_limits', 'quota', 'entries_per_hour'
+      )
+  `)
+  check(
+    'profiles does not store plan, subscription, or rate limits',
+    billingOnProfiles.rows.length === 0,
+    billingOnProfiles.rows.map((row) => row.column_name).join(', '),
+  )
+
+  const acmeQuota = await countOf(
+    'select count(*) from public.org_quotas where organization_id = $1',
+    [acme],
+  )
+  check('creating an organisation seeds a quota row', acmeQuota === 1)
+
+  await asUser(id['owner@acme.test'], async () => {
+    const rows = await db.query<{ plan: string; entries_per_hour: number }>(
+      'select plan, entries_per_hour from public.org_quotas',
+    )
+    check(
+      'a member can read their own organisation quota',
+      rows.rows.length === 1 && rows.rows[0].plan === 'free',
+    )
+  })
+
+  await asUser(id['rival@other.test'], async () => {
+    const quotas = await db.query(
+      'select * from public.org_quotas where organization_id = $1',
+      [acme],
+    )
+    check('another tenant cannot read this organisation quota', quotas.rows.length === 0)
+
+    const usage = await db.query(
+      'select * from public.usage_windows where organization_id = $1',
+      [acme],
+    )
+    check('another tenant cannot read this organisation usage', usage.rows.length === 0)
+
+    const entries = await db.query(
+      'select * from public.emission_entries where organization_id = $1',
+      [acme],
+    )
+    check(
+      'another tenant cannot read this organisation entries even when they ask by id',
+      entries.rows.length === 0,
+    )
+  })
+
+  await expectFailure(
+    'a member cannot raise their own quota',
+    () =>
+      asUser(id['owner@acme.test'], () =>
+        db.query('update public.org_quotas set entries_per_hour = 999999 returning organization_id'),
+      ),
+    /permission denied|row-level security/i,
+  )
+
+  await expectFailure(
+    'a member cannot insert a quota row',
+    () =>
+      asUser(id['owner@acme.test'], () =>
+        db.query('insert into public.org_quotas (organization_id, entries_per_hour) values ($1, 999999)', [
+          acme,
+        ]),
+      ),
+    /permission denied|row-level security|duplicate/i,
+  )
+
+  await expectFailure(
+    'a member cannot decrement their usage counter',
+    () =>
+      asUser(id['owner@acme.test'], () =>
+        db.query('update public.usage_windows set count = 0 returning organization_id'),
+      ),
+    /permission denied|row-level security/i,
+  )
+
+  await expectFailure(
+    'clients cannot call consume_org_quota',
+    () =>
+      asUser(id['owner@acme.test'], () =>
+        db.query('select public.consume_org_quota($1, $2)', [acme, 'entry_write']),
+      ),
+    /permission denied/i,
+  )
+
+  await expectFailure(
+    'a user cannot change their profile email',
+    () =>
+      asUser(id['owner@acme.test'], () =>
+        db.query("update public.profiles set email = 'stolen@acme.test' returning id"),
+      ),
+    /permission denied|cannot be changed/i,
+  )
+
+  await expectFailure(
+    'invitations cannot be inserted except through the RPC',
+    () =>
+      asUser(id['owner@acme.test'], () =>
+        db.query(
+          `insert into public.invitations (organization_id, email, role)
+           values ($1, 'bypass@acme.test', 'admin')`,
+          [acme],
+        ),
+      ),
+    /row-level security|permission denied/i,
+  )
+
+  await db.query('update public.org_quotas set entries_per_hour = 0 where organization_id = $1', [
+    acme,
+  ])
+  await asUser(id['editor@acme.test'], () =>
+    expectFailure(
+      'an editor is stopped once the organisation hourly entry quota is reached',
+      () =>
+        db.query(
+          `insert into public.emission_entries
+             (organization_id, owner_id, category, scope, emissions_tco2e)
+           values ($1, $2, 'fuels', 'Scope 1', 1)`,
+          [acme, id['editor@acme.test']],
+        ),
+      /rate limit/i,
+    ),
+  )
+
+  await db.exec(readFileSync(join(root, 'supabase/fix_quotas.sql'), 'utf8'))
+  check('quota repair script applies cleanly', true)
+
+  await db.query(
+    'update public.org_quotas set entries_per_hour = 2000 where organization_id = $1',
+    [acme],
+  )
+
+  await db.query(`
+    insert into public.ip_usage_windows (ip_hash, action, window_start, count)
+    values (
+      md5('203.0.113.9'),
+      'write_minute',
+      date_bin('1 minute', now(), timestamptz '2000-01-01+00'),
+      90
+    )
+    on conflict (ip_hash, action, window_start) do update set count = 90
+  `)
+  await asUser(
+    id['editor@acme.test'],
+    () =>
+      expectFailure(
+        'the same IP is stopped even if the organisation still has quota',
+        () =>
+          db.query(
+            `insert into public.emission_entries
+               (organization_id, owner_id, category, scope, emissions_tco2e)
+             values ($1, $2, 'fuels', 'Scope 1', 1)`,
+            [acme, id['editor@acme.test']],
+          ),
+        /rate limit/i,
+      ),
+    { 'cf-connecting-ip': '203.0.113.9' },
+  )
+
+  await asUser(id['editor@acme.test'], async () => {
+    const rows = await db.query('select * from public.ip_usage_windows')
+    check('clients cannot read IP usage buckets', rows.rows.length === 0)
   })
 
   console.log(`\n${passed} passed, ${failed} failed\n`)

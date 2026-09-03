@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BookOpen, Building2, Check, LogOut, ShieldCheck, UserRound } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { ROLE_DESCRIPTIONS } from '../../lib/auth'
+import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '../../lib/auth'
 import { useAuth } from '../../lib/auth-context'
 
 export default function Header() {
@@ -36,7 +36,7 @@ export default function Header() {
         <span className="font-medium text-ink">{organization?.name ?? 'No organisation'}</span>
         {role ? (
           <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand">
-            {role}
+            {ROLE_LABELS[role]}
           </span>
         ) : null}
       </div>

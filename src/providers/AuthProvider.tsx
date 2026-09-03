@@ -331,14 +331,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const switchOrganization = useCallback((organizationId: string) => {
+    // Same class of bug as “change ?studentId= in the URL”: the client must not
+    // adopt an organisation the session is not a member of. RLS would still
+    // return empty rows, but the UI should refuse the switch outright.
+    if (!memberships.some((membership) => membership.organizationId === organizationId)) return
     localStorage.setItem(ACTIVE_ORG_KEY, organizationId)
     setActiveOrgId(organizationId)
-  }, [])
+  }, [memberships])
 
   const createOrganization = useCallback(
     async (name: string) => {
       const { error } = await supabase.rpc('create_organization', { p_name: name.trim() })
-      if (error) return { error: error.message }
+      if (error) return { error: friendlyError(error.message) }
       if (userId) await loadWorkspace(userId, user?.email)
       return { error: null }
     },

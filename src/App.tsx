@@ -14,6 +14,7 @@ import LearningHubPage from './pages/LearningHubPage'
 import PeoplePage from './pages/PeoplePage'
 import SitesPage from './pages/SitesPage'
 import TargetsPage from './pages/TargetsPage'
+import TermsPage from './pages/TermsPage'
 import AuthCallbackPage from './pages/auth/AuthCallbackPage'
 import LoginPage from './pages/auth/LoginPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
@@ -56,6 +57,7 @@ export default function App() {
           />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/auth/reset" element={<ResetPasswordPage />} />
+          <Route path="/terms" element={<TermsPage />} />
 
           <Route element={<ProtectedShell />}>
             <Route path="/" element={<DashboardPage />} />

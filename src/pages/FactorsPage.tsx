@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { downloadText } from '../lib/export'
 import { factorsToCsv, monthsStale, parseFactorSpreadsheet } from '../lib/factors-store'
+import { safeHttpUrl } from '../lib/safe'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from '../lib/types'
 import { useEntries } from '../lib/entries-context'
 
@@ -262,11 +263,11 @@ export default function FactorsPage() {
                   >
                     {factor.sourceFamily}
                   </span>
-                  {factor.sourceUrl ? (
+                  {safeHttpUrl(factor.sourceUrl) ? (
                     <a
-                      href={factor.sourceUrl}
+                      href={safeHttpUrl(factor.sourceUrl)}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="mt-1 block max-w-[220px] truncate text-[11px] text-brand hover:underline"
                       title={factor.source}
                     >

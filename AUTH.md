@@ -11,6 +11,11 @@ get you from here to a working login.
 Open the Supabase SQL editor and run `supabase/migrations/0001_auth_and_tenancy.sql`.
 It is idempotent, so re-running it is safe.
 
+If inviting people fails with a "schema cache" error, or you need existing
+accounts to be added immediately, run `supabase/fix_people_access.sql` in the
+SQL editor. That recreates `invite_member`, adds `revoke_invitation`, and
+reloads the API schema cache.
+
 It creates organisations, profiles, memberships, invitations and an audit log; replaces
 the wide-open `anon` policies on `emission_entries` and `emission_factors` with
 membership-scoped ones; and adds `organization_id` / `owner_id` to the emissions tables.
@@ -41,7 +46,8 @@ After that, refresh the app and everything you had before is there, now owned by
 | Minimum password length | Authentication → Policies | Set to 12 to match the client-side check. |
 | Leaked password protection | Authentication → Policies | Checks new passwords against Have I Been Pwned. Worth turning on. |
 | SMTP | Project Settings → Auth | The built-in email sender is rate-limited and not for production. Point it at your own provider before you rely on invitations or resets. |
-| MFA enforcement | per organisation | Set `require_mfa = true` on the row in `organizations` and every member is forced through TOTP enrolment before they can use the app. |
+| Spend cap | Organization → Billing | Hard stop so a stolen anon key or write flood cannot run up a five-figure invoice. |
+| Billing alerts | Organization → Billing → Email notifications | Email before you hit the cap. Some providers have no cap — alerts are the minimum. |
 
 ## Enterprise SSO
 

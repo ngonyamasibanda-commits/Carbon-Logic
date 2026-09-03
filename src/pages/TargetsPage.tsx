@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   CartesianGrid,
   Legend,
@@ -34,9 +34,13 @@ export default function TargetsPage() {
   const { entries } = useEntries()
   const { organization } = useAuth()
   const organisationName = organization?.name ?? 'Your organisation'
-  const [config, setConfig] = useState<SbtiConfig>(() => loadSbtiConfig())
+  const [config, setConfig] = useState<SbtiConfig>(() => loadSbtiConfig(organization?.id))
   const [status, setStatus] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    setConfig(loadSbtiConfig(organization?.id))
+  }, [organization?.id])
 
   const inventory = useMemo(() => inventoryByYear(entries), [entries])
   const actualByYear = useMemo(
@@ -69,7 +73,7 @@ export default function TargetsPage() {
     setConfig((prev) => ({ ...prev, [key]: value }))
 
   function persist() {
-    saveSbtiConfig(config)
+    saveSbtiConfig(config, organization?.id)
     setStatus('Target saved to this workspace.')
   }
 
@@ -133,7 +137,7 @@ export default function TargetsPage() {
                 key={source.url}
                 href={source.url}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="text-accent underline-offset-4 hover:underline"
               >
                 {source.label}

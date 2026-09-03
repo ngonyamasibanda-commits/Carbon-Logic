@@ -1,8 +1,13 @@
 """FastAPI backend for Carbon Logic Engine emission calculations."""
 
-from fastapi import FastAPI
+from collections import defaultdict, deque
+from time import time
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from typing import Optional
 import math
 
@@ -31,9 +36,52 @@ from emission_engine import (
     calc_custom,
 )
 
+class IPRateLimitMiddleware(BaseHTTPMiddleware):
+    """Stops a single IP flooding the calculate endpoints. Frontend limits do not count."""
+
+    def __init__(self, app, per_minute: int = 60, per_hour: int = 600):
+        super().__init__(app)
+        self.per_minute = per_minute
+        self.per_hour = per_hour
+        self._minute: dict[str, deque[float]] = defaultdict(deque)
+        self._hour: dict[str, deque[float]] = defaultdict(deque)
+
+    def _ip(self, request: Request) -> str:
+        cf = request.headers.get('cf-connecting-ip')
+        if cf:
+            return cf.strip()
+        forwarded = request.headers.get('x-forwarded-for')
+        if forwarded:
+            return forwarded.split(',', 1)[0].strip()
+        if request.client:
+            return request.client.host
+        return 'unknown'
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method == 'OPTIONS' or request.url.path in {'/', '/health'}:
+            return await call_next(request)
+        ip = self._ip(request)
+        now = time()
+        minute_hits = self._minute[ip]
+        hour_hits = self._hour[ip]
+        while minute_hits and minute_hits[0] <= now - 60:
+            minute_hits.popleft()
+        while hour_hits and hour_hits[0] <= now - 3600:
+            hour_hits.popleft()
+        if len(minute_hits) >= self.per_minute or len(hour_hits) >= self.per_hour:
+            return JSONResponse(
+                {'detail': 'Rate limit exceeded. Try again later.'},
+                status_code=429,
+                headers={'Retry-After': '60'},
+            )
+        minute_hits.append(now)
+        hour_hits.append(now)
+        return await call_next(request)
+
+
 app = FastAPI(title="Carbon Logic API", version="1.0.0")
 
-# Configure CORS
+app.add_middleware(IPRateLimitMiddleware, per_minute=60, per_hour=600)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],

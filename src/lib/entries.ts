@@ -1,5 +1,6 @@
 import { isLocalOrganizationId } from './auth'
 import { applyMeta, deleteEntryMeta, setEntryMeta } from './entry-meta'
+import { throwIfUnsafeToFallback } from './security-errors'
 import { supabase } from './supabase'
 import type { EmissionEntry } from './types'
 
@@ -15,28 +16,11 @@ function localKey(organizationId: string) {
 }
 
 /**
- * A refusal from Row Level Security means the user genuinely is not allowed to do
- * this. Falling back to local storage would hide that behind a fake success, so we
- * only fall back for connectivity problems.
+ * A refusal from Row Level Security or the organisation quota means the user
+ * genuinely is not allowed to do this. Falling back to local storage would hide
+ * that behind a fake success, so we only fall back for connectivity problems.
  */
-function isPermissionError(error: { message?: string; code?: string } | null): boolean {
-  if (!error) return false
-  if (error.code === '42501' || error.code === 'PGRST301') return true
-  const message = (error.message ?? '').toLowerCase()
-  return (
-    message.includes('row-level security') ||
-    message.includes('violates row level') ||
-    message.includes('jwt') ||
-    message.includes('permission denied')
-  )
-}
-
-export class PermissionDeniedError extends Error {
-  constructor(message = 'You do not have permission to change emissions data.') {
-    super(message)
-    this.name = 'PermissionDeniedError'
-  }
-}
+export { PermissionDeniedError, RateLimitError } from './security-errors'
 
 function extrasFrom(row: Partial<EmissionEntry>) {
   return {
@@ -132,7 +116,7 @@ export async function saveEntry(
     setEntryMeta(saved.id, extras)
     return applyMeta({ ...saved, ...extras })
   }
-  if (isPermissionError(error)) throw new PermissionDeniedError()
+  throwIfUnsafeToFallback(error)
 
   const local = readLocal(tenant.organizationId)
   const entry: EmissionEntry = {
@@ -149,7 +133,7 @@ export async function saveEntry(
 export async function deleteEntry(tenant: Tenant, id: string): Promise<void> {
   if (!id.startsWith('local-')) {
     const { error } = await supabase.from(TABLE).delete().eq('id', id)
-    if (isPermissionError(error)) throw new PermissionDeniedError()
+    throwIfUnsafeToFallback(error)
     if (!error) {
       deleteEntryMeta(id)
       return

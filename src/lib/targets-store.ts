@@ -28,9 +28,10 @@ export function defaultSbtiConfig(): SbtiConfig {
   }
 }
 
-export function loadSbtiConfig(): SbtiConfig {
+export function loadSbtiConfig(organizationId?: string | null): SbtiConfig {
   try {
-    const raw = localStorage.getItem(TARGET_KEY)
+    const key = organizationId ? `${TARGET_KEY}:${organizationId}` : TARGET_KEY
+    const raw = localStorage.getItem(key) ?? (organizationId ? localStorage.getItem(TARGET_KEY) : null)
     if (!raw) return defaultSbtiConfig()
     return { ...defaultSbtiConfig(), ...(JSON.parse(raw) as Partial<SbtiConfig>) }
   } catch {
@@ -38,6 +39,7 @@ export function loadSbtiConfig(): SbtiConfig {
   }
 }
 
-export function saveSbtiConfig(config: SbtiConfig) {
-  localStorage.setItem(TARGET_KEY, JSON.stringify(config))
+export function saveSbtiConfig(config: SbtiConfig, organizationId?: string | null) {
+  const key = organizationId ? `${TARGET_KEY}:${organizationId}` : TARGET_KEY
+  localStorage.setItem(key, JSON.stringify(config))
 }

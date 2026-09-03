@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   loadOrders,
   loadProfile,
@@ -13,6 +13,7 @@ import {
   type Site,
   type TeamMember,
 } from '../lib/org'
+import { useAuth } from '../lib/auth-context'
 
 type OrgContextValue = {
   sites: Site[]
@@ -30,62 +31,90 @@ type OrgContextValue = {
 const OrgContext = createContext<OrgContextValue | null>(null)
 
 export function OrgProvider({ children }: { children: ReactNode }) {
-  const [sites, setSites] = useState<Site[]>(() => loadSites())
-  const [team, setTeam] = useState<TeamMember[]>(() => loadTeam())
-  const [profile, setProfile] = useState<OrgProfile>(() => loadProfile())
-  const [orders, setOrders] = useState<CreditOrder[]>(() => loadOrders())
+  const { organization } = useAuth()
+  const orgId = organization?.id
 
-  const addSite = useCallback((site: Omit<Site, 'id'>) => {
-    setSites((prev) => {
-      const next = [...prev, { ...site, id: `site-${Date.now()}` }]
-      saveSites(next)
-      return next
-    })
-  }, [])
+  const [sites, setSites] = useState<Site[]>(() => loadSites(orgId))
+  const [team, setTeam] = useState<TeamMember[]>(() => loadTeam(orgId))
+  const [profile, setProfile] = useState<OrgProfile>(() => loadProfile(orgId))
+  const [orders, setOrders] = useState<CreditOrder[]>(() => loadOrders(orgId))
 
-  const removeSite = useCallback((id: string) => {
-    setSites((prev) => {
-      const next = prev.filter((site) => site.id !== id)
-      saveSites(next)
-      return next
-    })
-  }, [])
+  useEffect(() => {
+    setSites(loadSites(orgId))
+    setTeam(loadTeam(orgId))
+    setProfile(loadProfile(orgId))
+    setOrders(loadOrders(orgId))
+  }, [orgId])
 
-  const addMember = useCallback((member: Omit<TeamMember, 'id'>) => {
-    setTeam((prev) => {
-      const next = [...prev, { ...member, id: `user-${Date.now()}` }]
-      saveTeam(next)
-      return next
-    })
-  }, [])
+  const addSite = useCallback(
+    (site: Omit<Site, 'id'>) => {
+      setSites((prev) => {
+        const next = [...prev, { ...site, id: `site-${Date.now()}` }]
+        saveSites(next, orgId)
+        return next
+      })
+    },
+    [orgId],
+  )
 
-  const removeMember = useCallback((id: string) => {
-    setTeam((prev) => {
-      const next = prev.filter((member) => member.id !== id)
-      saveTeam(next)
-      return next
-    })
-  }, [])
+  const removeSite = useCallback(
+    (id: string) => {
+      setSites((prev) => {
+        const next = prev.filter((site) => site.id !== id)
+        saveSites(next, orgId)
+        return next
+      })
+    },
+    [orgId],
+  )
 
-  const updateProfile = useCallback((next: OrgProfile) => {
-    setProfile(next)
-    saveProfile(next)
-  }, [])
+  const addMember = useCallback(
+    (member: Omit<TeamMember, 'id'>) => {
+      setTeam((prev) => {
+        const next = [...prev, { ...member, id: `user-${Date.now()}` }]
+        saveTeam(next, orgId)
+        return next
+      })
+    },
+    [orgId],
+  )
 
-  const addOrder = useCallback((order: Omit<CreditOrder, 'id' | 'created_at'>) => {
-    setOrders((prev) => {
-      const next = [
-        {
-          ...order,
-          id: `order-${Date.now()}`,
-          created_at: new Date().toISOString(),
-        },
-        ...prev,
-      ]
-      saveOrders(next)
-      return next
-    })
-  }, [])
+  const removeMember = useCallback(
+    (id: string) => {
+      setTeam((prev) => {
+        const next = prev.filter((member) => member.id !== id)
+        saveTeam(next, orgId)
+        return next
+      })
+    },
+    [orgId],
+  )
+
+  const updateProfile = useCallback(
+    (next: OrgProfile) => {
+      setProfile(next)
+      saveProfile(next, orgId)
+    },
+    [orgId],
+  )
+
+  const addOrder = useCallback(
+    (order: Omit<CreditOrder, 'id' | 'created_at'>) => {
+      setOrders((prev) => {
+        const next = [
+          {
+            ...order,
+            id: `order-${Date.now()}`,
+            created_at: new Date().toISOString(),
+          },
+          ...prev,
+        ]
+        saveOrders(next, orgId)
+        return next
+      })
+    },
+    [orgId],
+  )
 
   const value = useMemo(
     () => ({

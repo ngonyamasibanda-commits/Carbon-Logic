@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, Users } from 'lucide-react'
+import { ChevronDown, Scale, Users } from 'lucide-react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { LogoMark } from '../brand/Logo'
 import { INPUT_CATEGORIES, SCOPE3_CATEGORIES } from '../../lib/categories'
@@ -215,6 +215,15 @@ export default function Sidebar() {
               )
             }}
           </NavLink>
+          <a
+            href="/terms"
+            target="_blank"
+            rel="noreferrer"
+            className={navClass(false)}
+          >
+            <Scale size={16} className="text-muted" />
+            Terms &amp; Conditions
+          </a>
           {can('members:manage') ? (
             <NavLink to="/people" className={({ isActive }) => navClass(isActive)}>
               {({ isActive }) => (

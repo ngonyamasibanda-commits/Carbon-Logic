@@ -1,4 +1,4 @@
-import { useMemo, useState, Fragment } from 'react'
+import { useEffect, useMemo, useState, Fragment } from 'react'
 import {
   Bar,
   BarChart,
@@ -18,6 +18,7 @@ import { ChevronRight, Download, FileDown } from 'lucide-react'
 import { CATEGORIES, getCategory } from '../lib/categories'
 import { downloadCsv, downloadText, printReport } from '../lib/export'
 import { useEntries } from '../lib/entries-context'
+import { useAuth } from '../lib/auth-context'
 import { useOrg } from '../providers/OrgProvider'
 
 const SCOPE_COLORS: Record<string, string> = {
@@ -32,6 +33,10 @@ const SOURCE_PALETTE = ['#02234e', '#6cbe2c', '#14396d', '#55a01f', '#4b6ea8', '
 export default function AnalysisPage() {
   const { entries } = useEntries()
   const { sites } = useOrg()
+  const { organization } = useAuth()
+  const revenueKey = organization?.id
+    ? `carbon-logic-revenue:${organization.id}`
+    : 'carbon-logic-revenue'
   const [mode, setMode] = useState<'scope' | 'source'>('scope')
   const [openScopes, setOpenScopes] = useState<Record<string, boolean>>({})
   const [month, setMonth] = useState('all')
@@ -42,16 +47,23 @@ export default function AnalysisPage() {
 
   // Revenue for intensity metrics (persisted to localStorage)
   const [revenue, setRevenue] = useState(() => {
-    const saved = localStorage.getItem('carbon-logic-revenue')
+    const saved = localStorage.getItem(revenueKey) ?? localStorage.getItem('carbon-logic-revenue')
     return saved ? Number(saved) : 0
   })
   const [revenueDraft, setRevenueDraft] = useState(String(revenue || ''))
+
+  useEffect(() => {
+    const saved = localStorage.getItem(revenueKey) ?? localStorage.getItem('carbon-logic-revenue')
+    const next = saved ? Number(saved) : 0
+    setRevenue(next)
+    setRevenueDraft(String(next || ''))
+  }, [revenueKey])
 
   function saveRevenue() {
     const value = Number(revenueDraft)
     if (Number.isFinite(value) && value > 0) {
       setRevenue(value)
-      localStorage.setItem('carbon-logic-revenue', String(value))
+      localStorage.setItem(revenueKey, String(value))
     }
   }
 

@@ -51,6 +51,10 @@ const DEFAULT_PROFILE: OrgProfile = {
   baselineYtdTco2e: 0,
 }
 
+function scopedKey(base: string, organizationId?: string | null) {
+  return organizationId ? `${base}:${organizationId}` : base
+}
+
 function read<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key)
@@ -64,34 +68,45 @@ function write<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
-export function loadSites(): Site[] {
-  return read(SITES_KEY, DEFAULT_SITES)
+function readScoped<T>(base: string, organizationId: string | null | undefined, fallback: T): T {
+  const scoped = read<T | null>(scopedKey(base, organizationId), null)
+  if (scoped) return scoped
+  const legacy = read<T | null>(base, null)
+  if (legacy && organizationId) {
+    write(scopedKey(base, organizationId), legacy)
+    return legacy
+  }
+  return fallback
 }
 
-export function saveSites(sites: Site[]) {
-  write(SITES_KEY, sites)
+export function loadSites(organizationId?: string | null): Site[] {
+  return readScoped(SITES_KEY, organizationId, DEFAULT_SITES)
 }
 
-export function loadTeam(): TeamMember[] {
-  return read(TEAM_KEY, DEFAULT_TEAM)
+export function saveSites(sites: Site[], organizationId?: string | null) {
+  write(scopedKey(SITES_KEY, organizationId), sites)
 }
 
-export function saveTeam(team: TeamMember[]) {
-  write(TEAM_KEY, team)
+export function loadTeam(organizationId?: string | null): TeamMember[] {
+  return readScoped(TEAM_KEY, organizationId, DEFAULT_TEAM)
 }
 
-export function loadProfile(): OrgProfile {
-  return { ...DEFAULT_PROFILE, ...read(PROFILE_KEY, DEFAULT_PROFILE) }
+export function saveTeam(team: TeamMember[], organizationId?: string | null) {
+  write(scopedKey(TEAM_KEY, organizationId), team)
 }
 
-export function saveProfile(profile: OrgProfile) {
-  write(PROFILE_KEY, profile)
+export function loadProfile(organizationId?: string | null): OrgProfile {
+  return { ...DEFAULT_PROFILE, ...readScoped(PROFILE_KEY, organizationId, DEFAULT_PROFILE) }
 }
 
-export function loadOrders(): CreditOrder[] {
-  return read(ORDERS_KEY, [])
+export function saveProfile(profile: OrgProfile, organizationId?: string | null) {
+  write(scopedKey(PROFILE_KEY, organizationId), profile)
 }
 
-export function saveOrders(orders: CreditOrder[]) {
-  write(ORDERS_KEY, orders)
+export function loadOrders(organizationId?: string | null): CreditOrder[] {
+  return readScoped(ORDERS_KEY, organizationId, [])
+}
+
+export function saveOrders(orders: CreditOrder[], organizationId?: string | null) {
+  write(scopedKey(ORDERS_KEY, organizationId), orders)
 }

@@ -270,10 +270,14 @@ begin
 end;
 $$;
 
+-- Role arguments are text (not org_role) so PostgREST can match the RPC from JSON.
+drop function if exists public.invite_member(uuid, text, public.org_role);
+drop function if exists public.invite_member(uuid, text, text);
+
 create or replace function public.invite_member(
   p_org uuid,
   p_email text,
-  p_role public.org_role
+  p_role text
 )
 returns uuid
 language plpgsql
@@ -283,18 +287,69 @@ as $$
 declare
   v_user uuid := (select auth.uid());
   v_caller public.org_role := public.user_role_in(p_org);
+  v_role public.org_role;
   v_id uuid;
+  v_existing uuid;
+  v_current public.org_role;
 begin
+  begin
+    v_role := p_role::public.org_role;
+  exception when invalid_text_representation then
+    raise exception 'Invalid role';
+  end;
+
   if not public.has_org_role(p_org, 'admin') then
     raise exception 'Only admins and owners can invite members';
   end if;
   -- No privilege escalation: you cannot hand out a role above your own.
-  if public.role_rank(p_role) > public.role_rank(v_caller) then
+  if public.role_rank(v_role) > public.role_rank(v_caller) then
     raise exception 'You cannot grant a role higher than your own';
   end if;
 
+  -- If they already have an account, grant access now instead of waiting for sign-up.
+  select p.id into v_existing
+  from public.profiles p
+  where lower(p.email) = lower(p_email)
+  limit 1;
+
+  if v_existing is not null then
+    select role into v_current
+    from public.memberships
+    where organization_id = p_org and user_id = v_existing;
+
+    if v_current is not null then
+      if public.role_rank(v_current) > public.role_rank(v_caller) then
+        raise exception 'You cannot change the access of someone above you';
+      end if;
+      if v_current = 'owner' and v_role <> 'owner' then
+        if (select count(*) from public.memberships
+            where organization_id = p_org and role = 'owner') <= 1 then
+          raise exception 'An organization must keep at least one owner';
+        end if;
+      end if;
+    end if;
+
+    insert into public.memberships (organization_id, user_id, role, invited_by)
+    values (p_org, v_existing, v_role, v_user)
+    on conflict (organization_id, user_id) do update
+      set role = excluded.role
+    returning id into v_id;
+
+    update public.invitations
+    set accepted_at = now(), role = v_role
+    where organization_id = p_org
+      and lower(email) = lower(p_email)
+      and accepted_at is null;
+
+    insert into public.audit_log (organization_id, actor_id, action, target_type, target_id, metadata)
+    values (p_org, v_user, 'member.added', 'membership', v_id::text,
+            jsonb_build_object('email', lower(p_email), 'role', v_role, 'user_id', v_existing));
+
+    return v_id;
+  end if;
+
   insert into public.invitations (organization_id, email, role, invited_by)
-  values (p_org, lower(p_email), p_role, v_user)
+  values (p_org, lower(p_email), v_role, v_user)
   on conflict (organization_id, lower(email)) do update
     set role = excluded.role,
         invited_by = excluded.invited_by,
@@ -304,15 +359,18 @@ begin
 
   insert into public.audit_log (organization_id, actor_id, action, target_type, target_id, metadata)
   values (p_org, v_user, 'member.invited', 'invitation', v_id::text,
-          jsonb_build_object('email', lower(p_email), 'role', p_role));
+          jsonb_build_object('email', lower(p_email), 'role', v_role));
 
   return v_id;
 end;
 $$;
 
+drop function if exists public.set_member_role(uuid, public.org_role);
+drop function if exists public.set_member_role(uuid, text);
+
 create or replace function public.set_member_role(
   p_membership uuid,
-  p_role public.org_role
+  p_role text
 )
 returns void
 language plpgsql
@@ -325,7 +383,14 @@ declare
   v_target_user uuid;
   v_target_role public.org_role;
   v_caller public.org_role;
+  v_role public.org_role;
 begin
+  begin
+    v_role := p_role::public.org_role;
+  exception when invalid_text_representation then
+    raise exception 'Invalid role';
+  end;
+
   select organization_id, user_id, role
     into v_org, v_target_user, v_target_role
   from public.memberships where id = p_membership;
@@ -339,25 +404,25 @@ begin
   if not public.has_org_role(v_org, 'admin') then
     raise exception 'Only admins and owners can change roles';
   end if;
-  if public.role_rank(p_role) > public.role_rank(v_caller) then
+  if public.role_rank(v_role) > public.role_rank(v_caller) then
     raise exception 'You cannot grant a role higher than your own';
   end if;
   if public.role_rank(v_target_role) > public.role_rank(v_caller) then
     raise exception 'You cannot change the role of someone above you';
   end if;
   -- An organization must always retain at least one owner.
-  if v_target_role = 'owner' and p_role <> 'owner' then
+  if v_target_role = 'owner' and v_role <> 'owner' then
     if (select count(*) from public.memberships
         where organization_id = v_org and role = 'owner') <= 1 then
       raise exception 'An organization must keep at least one owner';
     end if;
   end if;
 
-  update public.memberships set role = p_role where id = p_membership;
+  update public.memberships set role = v_role where id = p_membership;
 
   insert into public.audit_log (organization_id, actor_id, action, target_type, target_id, metadata)
   values (v_org, v_user, 'member.role_changed', 'membership', p_membership::text,
-          jsonb_build_object('from', v_target_role, 'to', p_role, 'user_id', v_target_user));
+          jsonb_build_object('from', v_target_role, 'to', v_role, 'user_id', v_target_user));
 end;
 $$;
 
@@ -409,6 +474,38 @@ begin
 end;
 $$;
 
+create or replace function public.revoke_invitation(p_invitation uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := (select auth.uid());
+  v_org uuid;
+  v_email text;
+  v_role public.org_role;
+begin
+  select organization_id, email, role
+    into v_org, v_email, v_role
+  from public.invitations
+  where id = p_invitation;
+
+  if v_org is null then
+    raise exception 'Invitation not found';
+  end if;
+  if not public.has_org_role(v_org, 'admin') then
+    raise exception 'Only managers and owners can revoke invitations';
+  end if;
+
+  delete from public.invitations where id = p_invitation;
+
+  insert into public.audit_log (organization_id, actor_id, action, target_type, target_id, metadata)
+  values (v_org, v_user, 'member.invite_revoked', 'invitation', p_invitation::text,
+          jsonb_build_object('email', v_email, 'role', v_role));
+end;
+$$;
+
 create or replace function public.record_audit_event(
   p_org uuid,
   p_action text,
@@ -446,15 +543,18 @@ end;
 $$;
 
 revoke all on function public.create_organization(text) from public;
-revoke all on function public.invite_member(uuid, text, public.org_role) from public;
-revoke all on function public.set_member_role(uuid, public.org_role) from public;
+revoke all on function public.invite_member(uuid, text, text) from public;
+revoke all on function public.set_member_role(uuid, text) from public;
 revoke all on function public.remove_member(uuid) from public;
 revoke all on function public.record_audit_event(uuid, text, text, text, jsonb) from public;
 
+revoke all on function public.revoke_invitation(uuid) from public;
+
 grant execute on function public.create_organization(text) to authenticated;
-grant execute on function public.invite_member(uuid, text, public.org_role) to authenticated;
-grant execute on function public.set_member_role(uuid, public.org_role) to authenticated;
+grant execute on function public.invite_member(uuid, text, text) to authenticated;
+grant execute on function public.set_member_role(uuid, text) to authenticated;
 grant execute on function public.remove_member(uuid) to authenticated;
+grant execute on function public.revoke_invitation(uuid) to authenticated;
 grant execute on function public.record_audit_event(uuid, text, text, text, jsonb) to authenticated;
 
 -- ---------------------------------------------------------------------------
@@ -466,6 +566,12 @@ alter table public.profiles enable row level security;
 alter table public.memberships enable row level security;
 alter table public.invitations enable row level security;
 alter table public.audit_log enable row level security;
+
+alter table public.organizations force row level security;
+alter table public.profiles force row level security;
+alter table public.memberships force row level security;
+alter table public.invitations force row level security;
+alter table public.audit_log force row level security;
 
 drop policy if exists "members read their organizations" on public.organizations;
 create policy "members read their organizations" on public.organizations
@@ -498,6 +604,28 @@ create policy "read memberships in your organizations" on public.memberships
 drop policy if exists "admins read invitations" on public.invitations;
 create policy "admins read invitations" on public.invitations
   for select to authenticated
+  using (public.has_org_role(organization_id, 'admin'));
+
+drop policy if exists "admins insert invitations" on public.invitations;
+create policy "admins insert invitations" on public.invitations
+  for insert to authenticated
+  with check (
+    public.has_org_role(organization_id, 'admin')
+    and public.role_rank(role) <= public.role_rank(public.user_role_in(organization_id))
+  );
+
+drop policy if exists "admins update invitations" on public.invitations;
+create policy "admins update invitations" on public.invitations
+  for update to authenticated
+  using (public.has_org_role(organization_id, 'admin'))
+  with check (
+    public.has_org_role(organization_id, 'admin')
+    and public.role_rank(role) <= public.role_rank(public.user_role_in(organization_id))
+  );
+
+drop policy if exists "admins delete invitations" on public.invitations;
+create policy "admins delete invitations" on public.invitations
+  for delete to authenticated
   using (public.has_org_role(organization_id, 'admin'));
 
 drop policy if exists "admins read the audit log" on public.audit_log;
@@ -588,13 +716,26 @@ begin
 end
 $$;
 
+drop policy if exists "Allow anon read emission_entries" on public.emission_entries;
+drop policy if exists "Allow anon insert emission_entries" on public.emission_entries;
+drop policy if exists "Allow anon delete emission_entries" on public.emission_entries;
+drop policy if exists "Allow anon update emission_entries" on public.emission_entries;
+drop policy if exists "Allow anon read emission_factors" on public.emission_factors;
+drop policy if exists "Allow anon insert emission_factors" on public.emission_factors;
+drop policy if exists "Allow anon update emission_factors" on public.emission_factors;
+drop policy if exists "Allow anon delete emission_factors" on public.emission_factors;
+
 alter table public.emission_entries enable row level security;
 alter table public.emission_factors enable row level security;
+alter table public.emission_entries force row level security;
+alter table public.emission_factors force row level security;
 
+drop policy if exists "read entries in your organizations" on public.emission_entries;
 create policy "read entries in your organizations" on public.emission_entries
   for select to authenticated
   using (organization_id in (select public.user_org_ids()));
 
+drop policy if exists "editors create entries" on public.emission_entries;
 create policy "editors create entries" on public.emission_entries
   for insert to authenticated
   with check (
@@ -602,16 +743,19 @@ create policy "editors create entries" on public.emission_entries
     and owner_id = (select auth.uid())
   );
 
+drop policy if exists "editors update entries" on public.emission_entries;
 create policy "editors update entries" on public.emission_entries
   for update to authenticated
   using (public.has_org_role(organization_id, 'editor'))
   with check (public.has_org_role(organization_id, 'editor'));
 
+drop policy if exists "editors delete entries" on public.emission_entries;
 create policy "editors delete entries" on public.emission_entries
   for delete to authenticated
   using (public.has_org_role(organization_id, 'editor'));
 
 -- Factors with a null organization are the shared published catalogue.
+drop policy if exists "read shared and own factors" on public.emission_factors;
 create policy "read shared and own factors" on public.emission_factors
   for select to authenticated
   using (
@@ -619,10 +763,78 @@ create policy "read shared and own factors" on public.emission_factors
     or organization_id in (select public.user_org_ids())
   );
 
-create policy "admins write own factors" on public.emission_factors
-  for all to authenticated
+-- Replaces the old FOR ALL policy so SELECT is not duplicated and writes stay
+-- scoped to organisation-owned rows (never the shared catalogue).
+drop policy if exists "admins write own factors" on public.emission_factors;
+drop policy if exists "admins insert own factors" on public.emission_factors;
+create policy "admins insert own factors" on public.emission_factors
+  for insert to authenticated
+  with check (organization_id is not null and public.has_org_role(organization_id, 'admin'));
+
+drop policy if exists "admins update own factors" on public.emission_factors;
+create policy "admins update own factors" on public.emission_factors
+  for update to authenticated
   using (organization_id is not null and public.has_org_role(organization_id, 'admin'))
   with check (organization_id is not null and public.has_org_role(organization_id, 'admin'));
+
+drop policy if exists "admins delete own factors" on public.emission_factors;
+create policy "admins delete own factors" on public.emission_factors
+  for delete to authenticated
+  using (organization_id is not null and public.has_org_role(organization_id, 'admin'));
+
+-- The publishable key is in the browser bundle. Table grants to anon are a
+-- second lock besides RLS: even a leftover USING (true) policy cannot be used
+-- if anon cannot SELECT/INSERT the table.
+do $$
+declare
+  t text;
+  seq text;
+begin
+  foreach t in array array[
+    'organizations', 'profiles', 'memberships', 'invitations',
+    'audit_log', 'emission_entries', 'emission_factors'
+  ]
+  loop
+    if to_regclass('public.' || t) is null then
+      continue;
+    end if;
+    execute format('revoke all on table public.%I from public', t);
+    if exists (select 1 from pg_roles where rolname = 'anon') then
+      execute format('revoke all on table public.%I from anon', t);
+    end if;
+    if exists (select 1 from pg_roles where rolname = 'authenticated') then
+      execute format(
+        'grant select, insert, update, delete on table public.%I to authenticated',
+        t
+      );
+    end if;
+  end loop;
+
+  foreach seq in array array[
+    'audit_log_id_seq', 'emission_entries_id_seq', 'emission_factors_id_seq'
+  ]
+  loop
+    if to_regclass('public.' || seq) is null then
+      continue;
+    end if;
+    execute format('revoke all on sequence public.%I from public', seq);
+    if exists (select 1 from pg_roles where rolname = 'anon') then
+      execute format('revoke all on sequence public.%I from anon', seq);
+    end if;
+    if exists (select 1 from pg_roles where rolname = 'authenticated') then
+      execute format('grant usage, select on sequence public.%I to authenticated', seq);
+    end if;
+  end loop;
+
+  if exists (select 1 from pg_roles where rolname = 'anon') then
+    alter default privileges in schema public revoke all on tables from anon;
+    alter default privileges in schema public revoke all on sequences from anon;
+  end if;
+end
+$$;
+
+-- Make PostgREST pick up new/changed RPCs without restarting the API.
+notify pgrst, 'reload schema';
 
 commit;
 

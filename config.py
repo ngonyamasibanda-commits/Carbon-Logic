@@ -1,5 +1,11 @@
 """App configuration: categories, tiers, limits, and navigation."""
 
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
 APP_NAME = "Carbon Logic"
 APP_TAGLINE = "Professional Emissions Calculator"
 DEFAULT_USER = "Hlulani Logic"
@@ -17,9 +23,10 @@ PLAN_OPTIONS = [
     {"id": "mx", "name": "MX", "price": "On Request", "suffix": "", "badge": None, "purple": True},
 ]
 
-# Supabase Configuration
-SUPABASE_URL = "https://wmqdcivmvsxiqyanuvyb.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtcWRjaXZtdnN4aXF5YW51dnliIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4Nzk1MjIsImV4cCI6MjEwMTQ1NTUyMn0.-7LOopXHAmtr2ypIpgSX55KTipkDLSb-sfCjOCrPf3o"
+# Publishable values only. Never put a service_role key here — this file is imported
+# by the old Streamlit app and would ship with the process.
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_KEY", "")
 
 # category_id -> config - All features unlocked
 CATEGORIES = {

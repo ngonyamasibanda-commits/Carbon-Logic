@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { LogoLockup } from '../brand/Logo'
 
 export default function AuthLayout({
@@ -32,6 +33,10 @@ export default function AuthLayout({
       </div>
       <footer className="pb-6 text-center text-xs text-muted">
         Carbon Logic · Construction &amp; logistics carbon accounting
+        <span className="mx-2 text-line">·</span>
+        <Link to="/terms" className="hover:text-brand hover:underline">
+          Terms &amp; Conditions
+        </Link>
       </footer>
     </div>
   )

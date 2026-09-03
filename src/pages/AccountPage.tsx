@@ -93,7 +93,7 @@ function ProfileCard({
         .from('profiles')
         .update({ full_name: name.trim(), job_title: title.trim() })
         .eq('id', userId)
-      setStatus(error ? error.message : 'Profile saved.')
+      setStatus(error ? 'Could not save the profile. Try again.' : 'Profile saved.')
       if (!error) await onSaved()
     } finally {
       setBusy(false)

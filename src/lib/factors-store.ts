@@ -1,5 +1,6 @@
 import { FACTOR_CATALOG } from './factor-catalog'
 import { parseCsv } from './csv'
+import { throwIfUnsafeToFallback } from './security-errors'
 import { supabase } from './supabase'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from './types'
 
@@ -153,9 +154,10 @@ export async function persistFactors(
     source: factor.sourceFamily ? `${factor.sourceFamily} — ${factor.source}` : factor.source,
     organization_id: organizationId,
   }))
-  void supabase
+  const { error } = await supabase
     .from('emission_factors')
     .upsert(payload, { onConflict: 'activity_type,organization_id' })
+  throwIfUnsafeToFallback(error)
 }
 
 export function factorsToCsv(factors: EmissionFactor[]) {

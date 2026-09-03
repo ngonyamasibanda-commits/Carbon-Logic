@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { isRateLimitError } from './security-errors'
 
 export type OrgRole = 'owner' | 'admin' | 'editor' | 'viewer'
 
@@ -12,10 +13,17 @@ export const ROLE_RANK: Record<OrgRole, number> = {
 }
 
 export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
-  owner: 'Full control, including organisation settings and billing.',
-  admin: 'Manage people, emission factors and targets.',
-  editor: 'Log and edit emissions data.',
-  viewer: 'Read-only access to dashboards and reports.',
+  owner: 'CEO / owner — full control, including people, organisation settings and billing.',
+  admin: 'Manager — add, remove and change access for colleagues; manage factors and targets.',
+  editor: 'Editor — log and edit this organisation’s emissions data.',
+  viewer: 'Viewer — read-only access to this organisation’s dashboards and reports.',
+}
+
+export const ROLE_LABELS: Record<OrgRole, string> = {
+  owner: 'CEO / Owner',
+  admin: 'Manager',
+  editor: 'Editor',
+  viewer: 'Viewer',
 }
 
 /**
@@ -283,6 +291,69 @@ export async function fetchPendingInvitations(
     expiresAt: row.expires_at as string,
     createdAt: row.created_at as string,
   }))
+}
+
+export async function inviteMember(
+  organizationId: string,
+  email: string,
+  role: OrgRole,
+): Promise<{ error: string | null; addedImmediately: boolean }> {
+  if (isLocalOrganizationId(organizationId)) {
+    return {
+      error:
+        'This workspace is still running locally, so invitations cannot be saved. Run supabase/migrations/0001_auth_and_tenancy.sql in the Supabase SQL editor, then sign out and back in.',
+      addedImmediately: false,
+    }
+  }
+
+  const normalised = email.trim().toLowerCase()
+  if (!normalised || !normalised.includes('@')) {
+    return { error: 'Enter a valid work email address.', addedImmediately: false }
+  }
+
+  const { error: rpcError } = await supabase.rpc('invite_member', {
+    p_org: organizationId,
+    p_email: normalised,
+    p_role: role,
+  })
+  if (!rpcError) {
+    const members = await fetchOrgMembers(organizationId)
+    return {
+      error: null,
+      addedImmediately: members.some((member) => member.email.toLowerCase() === normalised),
+    }
+  }
+
+  return { error: explainInviteFailure(rpcError.message), addedImmediately: false }
+}
+
+export async function setMemberRole(membershipId: string, role: OrgRole): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('set_member_role', {
+    p_membership: membershipId,
+    p_role: role,
+  })
+  return { error: error?.message ?? null }
+}
+
+export async function removeOrgMember(membershipId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc('remove_member', { p_membership: membershipId })
+  return { error: error?.message ?? null }
+}
+
+export async function revokeInvitation(invitationId: string): Promise<{ error: string | null }> {
+  const { error: rpcError } = await supabase.rpc('revoke_invitation', { p_invitation: invitationId })
+  if (!rpcError) return { error: null }
+  return { error: explainInviteFailure(rpcError.message) }
+}
+
+function explainInviteFailure(message: string): string {
+  if (isRateLimitError({ message })) {
+    return 'This organisation has reached its hourly invite limit. Wait before sending more.'
+  }
+  if (/schema cache|could not find the function|row-level security|violates row-level/i.test(message)) {
+    return 'The invite function is not loaded in the database yet. Open the Supabase SQL editor, run supabase/fix_people_access.sql and supabase/fix_quotas.sql, then try again.'
+  }
+  return message
 }
 
 export async function fetchAuditLog(organizationId: string, limit = 50): Promise<AuditEvent[]> {
