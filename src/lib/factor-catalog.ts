@@ -427,6 +427,50 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     `${DEFRA} Material use — construction metals, primary material production (mixed metals, not section steel).`,
     GOV_URL,
   ),
+
+  // ── Well-to-tank (WTT) factors ──────────────────────────────────────────
+  factor('wtt_diesel_litre', 'WTT — diesel', 'WTT fuels', 'Scope 3', 0.6251, 'L', 'DEFRA', `${DEFRA} WTT — liquid fuels, diesel (average biofuel blend).`, GOV_URL),
+  factor('wtt_petrol_litre', 'WTT — petrol', 'WTT fuels', 'Scope 3', 0.5561, 'L', 'DEFRA', `${DEFRA} WTT — liquid fuels, petrol (average biofuel blend).`, GOV_URL),
+  factor('wtt_lpg_litre', 'WTT — LPG', 'WTT fuels', 'Scope 3', 0.1814, 'L', 'DEFRA', `${DEFRA} WTT — liquid fuels, LPG.`, GOV_URL),
+  factor('wtt_gas_oil_litre', 'WTT — gas oil', 'WTT fuels', 'Scope 3', 0.6701, 'L', 'DEFRA', `${DEFRA} WTT — liquid fuels, gas oil.`, GOV_URL),
+  factor('wtt_natural_gas_kwh', 'WTT — natural gas', 'WTT fuels', 'Scope 3', 0.02541, 'kWh', 'DEFRA', `${DEFRA} WTT — gaseous fuels, natural gas.`, GOV_URL),
+  factor('wtt_electricity_kwh', 'WTT — UK grid electricity (T&D)', 'WTT energy', 'Scope 3', 0.01853, 'kWh', 'DESNZ', `${DESNZ} Transmission and distribution losses.`, GOV_URL),
+
+  // ── Business travel: flights ────────────────────────────────────────────
+  factor('flight_domestic_pkm', 'Domestic flights', 'Business travel', 'Scope 3', 0.24613, 'pkm', 'DEFRA', `${DEFRA} Business travel–air — domestic, average passenger, with RF.`, GOV_URL),
+  factor('flight_shorthaul_pkm', 'Short-haul flights (economy)', 'Business travel', 'Scope 3', 0.15102, 'pkm', 'DEFRA', `${DEFRA} Business travel–air — short-haul, economy class, with RF.`, GOV_URL),
+  factor('flight_longhaul_economy_pkm', 'Long-haul flights (economy)', 'Business travel', 'Scope 3', 0.14787, 'pkm', 'DEFRA', `${DEFRA} Business travel–air — long-haul, economy class, with RF.`, GOV_URL),
+  factor('flight_longhaul_business_pkm', 'Long-haul flights (business)', 'Business travel', 'Scope 3', 0.42882, 'pkm', 'DEFRA', `${DEFRA} Business travel–air — long-haul, business class, with RF.`, GOV_URL),
+
+  // ── Business travel: hotel nights ───────────────────────────────────────
+  factor('hotel_uk_night', 'Hotel stay (UK)', 'Business travel', 'Scope 3', 9.21, 'night', 'DEFRA', `${DEFRA} Hotel stay — UK, per room per night.`, GOV_URL),
+  factor('hotel_overseas_night', 'Hotel stay (overseas)', 'Business travel', 'Scope 3', 11.88, 'night', 'DEFRA', `${DEFRA} Hotel stay — overseas, per room per night.`, GOV_URL),
+
+  // ── Business travel: land / taxis ───────────────────────────────────────
+  factor('taxi_km', 'Regular taxi', 'Business travel', 'Scope 3', 0.14896, 'km', 'DEFRA', `${DEFRA} Business travel–land — regular taxi.`, GOV_URL),
+
+  // ── Employee commuting ──────────────────────────────────────────────────
+  factor('commute_car_km', 'Average car (commuting)', 'Employee commuting', 'Scope 3', 0.16725, 'km', 'DEFRA', `${DEFRA} Passenger vehicles — average car, unknown fuel.`, GOV_URL),
+  factor('commute_bus_pkm', 'Average local bus (commuting)', 'Employee commuting', 'Scope 3', 0.10385, 'pkm', 'DEFRA', `${DEFRA} Business travel–land — average local bus.`, GOV_URL),
+  factor('commute_rail_pkm', 'National rail (commuting)', 'Employee commuting', 'Scope 3', 0.03546, 'pkm', 'DEFRA', `${DEFRA} Business travel–land — national rail.`, GOV_URL),
+  factor('commute_motorbike_km', 'Average motorbike (commuting)', 'Employee commuting', 'Scope 3', 0.11337, 'km', 'DEFRA', `${DEFRA} Passenger vehicles — average motorbike.`, GOV_URL),
+
+  // ── Wastewater ──────────────────────────────────────────────────────────
+  factor('wastewater_m3', 'Wastewater treatment', 'Wastewater', 'Scope 3', 0.272, 'm³', 'DEFRA', `${DEFRA} Water treatment.`, GOV_URL),
+
+  // ── Purchased goods — spend-based (EEIO) ────────────────────────────────
+  factor('purchased_goods_gbp', 'Purchased goods & services (UK average)', 'Purchased goods', 'Scope 3', 0.39, '£k', 'DEFRA', `${DEFRA} Environmentally extended input–output (EEIO), UK average, kg CO₂e per £1,000 spend. Use only when activity data is unavailable.`, GOV_URL),
+  factor('capital_goods_gbp', 'Capital goods (UK average)', 'Capital goods', 'Scope 3', 0.41, '£k', 'DEFRA', `${DEFRA} EEIO — capital goods, kg CO₂e per £1,000 spend. Use only when activity data is unavailable.`, GOV_URL),
+
+  // ── Additional construction materials ───────────────────────────────────
+  factor('material_glass_t', 'Glass (primary production)', 'Bulk materials', 'Scope 3', 910, 't', 'ICE', `${ICE} Glass, general: 0.91 kg CO₂e/kg.`, ICE_URL),
+  factor('material_aluminium_t', 'Aluminium (primary production)', 'Bulk materials', 'Scope 3', 6670, 't', 'ICE', `${ICE} Aluminium, general (primary): 6.67 kg CO₂e/kg.`, ICE_URL),
+  factor('material_bricks_t', 'Bricks (generic)', 'Bulk materials', 'Scope 3', 230, 't', 'ICE', `${ICE} Bricks, general: 0.23 kg CO₂e/kg.`, ICE_URL),
+  factor('material_insulation_t', 'Insulation (general)', 'Bulk materials', 'Scope 3', 1860, 't', 'ICE', `${ICE} Insulation, general: 1.86 kg CO₂e/kg.`, ICE_URL),
+  factor('material_plasterboard_t', 'Plasterboard', 'Bulk materials', 'Scope 3', 390, 't', 'ICE', `${ICE} Plasterboard, natural gypsum: 0.39 kg CO₂e/kg.`, ICE_URL),
+  factor('material_copper_t', 'Copper (primary)', 'Bulk materials', 'Scope 3', 3010, 't', 'ICE', `${ICE} Copper, primary: 3.01 kg CO₂e/kg.`, ICE_URL),
+  factor('material_pvc_t', 'PVC pipe / general', 'Bulk materials', 'Scope 3', 3230, 't', 'ICE', `${ICE} PVC, general: 3.23 kg CO₂e/kg.`, ICE_URL),
+  factor('material_soil_t', 'Soil / earthworks', 'Bulk materials', 'Scope 3', 0.0024, 't', 'DEFRA', `${DEFRA} Material use — soils, primary material production. (Minimal embodied carbon — mainly for completeness.)`, GOV_URL),
 ]
 
 export const PLACEHOLDER_FACTORS = FACTOR_CATALOG

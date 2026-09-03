@@ -73,13 +73,14 @@ export default function BulkUpload({ category, onClose }: Props) {
         .map((tag) => tag.trim())
         .filter(Boolean)
 
+      const totalTco2e = calculateTco2e(activityAmount, factor.conversionValue)
       const entry: Omit<EmissionEntry, 'id' | 'created_at'> = {
         category: category.id,
         scope: category.scope,
-        emissions_tco2e: calculateTco2e(activityAmount, factor.conversionValue),
+        emissions_tco2e: totalTco2e,
         details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
-        }`,
+        } | ${activityAmount.toLocaleString()} ${factor.unit} × ${factor.conversionValue} kg CO₂e/${factor.unit} ÷ 1000 = ${totalTco2e.toFixed(4)} tCO₂e | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
         amount: activityAmount,
         unit: category.resolveUnit(values),
         ...extras,

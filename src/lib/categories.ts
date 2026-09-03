@@ -83,19 +83,19 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Log diesel, gas oil, petrol, or LPG used in site generators, heaters, and stationery plant.',
+      'Log diesel, gas oil, petrol, LPG, or natural gas used in site generators, heaters, and stationery plant.',
     fields: [
       {
         key: 'fuel',
         label: 'Fuel category',
         type: 'select',
-        options: ['Diesel / gas oil', 'Petrol', 'LPG'],
+        options: ['Diesel / gas oil', 'Petrol', 'LPG', 'Natural gas (kWh)', 'Natural gas (m³)'],
       },
       {
         key: 'amount',
         label: 'Fuel amount',
         type: 'number',
-        hint: 'Amount of fuel used. Choose your unit of measure below.',
+        hint: 'Amount of fuel used. For liquids, choose volume unit below. For natural gas, enter kWh or m³ as selected.',
       },
     ],
     amountField: 'amount',
@@ -104,6 +104,8 @@ export const CATEGORIES: CategoryConfig[] = [
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'LPG') return 'lpg_litre'
+      if (v.fuel === 'Natural gas (kWh)') return 'natural_gas_kwh'
+      if (v.fuel === 'Natural gas (m³)') return 'natural_gas_m3'
       return 'diesel_litre'
     },
     resolveUnit: (v) => v.unit || 'L',
@@ -425,7 +427,10 @@ export const CATEGORIES: CategoryConfig[] = [
         key: 'material',
         label: 'Material',
         type: 'select',
-        options: ['Concrete', 'Steel', 'Timber', 'Asphalt', 'Aggregates', 'Cement', 'Rebar'],
+        options: [
+          'Concrete', 'Steel', 'Timber', 'Asphalt', 'Aggregates', 'Cement', 'Rebar',
+          'Glass', 'Aluminium', 'Bricks', 'Insulation', 'Plasterboard', 'Copper', 'PVC', 'Soil / earthworks',
+        ],
       },
       { key: 'amount', label: 'Quantity', type: 'number' },
     ],
@@ -441,6 +446,14 @@ export const CATEGORIES: CategoryConfig[] = [
         Aggregates: 'material_aggregates_t',
         Cement: 'material_cement_t',
         Rebar: 'material_rebar_t',
+        Glass: 'material_glass_t',
+        Aluminium: 'material_aluminium_t',
+        Bricks: 'material_bricks_t',
+        Insulation: 'material_insulation_t',
+        Plasterboard: 'material_plasterboard_t',
+        Copper: 'material_copper_t',
+        PVC: 'material_pvc_t',
+        'Soil / earthworks': 'material_soil_t',
       }
       return map[v.material] || 'material_concrete_t'
     },
@@ -496,6 +509,126 @@ export const CATEGORIES: CategoryConfig[] = [
       const du = v.distance_unit || 'km'
       return `${num(v, 'weight').toLocaleString()} ${wu} × ${num(v, 'distance').toLocaleString()} ${du} subcontracted haulage`
     },
+  },
+  {
+    id: 'business_travel',
+    name: 'Business Travel',
+    scope: 'Scope 3',
+    group: 'scope3',
+    instructions:
+      'Staff flights, hotel stays, and taxi journeys for business purposes (GHG Protocol Scope 3, Category 6).',
+    fields: [
+      {
+        key: 'type',
+        label: 'Travel type',
+        type: 'select',
+        options: [
+          'Domestic flight', 'Short-haul flight', 'Long-haul flight (economy)',
+          'Long-haul flight (business)', 'Hotel (UK)', 'Hotel (overseas)', 'Taxi',
+        ],
+      },
+      { key: 'amount', label: 'Amount', type: 'number', hint: 'Passenger-km for flights, nights for hotels, km for taxis.' },
+    ],
+    amountField: 'amount',
+    amountLabel: 'pkm / nights / km',
+    resolveFactorKey: (v) => {
+      const map: Record<string, string> = {
+        'Domestic flight': 'flight_domestic_pkm',
+        'Short-haul flight': 'flight_shorthaul_pkm',
+        'Long-haul flight (economy)': 'flight_longhaul_economy_pkm',
+        'Long-haul flight (business)': 'flight_longhaul_business_pkm',
+        'Hotel (UK)': 'hotel_uk_night',
+        'Hotel (overseas)': 'hotel_overseas_night',
+        'Taxi': 'taxi_km',
+      }
+      return map[v.type] || 'flight_shorthaul_pkm'
+    },
+    resolveUnit: (v) => {
+      if (v.type?.includes('Hotel')) return 'nights'
+      if (v.type?.includes('Taxi')) return 'km'
+      return 'pkm'
+    },
+    resolveDetails: (v, amount) => `${amount.toLocaleString()} — ${v.type || 'business travel'}`,
+  },
+  {
+    id: 'employee_commuting',
+    name: 'Employee Commuting',
+    scope: 'Scope 3',
+    group: 'scope3',
+    instructions:
+      'Emissions from employees travelling between home and work (GHG Protocol Scope 3, Category 7). Enter one-way distance; return is included.',
+    fields: [
+      {
+        key: 'mode',
+        label: 'Commute mode',
+        type: 'select',
+        options: ['Car', 'Bus', 'Rail', 'Motorbike'],
+      },
+      { key: 'distance', label: 'One-way distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
+      { key: 'employees', label: 'Number of employees', type: 'number' },
+      { key: 'days', label: 'Working days', type: 'number', hint: 'Days in the reporting period (e.g. 230 for a year).' },
+    ],
+    amountField: 'distance',
+    amountLabel: 'km',
+    resolveFactorKey: (v) => {
+      const map: Record<string, string> = {
+        Car: 'commute_car_km',
+        Bus: 'commute_bus_pkm',
+        Rail: 'commute_rail_pkm',
+        Motorbike: 'commute_motorbike_km',
+      }
+      return map[v.mode] || 'commute_car_km'
+    },
+    resolveUnit: (v) => v.distance_unit || 'km',
+    resolveActivityAmount: (v) => {
+      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      return dist * num(v, 'employees') * num(v, 'days') * 2
+    },
+    resolveDetails: (v) => {
+      const du = v.distance_unit || 'km'
+      return `${num(v, 'employees')} employees × ${num(v, 'distance')} ${du} × ${num(v, 'days')} days × 2 (return) by ${v.mode || 'car'}`
+    },
+  },
+  {
+    id: 'wastewater',
+    name: 'Wastewater',
+    scope: 'Scope 3',
+    group: 'scope3',
+    instructions:
+      'Wastewater and sewerage from site welfare, concrete washout, and compound drainage (GHG Protocol Scope 3, Category 5).',
+    fields: [
+      { key: 'amount', label: 'Volume', type: 'number' },
+    ],
+    amountField: 'amount',
+    amountLabel: 'm³',
+    unitOptions: WATER_VOLUME_UNITS,
+    resolveFactorKey: () => 'wastewater_m3',
+    resolveUnit: (v) => v.unit || 'm³',
+    resolveDetails: (v, amount) => `${amount.toLocaleString()} ${v.unit || 'm³'} wastewater treated`,
+  },
+  {
+    id: 'purchased_goods',
+    name: 'Purchased Goods & Services',
+    scope: 'Scope 3',
+    group: 'scope3',
+    instructions:
+      'Spend-based estimate for bought-in goods and services where activity data is unavailable (GHG Protocol Scope 3, Category 1). Use £ thousands. Prefer activity-based methods when possible.',
+    fields: [
+      {
+        key: 'type',
+        label: 'Category',
+        type: 'select',
+        options: ['Purchased goods & services', 'Capital goods'],
+      },
+      { key: 'amount', label: 'Spend (£ thousands)', type: 'number' },
+    ],
+    amountField: 'amount',
+    amountLabel: '£k',
+    resolveFactorKey: (v) =>
+      v.type === 'Capital goods' ? 'capital_goods_gbp' : 'purchased_goods_gbp',
+    resolveUnit: () => '£k',
+    resolveDetails: (v, amount) =>
+      `£${(amount * 1000).toLocaleString()} spend on ${v.type?.toLowerCase() || 'purchased goods'}`,
   },
   {
     id: 'custom',

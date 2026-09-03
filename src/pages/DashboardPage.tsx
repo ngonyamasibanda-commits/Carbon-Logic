@@ -107,7 +107,7 @@ export default function DashboardPage() {
         <MetricCard label="Scope 3 YTD tCO2e" value={scope3.toFixed(3)} />
         <MetricCard
           label="Reduction vs Baseline"
-          value={baseline ? reduction.toFixed(2) : '0.00'}
+          value={baseline ? `${(reduction * 100).toFixed(1)}%` : 'No baseline'}
         />
       </section>
 
