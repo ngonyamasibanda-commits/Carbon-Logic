@@ -64,6 +64,13 @@ export const DEFAULT_IDLE_MINUTES = 30
 export const DEFAULT_ABSOLUTE_HOURS = 12
 export const IDLE_WARNING_SECONDS = 90
 
+export const HOME_ORGANIZATION_NAME = 'Carbon Logic'
+export const FOUNDER_EMAIL = 'ngonyamasibanda@gmail.com'
+
+export function isFounderEmail(email: string | null | undefined): boolean {
+  return (email ?? '').trim().toLowerCase() === FOUNDER_EMAIL
+}
+
 export type Organization = {
   id: string
   name: string
@@ -153,6 +160,51 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
     fullName: (data.full_name as string) ?? '',
     jobTitle: (data.job_title as string) ?? '',
   }
+}
+
+function localFounderMembership(userId: string): Membership {
+  return {
+    id: `local-membership-${userId}`,
+    organizationId: `local-org-${userId}`,
+    userId,
+    role: 'owner',
+    createdAt: new Date().toISOString(),
+    organization: {
+      id: `local-org-${userId}`,
+      name: HOME_ORGANIZATION_NAME,
+      slug: 'carbon-logic',
+      allowedEmailDomains: ['gmail.com'],
+      requireMfa: false,
+      sessionIdleMinutes: DEFAULT_IDLE_MINUTES,
+      sessionAbsoluteHours: DEFAULT_ABSOLUTE_HOURS,
+    },
+  }
+}
+
+export function isLocalOrganizationId(organizationId: string | null | undefined): boolean {
+  return Boolean(organizationId?.startsWith('local-org-'))
+}
+
+/**
+ * Makes sure the signed-in founder has Carbon Logic. Prefers the database RPC so
+ * the membership is real; if the tenancy migration has not been applied yet, fall
+ * back to a local workspace so they are not locked out of the app.
+ */
+export async function ensureHomeOrganization(
+  userId: string,
+  email: string | null | undefined,
+  existing: Membership[],
+): Promise<Membership[]> {
+  if (existing.length > 0) return existing
+  if (!isFounderEmail(email)) return existing
+
+  const { error } = await supabase.rpc('create_organization', { p_name: HOME_ORGANIZATION_NAME })
+  if (!error) {
+    const created = await fetchMemberships(userId)
+    if (created.length > 0) return created
+  }
+
+  return [localFounderMembership(userId)]
 }
 
 export async function fetchMemberships(userId: string): Promise<Membership[]> {

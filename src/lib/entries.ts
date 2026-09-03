@@ -1,3 +1,4 @@
+import { isLocalOrganizationId } from './auth'
 import { applyMeta, deleteEntryMeta, setEntryMeta } from './entry-meta'
 import { supabase } from './supabase'
 import type { EmissionEntry } from './types'
@@ -82,11 +83,13 @@ function writeLocal(organizationId: string, entries: EmissionEntry[]) {
 }
 
 export async function fetchEntries(tenant: Tenant, category?: string): Promise<EmissionEntry[]> {
-  const query = supabase
-    .from(TABLE)
-    .select('*')
-    .eq('organization_id', tenant.organizationId)
-    .order('created_at', { ascending: false })
+  const query = isLocalOrganizationId(tenant.organizationId)
+    ? supabase.from(TABLE).select('*').order('created_at', { ascending: false })
+    : supabase
+        .from(TABLE)
+        .select('*')
+        .eq('organization_id', tenant.organizationId)
+        .order('created_at', { ascending: false })
   const { data, error } = await Promise.race([
     query,
     new Promise<{ data: null; error: { message: string } }>((resolve) =>
@@ -108,9 +111,7 @@ export async function saveEntry(
   input: Omit<EmissionEntry, 'id' | 'created_at'>,
 ): Promise<EmissionEntry> {
   const extras = extrasFrom(input)
-  const payload = {
-    organization_id: tenant.organizationId,
-    owner_id: tenant.userId,
+  const payload: Record<string, unknown> = {
     category: input.category,
     scope: input.scope,
     emissions_tco2e: input.emissions_tco2e,
@@ -119,6 +120,10 @@ export async function saveEntry(
     unit: input.unit,
     comment: input.comment,
     link: input.link,
+  }
+  if (!isLocalOrganizationId(tenant.organizationId)) {
+    payload.organization_id = tenant.organizationId
+    payload.owner_id = tenant.userId
   }
 
   const { data, error } = await supabase.from(TABLE).insert(payload).select('*').single()

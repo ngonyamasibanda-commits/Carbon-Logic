@@ -5,6 +5,7 @@ import {
   DEFAULT_IDLE_MINUTES,
   IDLE_WARNING_SECONDS,
   clearLocalWorkspaceData,
+  ensureHomeOrganization,
   fetchMemberships,
   fetchProfile,
   recordAuditEvent,
@@ -78,14 +79,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setVerifiedFactors(totp.filter((factor) => factor.status === 'verified').length)
   }, [])
 
-  const loadWorkspace = useCallback(async (userId: string) => {
+  const loadWorkspace = useCallback(async (userId: string, email?: string | null) => {
     setWorkspaceLoading(true)
     try {
-      const [nextProfile, nextMemberships] = await Promise.all([
+      const [nextProfile, loadedMemberships] = await Promise.all([
         fetchProfile(userId),
         fetchMemberships(userId),
       ])
-      setProfile(nextProfile)
+      const resolvedEmail = email ?? nextProfile?.email
+      const nextMemberships = await ensureHomeOrganization(userId, resolvedEmail, loadedMemberships)
+      setProfile(
+        nextProfile ??
+          (resolvedEmail
+            ? {
+                id: userId,
+                email: resolvedEmail,
+                fullName: resolvedEmail.split('@')[0] ?? '',
+                jobTitle: '',
+              }
+            : null),
+      )
       setMemberships(nextMemberships)
       setActiveOrgId((current) => {
         const stillValid = nextMemberships.some((m) => m.organizationId === current)
@@ -150,9 +163,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMemberships([])
       return
     }
-    void loadWorkspace(userId)
+    void loadWorkspace(userId, user?.email)
     void refreshMfaState()
-  }, [userId, loadWorkspace, refreshMfaState])
+  }, [userId, user?.email, loadWorkspace, refreshMfaState])
 
   const organization = useMemo<Organization | null>(() => {
     const match = memberships.find((m) => m.organizationId === activeOrgId)
@@ -326,15 +339,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (name: string) => {
       const { error } = await supabase.rpc('create_organization', { p_name: name.trim() })
       if (error) return { error: error.message }
-      if (userId) await loadWorkspace(userId)
+      if (userId) await loadWorkspace(userId, user?.email)
       return { error: null }
     },
-    [userId, loadWorkspace],
+    [userId, user?.email, loadWorkspace],
   )
 
   const reloadWorkspace = useCallback(async () => {
-    if (userId) await loadWorkspace(userId)
-  }, [userId, loadWorkspace])
+    if (userId) await loadWorkspace(userId, user?.email)
+  }, [userId, user?.email, loadWorkspace])
 
   const value = useMemo<AuthContextValue>(
     () => ({

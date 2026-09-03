@@ -58,7 +58,7 @@ function ForcedMfaEnrollment() {
 
 function NoOrganization() {
   const { user, createOrganization, signOut, reloadWorkspace } = useAuth()
-  const [name, setName] = useState('')
+  const [name, setName] = useState('Carbon Logic')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

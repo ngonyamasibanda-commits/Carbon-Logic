@@ -4,6 +4,7 @@ import { deleteEntry, fetchEntries, saveEntry, type Tenant } from '../lib/entrie
 import { FACTOR_CATALOG } from '../lib/factor-catalog'
 import { persistFactors } from '../lib/factors-store'
 import { EntriesContext } from '../lib/entries-context'
+import { isLocalOrganizationId } from '../lib/auth'
 import { useAuth } from '../lib/auth-context'
 import type { EmissionEntry, EmissionFactor } from '../lib/types'
 
@@ -64,7 +65,10 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
 
   const saveFactors = useCallback(
     async (next: EmissionFactor[]) => {
-      await persistFactors(next, organization?.id)
+      await persistFactors(
+        next,
+        organization && !isLocalOrganizationId(organization.id) ? organization.id : undefined,
+      )
       setFactors(new Map(next.map((factor) => [factor.key, factor])))
     },
     [organization],
