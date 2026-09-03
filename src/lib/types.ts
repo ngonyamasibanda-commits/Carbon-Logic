@@ -22,6 +22,20 @@ export type FormField = {
   options?: string[]
   hint?: string
   placeholder?: string
+  /** If set, a unit selector appears beside this number field. The chosen unit value is stored in `key + '_unit'`. */
+  unitOptions?: UnitOption[]
+}
+
+/**
+ * A selectable unit option for a category amount field.
+ * `toBase` is the multiplier that converts the user-entered value into
+ * the base unit that the emission factor expects (e.g. for a factor in
+ * litres: m³ → toBase=1000, Imperial gallon → toBase=4.546).
+ */
+export type UnitOption = {
+  label: string  // shown in the dropdown, e.g. "m³ (cubic metres)"
+  value: string  // stored on the entry, e.g. "m³"
+  toBase: number // multiply user amount by this to get base-unit amount
 }
 
 export type CategoryConfig = {
@@ -33,6 +47,8 @@ export type CategoryConfig = {
   fields: FormField[]
   amountField: string
   amountLabel: string
+  /** Selectable units for the primary amount field. First entry is the default. */
+  unitOptions?: UnitOption[]
   resolveFactorKey: (values: Record<string, string>) => string
   resolveUnit: (values: Record<string, string>) => string
   resolveDetails: (values: Record<string, string>, amount: number) => string

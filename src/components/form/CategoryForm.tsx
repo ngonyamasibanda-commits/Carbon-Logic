@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { CloudUpload, Grid2x2, Play } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { adjacentCategory } from '../../lib/categories'
@@ -24,7 +24,31 @@ export default function CategoryForm({ category }: Props) {
   const { prev, next } = adjacentCategory(category.id)
   const Icon = CATEGORY_ICONS[category.id]
 
-  const [values, setValues] = useState<Record<string, string>>({})
+  // Initialise default units from the category's unitOptions
+  const defaultValues = useMemo(() => {
+    const init: Record<string, string> = {}
+    // Category-level unit default
+    if (category.unitOptions?.length) {
+      init['unit'] = category.unitOptions[0].value
+      init['unit_factor'] = String(category.unitOptions[0].toBase)
+    }
+    // Field-level unit defaults
+    for (const field of category.fields) {
+      if (field.unitOptions?.length) {
+        init[`${field.key}_unit`] = field.unitOptions[0].value
+        init[`${field.key}_unit_factor`] = String(field.unitOptions[0].toBase)
+      }
+    }
+    return init
+  }, [category])
+
+  const [values, setValues] = useState<Record<string, string>>(defaultValues)
+  // Reset form whenever the category changes
+  useEffect(() => {
+    setValues(defaultValues)
+    // defaultValues is memoised on category; only re-run when category changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category.id])
   const [additional, setAdditional] = useState<AdditionalState>(emptyAdditional)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -46,7 +70,10 @@ export default function CategoryForm({ category }: Props) {
     setError(null)
     setMessage(null)
 
-    const amount = Number(values[category.amountField] ?? values.amount)
+    const rawAmount = Number(values[category.amountField] ?? values.amount)
+    // Apply category-level unit conversion (e.g. m³ → L when factor expects L)
+    const unitFactor = Number(values['unit_factor'] ?? 1) || 1
+    const amount = rawAmount * unitFactor
     const activityAmount = category.resolveActivityAmount
       ? category.resolveActivityAmount(values, amount)
       : amount
@@ -82,7 +109,7 @@ export default function CategoryForm({ category }: Props) {
         ...additional,
       })
       setMessage(`Added ${totalTco2e.toFixed(4)} tCO2e to your footprint.`)
-      setValues({})
+      setValues(defaultValues)
       setAdditional(emptyAdditional())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save entry.')
@@ -149,6 +176,40 @@ export default function CategoryForm({ category }: Props) {
                       </option>
                     ))}
                   </select>
+                ) : field.unitOptions?.length ? (
+                  // Number field with inline unit selector
+                  <div className="mt-1 flex gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={values[field.key] ?? ''}
+                      placeholder={field.placeholder}
+                      onChange={(event) => setField(field.key, event.target.value)}
+                      className="min-w-0 flex-1 rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
+                      required
+                    />
+                    <select
+                      value={values[`${field.key}_unit`] ?? field.unitOptions[0].value}
+                      onChange={(event) => {
+                        const chosen = field.unitOptions!.find(
+                          (u) => u.value === event.target.value,
+                        )
+                        setField(`${field.key}_unit`, event.target.value)
+                        setField(
+                          `${field.key}_unit_factor`,
+                          String(chosen?.toBase ?? 1),
+                        )
+                      }}
+                      className="w-36 shrink-0 rounded-md border border-line bg-page px-2 py-2 text-sm font-normal"
+                    >
+                      {field.unitOptions.map((u) => (
+                        <option key={u.value} value={u.value}>
+                          {u.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 ) : (
                   <input
                     type={field.type === 'number' ? 'number' : 'text'}
@@ -166,6 +227,32 @@ export default function CategoryForm({ category }: Props) {
                 ) : null}
               </label>
             ))}
+            {/* Category-level unit selector (for single-amount categories) */}
+            {category.unitOptions?.length ? (
+              <label className="block text-sm font-semibold text-ink">
+                Unit of measure
+                <select
+                  value={values['unit'] ?? category.unitOptions[0].value}
+                  onChange={(event) => {
+                    const chosen = category.unitOptions!.find(
+                      (u) => u.value === event.target.value,
+                    )
+                    setField('unit', event.target.value)
+                    setField('unit_factor', String(chosen?.toBase ?? 1))
+                  }}
+                  className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
+                >
+                  {category.unitOptions.map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs font-normal text-muted">
+                  Values will be converted to the factor&apos;s base unit before calculation.
+                </span>
+              </label>
+            ) : null}
           </form>
 
           <AdditionalData value={additional} onChange={setAdditional} />

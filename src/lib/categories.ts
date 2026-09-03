@@ -1,4 +1,44 @@
-import type { CategoryConfig } from './types'
+import type { CategoryConfig, UnitOption } from './types'
+
+// ── Shared unit option sets ─────────────────────────────────────────────────
+
+const FUEL_VOLUME_UNITS: UnitOption[] = [
+  { label: 'Litres (L)', value: 'L', toBase: 1 },
+  { label: 'Cubic metres (m³)', value: 'm³', toBase: 1000 },
+  { label: 'UK gallons (gal)', value: 'gal (UK)', toBase: 4.54609 },
+  { label: 'US gallons (gal)', value: 'gal (US)', toBase: 3.78541 },
+]
+
+const ELECTRICITY_UNITS: UnitOption[] = [
+  { label: 'Kilowatt-hours (kWh)', value: 'kWh', toBase: 1 },
+  { label: 'Megawatt-hours (MWh)', value: 'MWh', toBase: 1000 },
+  { label: 'Gigajoules (GJ)', value: 'GJ', toBase: 277.778 },
+]
+
+const MASS_KG_UNITS: UnitOption[] = [
+  { label: 'Kilograms (kg)', value: 'kg', toBase: 1 },
+  { label: 'Tonnes (t)', value: 't', toBase: 1000 },
+  { label: 'Pounds (lb)', value: 'lb', toBase: 0.453592 },
+]
+
+const MASS_TONNE_UNITS: UnitOption[] = [
+  { label: 'Tonnes (t)', value: 't', toBase: 1 },
+  { label: 'Kilograms (kg)', value: 'kg', toBase: 0.001 },
+  { label: 'Kilotonnes (kt)', value: 'kt', toBase: 1000 },
+]
+
+const DISTANCE_KM_UNITS: UnitOption[] = [
+  { label: 'Kilometres (km)', value: 'km', toBase: 1 },
+  { label: 'Miles (mi)', value: 'mi', toBase: 1.60934 },
+  { label: 'Nautical miles (nmi)', value: 'nmi', toBase: 1.852 },
+]
+
+const WATER_VOLUME_UNITS: UnitOption[] = [
+  { label: 'Cubic metres (m³)', value: 'm³', toBase: 1 },
+  { label: 'Litres (L)', value: 'L', toBase: 0.001 },
+  { label: 'Kilolitres (kL)', value: 'kL', toBase: 1 },
+  { label: 'UK gallons (gal)', value: 'gal (UK)', toBase: 0.00454609 },
+]
 
 function num(values: Record<string, string>, key: string) {
   return Number(values[key] || 0)
@@ -28,13 +68,14 @@ export const CATEGORIES: CategoryConfig[] = [
     ],
     amountField: 'amount',
     amountLabel: 'kWh',
+    unitOptions: ELECTRICITY_UNITS,
     resolveFactorKey: (v) =>
       v.source?.includes('renewable')
         ? 'electricity_renewable_kwh'
         : 'electricity_grid_kwh',
-    resolveUnit: () => 'kWh',
+    resolveUnit: (v) => v.unit || 'kWh',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} kWh of ${v.source || 'electricity'}`,
+      `${amount.toLocaleString()} ${v.unit || 'kWh'} of ${v.source || 'electricity'}`,
   },
   {
     id: 'site_fuel',
@@ -52,21 +93,22 @@ export const CATEGORIES: CategoryConfig[] = [
       },
       {
         key: 'amount',
-        label: 'Amount (litres)',
+        label: 'Fuel amount',
         type: 'number',
-        hint: 'Amount of fuel used in the unit of measure specified above.',
+        hint: 'Amount of fuel used. Choose your unit of measure below.',
       },
     ],
     amountField: 'amount',
-    amountLabel: 'litres',
+    amountLabel: 'L',
+    unitOptions: FUEL_VOLUME_UNITS,
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'LPG') return 'lpg_litre'
       return 'diesel_litre'
     },
-    resolveUnit: () => 'L',
+    resolveUnit: (v) => v.unit || 'L',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} litres of ${v.fuel || 'fuel'}`,
+      `${amount.toLocaleString()} ${v.unit || 'L'} of ${v.fuel || 'fuel'}`,
   },
   {
     id: 'heavy_machinery',
@@ -90,20 +132,21 @@ export const CATEGORIES: CategoryConfig[] = [
       },
       {
         key: 'amount',
-        label: 'Fuel used (litres)',
+        label: 'Fuel used',
         type: 'number',
       },
     ],
     amountField: 'amount',
-    amountLabel: 'litres',
+    amountLabel: 'L',
+    unitOptions: FUEL_VOLUME_UNITS,
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'HVO') return 'hvo_litre'
       return 'gas_oil_litre'
     },
-    resolveUnit: () => 'L',
+    resolveUnit: (v) => v.unit || 'L',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} litres ${v.fuel || 'diesel'} — ${v.equipment || 'plant'}`,
+      `${amount.toLocaleString()} ${v.unit || 'L'} ${v.fuel || 'diesel'} — ${v.equipment || 'plant'}`,
   },
   {
     id: 'fleet',
@@ -127,20 +170,21 @@ export const CATEGORIES: CategoryConfig[] = [
       },
       {
         key: 'amount',
-        label: 'Fuel used (litres)',
+        label: 'Fuel used',
         type: 'number',
       },
     ],
     amountField: 'amount',
-    amountLabel: 'litres',
+    amountLabel: 'L',
+    unitOptions: FUEL_VOLUME_UNITS,
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'LPG') return 'lpg_litre'
       return 'diesel_litre'
     },
-    resolveUnit: () => 'L',
+    resolveUnit: (v) => v.unit || 'L',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} litres of ${v.fuel || 'fuel'} — ${v.vehicle || 'fleet'}`,
+      `${amount.toLocaleString()} ${v.unit || 'L'} of ${v.fuel || 'fuel'} — ${v.vehicle || 'fleet'}`,
   },
   {
     id: 'refrigerants',
@@ -158,20 +202,22 @@ export const CATEGORIES: CategoryConfig[] = [
       },
       {
         key: 'amount',
-        label: 'Amount in kg',
+        label: 'Amount',
         type: 'number',
       },
     ],
     amountField: 'amount',
     amountLabel: 'kg',
+    unitOptions: MASS_KG_UNITS,
     resolveFactorKey: (v) => {
       if (v.gas === 'R-410A') return 'r410a_kg'
       if (v.gas === 'R-404A') return 'r404a_kg'
       if (v.gas === 'CO2') return 'co2_kg'
       return 'r134a_kg'
     },
-    resolveUnit: () => 'kg',
-    resolveDetails: (v, amount) => `${amount.toLocaleString()} kg ${v.gas || 'refrigerant'}`,
+    resolveUnit: (v) => v.unit || 'kg',
+    resolveDetails: (v, amount) =>
+      `${amount.toLocaleString()} ${v.unit || 'kg'} ${v.gas || 'refrigerant'}`,
   },
   {
     id: 'road_freight',
@@ -187,24 +233,23 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['HGV rigid', 'HGV articulated', 'Van'],
       },
-      {
-        key: 'weight',
-        label: 'Cargo weight (tonnes)',
-        type: 'number',
-      },
-      {
-        key: 'distance',
-        label: 'Distance (km)',
-        type: 'number',
-      },
+      { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
+      { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
     resolveFactorKey: () => 'freight_road_tkm',
     resolveUnit: () => 'tkm',
-    resolveActivityAmount: (v, _amount) => num(v, 'weight') * num(v, 'distance'),
-    resolveDetails: (v) =>
-      `${num(v, 'weight').toLocaleString()} t × ${num(v, 'distance').toLocaleString()} km by ${v.mode || 'road'}`,
+    resolveActivityAmount: (v) => {
+      const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
+      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      return wt * dist
+    },
+    resolveDetails: (v) => {
+      const wu = v.weight_unit || 't'
+      const du = v.distance_unit || 'km'
+      return `${num(v, 'weight').toLocaleString()} ${wu} × ${num(v, 'distance').toLocaleString()} ${du} by ${v.mode || 'road'}`
+    },
   },
   {
     id: 'rail_freight',
@@ -213,16 +258,23 @@ export const CATEGORIES: CategoryConfig[] = [
     group: 'input',
     instructions: 'Record inbound or outbound rail movements of bulk construction materials.',
     fields: [
-      { key: 'weight', label: 'Cargo weight (tonnes)', type: 'number' },
-      { key: 'distance', label: 'Distance (km)', type: 'number' },
+      { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
+      { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
     resolveFactorKey: () => 'freight_rail_tkm',
     resolveUnit: () => 'tkm',
-    resolveActivityAmount: (v) => num(v, 'weight') * num(v, 'distance'),
-    resolveDetails: (v) =>
-      `${num(v, 'weight').toLocaleString()} t × ${num(v, 'distance').toLocaleString()} km by rail`,
+    resolveActivityAmount: (v) => {
+      const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
+      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      return wt * dist
+    },
+    resolveDetails: (v) => {
+      const wu = v.weight_unit || 't'
+      const du = v.distance_unit || 'km'
+      return `${num(v, 'weight').toLocaleString()} ${wu} × ${num(v, 'distance').toLocaleString()} ${du} by rail`
+    },
   },
   {
     id: 'sea_freight',
@@ -237,16 +289,23 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['Container', 'Bulk carrier', 'RoRo'],
       },
-      { key: 'weight', label: 'Cargo weight (tonnes)', type: 'number' },
-      { key: 'distance', label: 'Distance (km)', type: 'number' },
+      { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
+      { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
     resolveFactorKey: () => 'freight_sea_tkm',
     resolveUnit: () => 'tkm',
-    resolveActivityAmount: (v) => num(v, 'weight') * num(v, 'distance'),
-    resolveDetails: (v) =>
-      `${num(v, 'weight').toLocaleString()} t × ${num(v, 'distance').toLocaleString()} km by sea (${v.mode || 'vessel'})`,
+    resolveActivityAmount: (v) => {
+      const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
+      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      return wt * dist
+    },
+    resolveDetails: (v) => {
+      const wu = v.weight_unit || 't'
+      const du = v.distance_unit || 'km'
+      return `${num(v, 'weight').toLocaleString()} ${wu} × ${num(v, 'distance').toLocaleString()} ${du} by sea (${v.mode || 'vessel'})`
+    },
   },
   {
     id: 'air_freight',
@@ -255,16 +314,23 @@ export const CATEGORIES: CategoryConfig[] = [
     group: 'input',
     instructions: 'Use for time-critical plant parts and high-value construction materials moved by air.',
     fields: [
-      { key: 'weight', label: 'Cargo weight (tonnes)', type: 'number' },
-      { key: 'distance', label: 'Distance (km)', type: 'number' },
+      { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
+      { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
     resolveFactorKey: () => 'freight_air_tkm',
     resolveUnit: () => 'tkm',
-    resolveActivityAmount: (v) => num(v, 'weight') * num(v, 'distance'),
-    resolveDetails: (v) =>
-      `${num(v, 'weight').toLocaleString()} t × ${num(v, 'distance').toLocaleString()} km by air`,
+    resolveActivityAmount: (v) => {
+      const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
+      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      return wt * dist
+    },
+    resolveDetails: (v) => {
+      const wu = v.weight_unit || 't'
+      const du = v.distance_unit || 'km'
+      return `${num(v, 'weight').toLocaleString()} ${wu} × ${num(v, 'distance').toLocaleString()} ${du} by air`
+    },
   },
   {
     id: 'waste',
@@ -279,15 +345,16 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['Landfill', 'Recycling', 'Energy recovery'],
       },
-      { key: 'amount', label: 'Amount (kg)', type: 'number' },
+      { key: 'amount', label: 'Amount', type: 'number' },
     ],
     amountField: 'amount',
     amountLabel: 'kg',
+    unitOptions: MASS_KG_UNITS,
     resolveFactorKey: (v) =>
       v.route === 'Recycling' ? 'waste_recycling_kg' : 'waste_landfill_kg',
-    resolveUnit: () => 'kg',
+    resolveUnit: (v) => v.unit || 'kg',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} kg construction waste — ${v.route || 'disposal'}`,
+      `${amount.toLocaleString()} ${v.unit || 'kg'} construction waste — ${v.route || 'disposal'}`,
   },
   {
     id: 'water',
@@ -302,14 +369,15 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['Potable + process water', 'Potable only', 'Process only'],
       },
-      { key: 'amount', label: 'Usage amount (m³)', type: 'number' },
+      { key: 'amount', label: 'Usage amount', type: 'number' },
     ],
     amountField: 'amount',
     amountLabel: 'm³',
+    unitOptions: WATER_VOLUME_UNITS,
     resolveFactorKey: () => 'water_m3',
-    resolveUnit: () => 'm³',
+    resolveUnit: (v) => v.unit || 'm³',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} m³ ${v.type || 'water'}`,
+      `${amount.toLocaleString()} ${v.unit || 'm³'} ${v.type || 'water'}`,
   },
   {
     id: 'crew_transport',
@@ -325,7 +393,7 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['Crew van', 'Shuttle bus', 'Rail', 'Car'],
       },
-      { key: 'distance', label: 'One-way distance (km)', type: 'number' },
+      { key: 'distance', label: 'One-way distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
       { key: 'trips', label: 'Return trips', type: 'number' },
     ],
     amountField: 'distance',
@@ -335,10 +403,15 @@ export const CATEGORIES: CategoryConfig[] = [
       if (v.mode === 'Rail') return 'crew_rail_pkm'
       return 'crew_van_km'
     },
-    resolveUnit: () => 'km',
-    resolveActivityAmount: (v) => num(v, 'distance') * num(v, 'trips') * 2,
-    resolveDetails: (v) =>
-      `${num(v, 'distance').toLocaleString()} km ${v.mode || 'crew transport'}, ${num(v, 'trips')} return trips`,
+    resolveUnit: (v) => v.distance_unit || 'km',
+    resolveActivityAmount: (v) => {
+      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      return dist * num(v, 'trips') * 2
+    },
+    resolveDetails: (v) => {
+      const du = v.distance_unit || 'km'
+      return `${num(v, 'distance').toLocaleString()} ${du} ${v.mode || 'crew transport'}, ${num(v, 'trips')} return trips`
+    },
   },
   {
     id: 'bulk_materials',
@@ -354,10 +427,11 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['Concrete', 'Steel', 'Timber', 'Asphalt', 'Aggregates', 'Cement', 'Rebar'],
       },
-      { key: 'amount', label: 'Quantity (tonnes)', type: 'number' },
+      { key: 'amount', label: 'Quantity', type: 'number' },
     ],
     amountField: 'amount',
-    amountLabel: 'tonnes',
+    amountLabel: 't',
+    unitOptions: MASS_TONNE_UNITS,
     resolveFactorKey: (v) => {
       const map: Record<string, string> = {
         Concrete: 'material_concrete_t',
@@ -370,9 +444,9 @@ export const CATEGORIES: CategoryConfig[] = [
       }
       return map[v.material] || 'material_concrete_t'
     },
-    resolveUnit: () => 't',
+    resolveUnit: (v) => v.unit || 't',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} tonnes ${v.material || 'material'} (A1–A3)`,
+      `${amount.toLocaleString()} ${v.unit || 't'} ${v.material || 'material'} (A1–A3)`,
   },
   {
     id: 'heat_steam',
@@ -387,14 +461,15 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['District heat', 'Steam', 'On-site heat network'],
       },
-      { key: 'amount', label: 'Usage (kWh)', type: 'number' },
+      { key: 'amount', label: 'Usage', type: 'number' },
     ],
     amountField: 'amount',
     amountLabel: 'kWh',
+    unitOptions: ELECTRICITY_UNITS,
     resolveFactorKey: () => 'heat_steam_kwh',
-    resolveUnit: () => 'kWh',
+    resolveUnit: (v) => v.unit || 'kWh',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} kWh ${v.type || 'heat'}`,
+      `${amount.toLocaleString()} ${v.unit || 'kWh'} ${v.type || 'heat'}`,
   },
   {
     id: 'subcontractor',
@@ -404,16 +479,23 @@ export const CATEGORIES: CategoryConfig[] = [
     instructions:
       'Third-party haulage and plant moves organised by subcontractors (upstream Scope 3 category 4).',
     fields: [
-      { key: 'weight', label: 'Cargo weight (tonnes)', type: 'number' },
-      { key: 'distance', label: 'Distance (km)', type: 'number' },
+      { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
+      { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
     resolveFactorKey: () => 'freight_road_tkm',
     resolveUnit: () => 'tkm',
-    resolveActivityAmount: (v) => num(v, 'weight') * num(v, 'distance'),
-    resolveDetails: (v) =>
-      `${num(v, 'weight').toLocaleString()} t × ${num(v, 'distance').toLocaleString()} km subcontracted haulage`,
+    resolveActivityAmount: (v) => {
+      const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
+      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      return wt * dist
+    },
+    resolveDetails: (v) => {
+      const wu = v.weight_unit || 't'
+      const du = v.distance_unit || 'km'
+      return `${num(v, 'weight').toLocaleString()} ${wu} × ${num(v, 'distance').toLocaleString()} ${du} subcontracted haulage`
+    },
   },
   {
     id: 'custom',
