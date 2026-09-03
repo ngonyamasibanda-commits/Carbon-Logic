@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const { profile, updateProfile, sites } = useOrg()
   const { profile: account, user } = useAuth()
   const [baselineDraft, setBaselineDraft] = useState(String(profile.baselineYtdTco2e || ''))
+  const [baselineSaved, setBaselineSaved] = useState(false)
 
   const yearEntries = useMemo(
     () => entries.filter((entry) => ytd(entry.created_at)),
@@ -79,10 +80,10 @@ export default function DashboardPage() {
 
   function saveBaseline() {
     const value = Number(baselineDraft)
-    updateProfile({
-      ...profile,
-      baselineYtdTco2e: Number.isFinite(value) && value > 0 ? value : 0,
-    })
+    const next = Number.isFinite(value) && value > 0 ? value : 0
+    updateProfile({ ...profile, baselineYtdTco2e: next })
+    setBaselineSaved(true)
+    setTimeout(() => setBaselineSaved(false), 3000)
   }
 
   return (
@@ -106,8 +107,8 @@ export default function DashboardPage() {
         <MetricCard label="Current YTD Emissions" value={ytdTotal.toFixed(3)} />
         <MetricCard label="Scope 3 YTD tCO2e" value={scope3.toFixed(3)} />
         <MetricCard
-          label="Reduction vs Baseline"
-          value={baseline ? `${(reduction * 100).toFixed(1)}%` : 'No baseline'}
+          label={baseline ? `Reduction vs ${baseline.toLocaleString()} tCO₂e baseline` : 'Set a baseline below ↓'}
+          value={baseline ? `${(reduction * 100).toFixed(1)}%` : '—'}
         />
       </section>
 
@@ -147,22 +148,43 @@ export default function DashboardPage() {
         </ChartCard>
       </section>
 
-      <section className="rounded-xl border border-line bg-white p-4 text-sm">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="font-medium">
-            Baseline YTD tCO2e
+      <section className="rounded-xl border border-line bg-white p-5 text-sm">
+        <h2 className="mb-3 text-lg font-semibold text-ink">Settings &amp; Baseline</h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            saveBaseline()
+          }}
+          className="flex flex-wrap items-end gap-3"
+        >
+          <label className="block font-medium">
+            <span className="text-muted">Baseline YTD tCO₂e</span>
             <input
               type="number"
               min={0}
               step="any"
               value={baselineDraft}
-              onChange={(event) => setBaselineDraft(event.target.value)}
-              className="ml-2 rounded-md border border-line px-3 py-1.5"
+              onChange={(event) => {
+                setBaselineDraft(event.target.value)
+                setBaselineSaved(false)
+              }}
+              placeholder="e.g. 1200"
+              className="mt-1 block w-40 rounded-md border border-line px-3 py-2"
             />
           </label>
-          <button type="button" onClick={saveBaseline} className="rounded-md bg-brand px-3 py-1.5 text-white">
+          <button type="submit" className="rounded-md bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-dark">
             Save baseline
           </button>
+          {baselineSaved ? (
+            <span className="text-sm font-medium text-accent-dark">✓ Baseline saved</span>
+          ) : null}
+          {baseline > 0 ? (
+            <span className="text-xs text-muted">
+              Current baseline: {baseline.toLocaleString()} tCO₂e
+            </span>
+          ) : null}
+        </form>
+        <div className="mt-4 flex flex-wrap gap-4">
           <Link to="/factors" className="text-brand hover:underline">
             Manage emission factors
           </Link>

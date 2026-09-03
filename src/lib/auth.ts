@@ -384,7 +384,7 @@ export function assessPassword(password: string, email = ''): PasswordAssessment
 /** Clears cached workspace data so a signed-out browser keeps nothing readable. */
 export function clearLocalWorkspaceData() {
   const prefixes = ['carbon-logic-']
-  const keep = new Set(['carbon-logic-auth'])
+  const keep = new Set(['carbon-logic-auth', 'carbon-logic-profile', 'carbon-logic-sites'])
   const doomed: string[] = []
   for (let i = 0; i < localStorage.length; i += 1) {
     const key = localStorage.key(i)
