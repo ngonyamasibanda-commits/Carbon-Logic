@@ -660,6 +660,12 @@ export const CATEGORIES: CategoryConfig[] = [
 export const INPUT_CATEGORIES = CATEGORIES.filter((c) => c.group === 'input')
 export const SCOPE3_CATEGORIES = CATEGORIES.filter((c) => c.group === 'scope3')
 
+export const SCOPE_NAV_ORDER = ['Scope 1', 'Scope 2', 'Scope 3', 'Custom'] as const
+
+export function categoriesForScope(scope: (typeof SCOPE_NAV_ORDER)[number]) {
+  return CATEGORIES.filter((category) => category.scope === scope)
+}
+
 export function getCategory(id: string) {
   return CATEGORIES.find((c) => c.id === id)
 }

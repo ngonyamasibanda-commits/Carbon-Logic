@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { CATEGORIES } from '../lib/categories'
+import { SCOPE_NAV_ORDER, categoriesForScope } from '../lib/categories'
 import { CATEGORY_ICONS } from '../lib/icons'
 import { useEntries } from '../lib/entries-context'
 
@@ -17,9 +17,12 @@ export default function DataInput() {
     return map
   }, [entries])
 
-  const visibleCategories = CATEGORIES.filter((category) =>
-    category.name.toLowerCase().includes(query.toLowerCase()),
-  )
+  const visibleByScope = SCOPE_NAV_ORDER.map((scope) => ({
+    scope,
+    categories: categoriesForScope(scope).filter((category) =>
+      category.name.toLowerCase().includes(query.toLowerCase()),
+    ),
+  })).filter((group) => group.categories.length > 0)
 
   return (
     <div className="space-y-6">
@@ -40,26 +43,31 @@ export default function DataInput() {
         </label>
       </section>
 
-      <section>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {visibleCategories.map((category) => {
-            const Icon = CATEGORY_ICONS[category.id]
-            const count = counts.get(category.id) ?? 0
-            return (
-              <Link
-                key={category.id}
-                to={`/input/${category.id}`}
-                className="rounded-xl border border-line bg-white p-4 text-center shadow-sm hover:border-brand/40"
-              >
-                {Icon ? <Icon size={26} className="mx-auto text-brand" /> : null}
-                <div className="mt-2 text-sm font-semibold">{category.name}</div>
-                <div className="text-xs text-muted">
-                  {count} {count === 1 ? 'entry' : 'entries'}
-                </div>
-              </Link>
-            )
-          })}
-        </div>
+      <section className="space-y-6">
+        {visibleByScope.map((group) => (
+          <div key={group.scope}>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">{group.scope}</h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {group.categories.map((category) => {
+                const Icon = CATEGORY_ICONS[category.id]
+                const count = counts.get(category.id) ?? 0
+                return (
+                  <Link
+                    key={category.id}
+                    to={`/input/${category.id}`}
+                    className="rounded-xl border border-line bg-white p-4 text-center shadow-sm hover:border-brand/40"
+                  >
+                    {Icon ? <Icon size={26} className="mx-auto text-brand" /> : null}
+                    <div className="mt-2 text-sm font-semibold">{category.name}</div>
+                    <div className="text-xs text-muted">
+                      {count} {count === 1 ? 'entry' : 'entries'}
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </section>
     </div>
   )

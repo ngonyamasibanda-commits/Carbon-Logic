@@ -65,7 +65,6 @@ export function printReport(title: string, entries: EmissionEntry[]) {
         <td>${escapeHtml(entry.scope)}</td>
         <td>${escapeHtml(entry.site || '—')}</td>
         <td>${entry.emissions_tco2e.toFixed(4)}</td>
-        <td>${escapeHtml(entry.details)}</td>
       </tr>`
     })
     .join('')
@@ -83,7 +82,7 @@ export function printReport(title: string, entries: EmissionEntry[]) {
   <h1>${escapeHtml(title)}</h1>
   <p>Total: <strong>${total.toFixed(4)} tCO2e</strong> · ${entries.length} entries</p>
   <table>
-    <thead><tr><th>Date</th><th>Category</th><th>Scope</th><th>Site</th><th>tCO2e</th><th>Details</th></tr></thead>
+    <thead><tr><th>Date</th><th>Category</th><th>Scope</th><th>Site</th><th>tCO2e</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
 </body></html>`

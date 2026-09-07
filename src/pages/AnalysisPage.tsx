@@ -38,7 +38,12 @@ export default function AnalysisPage() {
     ? `carbon-logic-revenue:${organization.id}`
     : 'carbon-logic-revenue'
   const [mode, setMode] = useState<'scope' | 'source'>('scope')
-  const [openScopes, setOpenScopes] = useState<Record<string, boolean>>({})
+  const [openScopes, setOpenScopes] = useState<Record<string, boolean>>({
+    'Scope 1': true,
+    'Scope 2': true,
+    'Scope 3': true,
+    Custom: true,
+  })
   const [month, setMonth] = useState('all')
   const [site, setSite] = useState('all')
   const [categoryId, setCategoryId] = useState('all')
@@ -341,7 +346,7 @@ export default function AnalysisPage() {
       {/* ── Source breakdown by scope ─────────────────────────────────── */}
       <section className="rounded-xl border border-line bg-white p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Results Breakdown</h2>
+          <h2 className="text-lg font-semibold">Emissions by scope and category</h2>
           <button
             type="button"
             className="text-sm text-brand hover:underline"
@@ -353,13 +358,13 @@ export default function AnalysisPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line text-left text-muted">
-              <th className="py-2 font-semibold">Name</th>
+              <th className="py-2 font-semibold">Scope / Category</th>
               <th className="py-2 font-semibold">Results (tCO₂e)</th>
               <th className="py-2 font-semibold">% of Total</th>
             </tr>
           </thead>
           <tbody>
-            {['Scope 1', 'Scope 2', 'Scope 3'].map((scope) => {
+            {['Scope 1', 'Scope 2', 'Scope 3', 'Custom'].map((scope) => {
               const scopeValue = byScope.find((row) => row.name === scope)?.value ?? 0
               return (
                 <Fragment key={scope}>
@@ -407,6 +412,43 @@ export default function AnalysisPage() {
             </tr>
           </tbody>
         </table>
+      </section>
+
+      <section className="rounded-xl border border-line bg-white p-5 shadow-sm">
+        <h2 className="mb-3 text-lg font-semibold">Entries</h2>
+        <p className="mb-3 text-xs text-muted">Each row shows the GHG scope and input category. Calculation workings stay on the category form, not here.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-muted">
+                <th className="py-2 font-semibold">Date</th>
+                <th className="py-2 font-semibold">Scope</th>
+                <th className="py-2 font-semibold">Category</th>
+                <th className="py-2 font-semibold">Site</th>
+                <th className="py-2 font-semibold">tCO₂e</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-muted">
+                    No entries match these filters.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((entry) => (
+                  <tr key={entry.id} className="border-b border-line">
+                    <td className="py-2">{entry.created_at.slice(0, 10)}</td>
+                    <td className="py-2">{entry.scope}</td>
+                    <td className="py-2">{getCategory(entry.category)?.name ?? entry.category}</td>
+                    <td className="py-2 text-muted">{entry.site || '—'}</td>
+                    <td className="py-2 font-medium">{entry.emissions_tco2e.toFixed(2)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* ── Emissions by source bar chart ──────────────────────────────── */}

@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, Scale, Users } from 'lucide-react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { LogoMark } from '../brand/Logo'
-import { INPUT_CATEGORIES, SCOPE3_CATEGORIES } from '../../lib/categories'
+import { SCOPE_NAV_ORDER, categoriesForScope } from '../../lib/categories'
 import { CATEGORY_ICONS } from '../../lib/icons'
 import { useEntries } from '../../lib/entries-context'
 import { useAuth } from '../../lib/auth-context'
+import type { CategoryConfig } from '../../lib/types'
 
 function countLabel(count: number) {
   return count === 1 ? '(1 entry)' : `(${count} entries)`
@@ -23,8 +24,12 @@ export default function Sidebar() {
   const { profile, user, organization, can } = useAuth()
   const location = useLocation()
   const displayName = profile?.fullName || user?.email || 'Account'
-  const [inputOpen, setInputOpen] = useState(true)
-  const [scope3Open, setScope3Open] = useState(true)
+  const [openScopes, setOpenScopes] = useState<Record<string, boolean>>({
+    'Scope 1': true,
+    'Scope 2': true,
+    'Scope 3': true,
+    Custom: true,
+  })
 
   const counts = useMemo(() => {
     const map = new Map<string, number>()
@@ -114,61 +119,33 @@ export default function Sidebar() {
           }}
         </NavLink>
 
-        <button
-          type="button"
-          className="mt-3 flex w-full items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted"
-          onClick={() => setInputOpen((open) => !open)}
-        >
-          Input
-          <ChevronDown size={14} className={inputOpen ? 'rotate-180' : ''} />
-        </button>
-        {inputOpen
-          ? INPUT_CATEGORIES.map((category) => {
-              const Icon = CATEGORY_ICONS[category.id]
-              const count = counts.get(category.id) ?? 0
-              const active = location.pathname === `/input/${category.id}`
-              return (
-                <NavLink
-                  key={category.id}
-                  to={`/input/${category.id}`}
-                  className={navClass(active)}
-                >
-                  {Icon ? (
-                    <Icon size={16} className={active ? 'text-brand' : 'text-brand'} />
-                  ) : null}
-                  <span className="min-w-0 flex-1 truncate">{category.name}</span>
-                  <span className="text-[11px] font-normal text-muted">{countLabel(count)}</span>
-                </NavLink>
-              )
-            })
-          : null}
-
-        <button
-          type="button"
-          className="mt-3 flex w-full items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted"
-          onClick={() => setScope3Open((open) => !open)}
-        >
-          Additional Scope 3
-          <ChevronDown size={14} className={scope3Open ? 'rotate-180' : ''} />
-        </button>
-        {scope3Open
-          ? SCOPE3_CATEGORIES.map((category) => {
-              const Icon = CATEGORY_ICONS[category.id]
-              const count = counts.get(category.id) ?? 0
-              const active = location.pathname === `/input/${category.id}`
-              return (
-                <NavLink
-                  key={category.id}
-                  to={`/input/${category.id}`}
-                  className={navClass(active)}
-                >
-                  {Icon ? <Icon size={16} className="text-brand" /> : null}
-                  <span className="min-w-0 flex-1 truncate">{category.name}</span>
-                  <span className="text-[11px] font-normal text-muted">{countLabel(count)}</span>
-                </NavLink>
-              )
-            })
-          : null}
+        {SCOPE_NAV_ORDER.map((scope) => {
+          const categories = categoriesForScope(scope)
+          if (categories.length === 0) return null
+          const open = openScopes[scope] ?? true
+          return (
+            <div key={scope}>
+              <button
+                type="button"
+                className="mt-3 flex w-full items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted"
+                onClick={() => setOpenScopes((current) => ({ ...current, [scope]: !open }))}
+              >
+                {scope}
+                <ChevronDown size={14} className={open ? 'rotate-180' : ''} />
+              </button>
+              {open
+                ? categories.map((category) => (
+                    <CategoryLink
+                      key={category.id}
+                      category={category}
+                      count={counts.get(category.id) ?? 0}
+                      active={location.pathname === `/input/${category.id}`}
+                    />
+                  ))
+                : null}
+            </div>
+          )
+        })}
 
         <div className="mt-4 space-y-1 border-t border-line pt-3">
           <NavLink to="/analysis" className={({ isActive }) => navClass(isActive)}>
@@ -249,5 +226,24 @@ export default function Sidebar() {
         </Link>
       </div>
     </aside>
+  )
+}
+
+function CategoryLink({
+  category,
+  count,
+  active,
+}: {
+  category: CategoryConfig
+  count: number
+  active: boolean
+}) {
+  const Icon = CATEGORY_ICONS[category.id]
+  return (
+    <NavLink to={`/input/${category.id}`} className={navClass(active)}>
+      {Icon ? <Icon size={16} className="text-brand" /> : null}
+      <span className="min-w-0 flex-1 truncate">{category.name}</span>
+      <span className="text-[11px] font-normal text-muted">{countLabel(count)}</span>
+    </NavLink>
   )
 }

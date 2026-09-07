@@ -2,7 +2,7 @@ export default function FaqsPage() {
   const items = [
     {
       q: 'How is tCO₂e calculated?',
-      a: 'Every entry uses (Activity Amount × Conversion Value) / 1000. Conversion values are kg CO₂e per unit, loaded from the emission factors database. Each result row now shows the full calculation: activity × factor ÷ 1000 = tCO₂e, plus the factor name and source.',
+      a: 'Every entry uses (Activity Amount × Conversion Value) / 1000. Conversion values are kg CO₂e per unit, loaded from the emission factors database. Analysis and results tables show the GHG scope and input category for each entry, rather than the calculation working.',
     },
     {
       q: 'Which activities are in Scope 1, 2, and 3?',

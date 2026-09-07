@@ -1,4 +1,3 @@
-import { getCategory } from '../lib/categories'
 import { downloadCsv, printReport } from '../lib/export'
 import { useEntries } from '../lib/entries-context'
 import ResultsTable from '../components/form/ResultsTable'
@@ -27,13 +26,7 @@ export default function CombinedResultsPage() {
           </button>
         </div>
       </div>
-      <ResultsTable
-        entries={entries.map((entry) => ({
-          ...entry,
-          details: `${getCategory(entry.category)?.name ?? entry.category}: ${entry.details}`,
-        }))}
-        onDelete={(id) => void removeEntry(id)}
-      />
+      <ResultsTable entries={entries} onDelete={(id) => void removeEntry(id)} />
     </div>
   )
 }
