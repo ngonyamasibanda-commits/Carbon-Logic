@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { loadFactors } from '../lib/calculate'
-import { deleteEntry, fetchEntries, saveEntry, type Tenant } from '../lib/entries'
+import { deleteEntry, fetchEntries, peekLocalEntries, saveEntry, type Tenant } from '../lib/entries'
 import { FACTOR_CATALOG } from '../lib/factor-catalog'
 import { persistFactors } from '../lib/factors-store'
 import { EntriesContext } from '../lib/entries-context'
@@ -39,11 +39,17 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     }
   }, [tenant])
 
-  // Switching organisation must not leave the previous tenant's rows on screen.
+  // Switching organisation must not leave the previous tenant's rows on screen,
+  // but show this user's cached rows immediately so a slow or failed cloud fetch
+  // cannot look like the work was deleted.
   useEffect(() => {
-    setEntries([])
+    if (!tenant) {
+      setEntries([])
+      return
+    }
+    setEntries(peekLocalEntries(tenant))
     void refresh()
-  }, [refresh])
+  }, [refresh, tenant])
 
   const addEntry = useCallback(
     async (input: Omit<EmissionEntry, 'id' | 'created_at'>) => {
