@@ -225,21 +225,29 @@ export function isLocalOrganizationId(organizationId: string | null | undefined)
 /**
  * Loads real database memberships. Never invents a local workspace — that path
  * cannot invite people or persist access.
+ *
+ * `reliable` is false when every membership query failed. In that case we must
+ * not create a new organisation: the user may already have one we could not see.
  */
 export async function ensureHomeOrganization(
   userId: string,
   email: string | null | undefined,
   existing: Membership[],
+  options?: { reliable?: boolean },
 ): Promise<Membership[]> {
   if (existing.length > 0) return existing
+  if (options?.reliable === false) return existing
   if (!isFounderEmail(email)) return existing
 
   const { error } = await supabase.rpc('create_organization', { p_name: HOME_ORGANIZATION_NAME })
   if (error) return existing
-  return fetchMemberships(userId)
+  const { memberships } = await loadMemberships(userId)
+  return memberships
 }
 
-export async function fetchMemberships(userId: string): Promise<Membership[]> {
+export async function loadMemberships(
+  userId: string,
+): Promise<{ memberships: Membership[]; reliable: boolean }> {
   const selects = [
     'id, organization_id, user_id, role, created_at, organizations!inner(id, name, slug, allowed_email_domains, require_mfa, session_idle_minutes, session_absolute_hours)',
     'id, organization_id, user_id, role, created_at, organizations!inner(id, name, slug)',
@@ -247,31 +255,46 @@ export async function fetchMemberships(userId: string): Promise<Membership[]> {
   ]
 
   for (const select of selects) {
-    const { data, error } = await supabase.from('memberships').select(select).eq('user_id', userId)
+    const query = supabase.from('memberships').select(select).eq('user_id', userId).order('created_at', {
+      ascending: true,
+    })
+    const { data, error } = await query
     if (error || !data) continue
+    // An inner join that returns no rows can mean the organisation embed failed,
+    // not that the user has no memberships. Try the next, simpler select.
+    if (data.length === 0 && select.includes('organizations!inner')) continue
+
     const mapped = data.map((row) => mapMembershipRow(row))
     const missingOrg = mapped.filter((membership) => membership.organization.slug === 'workspace')
-    if (missingOrg.length === 0) return mapped
+    if (missingOrg.length === 0) return { memberships: mapped, reliable: true }
 
     const ids = [...new Set(missingOrg.map((membership) => membership.organizationId))]
     const { data: orgs } = await supabase.from('organizations').select('id, name, slug').in('id', ids)
     const byId = new Map((orgs ?? []).map((org) => [org.id as string, org]))
-    return mapped.map((membership) => {
-      const org = byId.get(membership.organizationId)
-      if (!org) return membership
-      return {
-        ...membership,
-        organization: {
-          ...membership.organization,
-          id: org.id as string,
-          name: (org.name as string) ?? membership.organization.name,
-          slug: (org.slug as string) ?? membership.organization.slug,
-        },
-      }
-    })
+    return {
+      memberships: mapped.map((membership) => {
+        const org = byId.get(membership.organizationId)
+        if (!org) return membership
+        return {
+          ...membership,
+          organization: {
+            ...membership.organization,
+            id: org.id as string,
+            name: (org.name as string) ?? membership.organization.name,
+            slug: (org.slug as string) ?? membership.organization.slug,
+          },
+        }
+      }),
+      reliable: true,
+    }
   }
 
-  return []
+  return { memberships: [], reliable: false }
+}
+
+export async function fetchMemberships(userId: string): Promise<Membership[]> {
+  const { memberships } = await loadMemberships(userId)
+  return memberships
 }
 
 export async function fetchOrgMembers(organizationId: string): Promise<OrgMember[]> {
@@ -489,14 +512,31 @@ export function assessPassword(password: string, email = ''): PasswordAssessment
   }
 }
 
-/** Clears cached workspace data so a signed-out browser keeps nothing readable. */
+/**
+ * Clears session-only workspace cache on sign-out. Emission entries, sites, and
+ * the last organisation must survive: a failed cloud write previously lived only
+ * in localStorage, so wiping it made logged work vanish on the next login.
+ */
 export function clearLocalWorkspaceData() {
   const prefixes = ['carbon-logic-']
-  const keep = new Set(['carbon-logic-auth', 'carbon-logic-profile', 'carbon-logic-sites'])
+  const keepExact = new Set([
+    'carbon-logic-auth',
+    'carbon-logic-profile',
+    'carbon-logic-sites',
+    'carbon-logic-active-org',
+    'carbon-logic-entry-meta',
+    'carbon-logic-revenue',
+  ])
+  const keepPrefixes = [
+    'carbon-logic-entries:',
+    'carbon-logic-sites:',
+    'carbon-logic-revenue:',
+  ]
   const doomed: string[] = []
   for (let i = 0; i < localStorage.length; i += 1) {
     const key = localStorage.key(i)
-    if (!key || keep.has(key)) continue
+    if (!key) continue
+    if (keepExact.has(key) || keepPrefixes.some((prefix) => key.startsWith(prefix))) continue
     if (prefixes.some((prefix) => key.startsWith(prefix))) doomed.push(key)
   }
   for (const key of doomed) localStorage.removeItem(key)

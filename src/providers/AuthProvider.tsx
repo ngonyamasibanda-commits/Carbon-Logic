@@ -6,7 +6,7 @@ import {
   IDLE_WARNING_SECONDS,
   clearLocalWorkspaceData,
   ensureHomeOrganization,
-  fetchMemberships,
+  loadMemberships,
   fetchProfile,
   isPlatformOwnerEmail,
   recordAuditEvent,
@@ -22,6 +22,7 @@ import {
   type AuthStatus,
   type SignOutReason,
 } from '../lib/auth-context'
+import { pushLocalEntries } from '../lib/entries'
 import { supabase } from '../lib/supabase'
 
 const ACTIVE_ORG_KEY = 'carbon-logic-active-org'
@@ -87,12 +88,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (userId: string, email?: string | null, preferredOrgId?: string | null) => {
       setWorkspaceLoading(true)
       try {
-        const [nextProfile, loadedMemberships] = await Promise.all([
+        const [nextProfile, loaded] = await Promise.all([
           fetchProfile(userId),
-          fetchMemberships(userId),
+          loadMemberships(userId),
         ])
         const resolvedEmail = email ?? nextProfile?.email
-        const nextMemberships = await ensureHomeOrganization(userId, resolvedEmail, loadedMemberships)
+        const nextMemberships = await ensureHomeOrganization(
+          userId,
+          resolvedEmail,
+          loaded.memberships,
+          { reliable: loaded.reliable },
+        )
         setProfile(
           nextProfile ??
             (resolvedEmail
@@ -198,8 +204,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signingOut.current = true
       try {
         const orgId = organization?.id
-        if (orgId && reason !== 'expired') {
+        if (orgId && user && reason !== 'expired') {
           await recordAuditEvent(orgId, 'auth.signed_out', 'session', undefined, { reason })
+        }
+        if (orgId && user) {
+          await Promise.race([
+            pushLocalEntries({ organizationId: orgId, userId: user.id }),
+            new Promise<void>((resolve) => setTimeout(resolve, 4000)),
+          ])
         }
         // 'local' revokes this session's refresh token at Supabase; 'global' kills
         // every session the user has anywhere.
@@ -214,7 +226,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signingOut.current = false
       }
     },
-    [organization],
+    [organization, user],
   )
 
   const signOutEverywhere = useCallback(() => signOut('everywhere'), [signOut])
