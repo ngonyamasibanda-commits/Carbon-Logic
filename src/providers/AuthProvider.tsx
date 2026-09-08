@@ -358,10 +358,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Same class of bug as “change ?studentId= in the URL”: the client must not
     // adopt an organisation the session is not a member of. RLS would still
     // return empty rows, but the UI should refuse the switch outright.
+    if (!isPlatformOwnerEmail(user?.email ?? profile?.email)) return
     if (!memberships.some((membership) => membership.organizationId === organizationId)) return
     localStorage.setItem(ACTIVE_ORG_KEY, organizationId)
     setActiveOrgId(organizationId)
-  }, [memberships])
+  }, [memberships, user?.email, profile?.email])
 
   const createOrganization = useCallback(
     async (name: string) => {

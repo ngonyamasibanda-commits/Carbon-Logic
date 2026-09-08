@@ -35,12 +35,9 @@ export default function PeoplePage() {
 
   const orgId = organization?.id
   const canManage = role === 'owner' || role === 'admin'
-  const canChooseOrg = canCreateOrganizations || memberships.some((membership) => membership.role === 'owner')
+  const canChooseOrg = canCreateOrganizations
   const choosableOrgs = useMemo(
-    () =>
-      canCreateOrganizations
-        ? memberships
-        : memberships.filter((membership) => membership.role === 'owner'),
+    () => (canCreateOrganizations ? memberships : []),
     [canCreateOrganizations, memberships],
   )
 
@@ -128,9 +125,9 @@ export default function PeoplePage() {
         <div className="px-6 py-7">
           <h1 className="text-2xl font-semibold text-brand">People and access</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            CEOs and Carbon Logic owners choose which organisation a person joins. Managers can
-            only invite into this organisation. Nobody else can create a company or place people
-            into another company’s data — that isolation is enforced in the database.
+            Carbon Logic owners choose which organisation a person joins. Everyone else can only
+            invite into this organisation. Nobody else can see, create, or place people into another
+            company’s data — that isolation is enforced in the database.
           </p>
           <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand-soft px-3 py-1.5 text-sm text-brand">
             <Building2 size={14} />
@@ -423,8 +420,8 @@ function InviteCard({
       <h2 className="text-lg font-semibold text-ink">Add or invite someone</h2>
       <p className="mt-1 text-sm text-muted">
         {canChooseOrg
-          ? 'Choose the organisation this person should join. Managers and other roles cannot move people into a different company.'
-          : `This invite can only add someone to ${organizationName}. You cannot place them in another organisation.`}
+          ? 'Choose the organisation this person should join. Only Carbon Logic owners can see or select other companies.'
+          : `This invite can only add someone to ${organizationName}. You cannot see or place them in another organisation.`}
       </p>
       <form onSubmit={submit} className="mt-4 flex flex-wrap items-end gap-3">
         {canChooseOrg && choosableOrgs.length > 0 ? (
