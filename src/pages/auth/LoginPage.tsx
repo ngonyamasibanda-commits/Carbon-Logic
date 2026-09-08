@@ -116,11 +116,7 @@ export default function LoginPage() {
       if (result.error) setError(result.error)
       else if (result.needsConfirmation) {
         setAwaitingConfirmation(true)
-        setNotice(
-          fromInvite
-            ? 'Your account is created for this invited email. Carbon Logic does not send the confirmation message — it comes from Supabase and often never arrives. Check spam, or ask the person who invited you to turn off Confirm email in Supabase until SMTP is set up.'
-            : 'Your account is created. Carbon Logic does not send the confirmation message — it comes from Supabase and often never arrives. Check spam, or ask a Carbon Logic owner to turn off Confirm email in Supabase until Custom SMTP is set up.',
-        )
+        setNotice('Your account is created. Sign in.')
       }
     } finally {
       setBusy(false)
