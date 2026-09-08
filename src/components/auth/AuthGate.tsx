@@ -92,8 +92,8 @@ function NoOrganization() {
       <div className="space-y-4">
         <Alert tone="info">
           {canCreateOrganizations
-            ? 'If a colleague has invited you, ask them to send the invitation to this exact address, then choose “Check again”. Otherwise create an organisation below and invite your team.'
-            : 'If a colleague has invited you, ask them to send the invitation to this exact address, then choose “Check again”. Only Carbon Logic owners can add new organisations.'}
+            ? 'If you were invited, create an account with that exact email, then choose “Check again”. Carbon Logic does not email invitations. You can also create an organisation below and invite that company’s people.'
+            : 'If you were invited, create an account with that exact email, then choose “Check again”. Carbon Logic does not email invitations. Only Carbon Logic owners can add new organisations.'}
         </Alert>
         {canCreateOrganizations ? (
         <form onSubmit={submit} className="space-y-4">

@@ -71,10 +71,10 @@ workspace you are looking at.
 | Setting | Where | Why |
 | --- | --- | --- |
 | Site URL and redirect URLs | Authentication → URL Configuration | Add your production origin plus `/auth/callback` and `/auth/reset`, otherwise magic links and password resets bounce. |
-| Confirm email | Authentication → Providers → Email | Leave on. It stops someone signing up as an address they do not control and being auto-added to an organisation by a pending invitation. |
+| Confirm email | Authentication → Providers → Email | If Custom SMTP is not set, turn this **off** or people cannot finish signup — the default mailer often never arrives. Turn it back on after SMTP works. Invites are not emails; they are redeemed when the person signs up with the invited address. |
+| SMTP | Project Settings → Auth | Required before confirmation, magic-link, or password-reset emails will reliably arrive. Organisation invites still do not send mail — share the signup link from People & Access. |
 | Minimum password length | Authentication → Policies | Set to 12 to match the client-side check. |
 | Leaked password protection | Authentication → Policies | Checks new passwords against Have I Been Pwned. Worth turning on. |
-| SMTP | Project Settings → Auth | The built-in email sender is rate-limited and not for production. Point it at your own provider before you rely on invitations or resets. |
 | Spend cap | Organization → Billing | Hard stop so a stolen anon key or write flood cannot run up a five-figure invoice. |
 | Billing alerts | Organization → Billing → Email notifications | Email before you hit the cap. Some providers have no cap — alerts are the minimum. |
 

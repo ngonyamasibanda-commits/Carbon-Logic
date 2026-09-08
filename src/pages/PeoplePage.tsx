@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Building2, MailPlus, Search, Shield, Trash2, UserMinus } from 'lucide-react'
+import { Building2, Copy, MailPlus, Search, Shield, Trash2, UserMinus } from 'lucide-react'
 import { Alert, FormField, inputClass } from '../components/auth/AuthLayout'
 import {
   ORG_ROLES,
@@ -10,10 +10,12 @@ import {
   fetchOrgMembers,
   fetchPendingInvitations,
   inviteMember,
+  inviteSignupUrl,
   removeOrgMember,
   revokeInvitation,
   setMemberRole,
   type AuditEvent,
+  type Membership,
   type OrgMember,
   type OrgRole,
   type PendingInvitation,
@@ -21,7 +23,8 @@ import {
 import { useAuth } from '../lib/auth-context'
 
 export default function PeoplePage() {
-  const { organization, role, user, reloadWorkspace } = useAuth()
+  const { organization, role, user, memberships, canCreateOrganizations, switchOrganization, reloadWorkspace } =
+    useAuth()
   const [members, setMembers] = useState<OrgMember[]>([])
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])
   const [audit, setAudit] = useState<AuditEvent[]>([])
@@ -32,6 +35,14 @@ export default function PeoplePage() {
 
   const orgId = organization?.id
   const canManage = role === 'owner' || role === 'admin'
+  const canChooseOrg = canCreateOrganizations || memberships.some((membership) => membership.role === 'owner')
+  const choosableOrgs = useMemo(
+    () =>
+      canCreateOrganizations
+        ? memberships
+        : memberships.filter((membership) => membership.role === 'owner'),
+    [canCreateOrganizations, memberships],
+  )
 
   const load = useCallback(async () => {
     if (!orgId) return
@@ -117,11 +128,9 @@ export default function PeoplePage() {
         <div className="px-6 py-7">
           <h1 className="text-2xl font-semibold text-brand">People and access</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            CEOs and managers control who can see and change this organisation only. Emissions,
-            factors, sites and people from other companies never appear here — that isolation is
-            enforced in the database. Switch organisation from the account menu to invite a
-            different company’s team, or create a new organisation there if they do not have one
-            yet.
+            CEOs and Carbon Logic owners choose which organisation a person joins. Managers can
+            only invite into this organisation. Nobody else can create a company or place people
+            into another company’s data — that isolation is enforced in the database.
           </p>
           <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand-soft px-3 py-1.5 text-sm text-brand">
             <Building2 size={14} />
@@ -138,7 +147,11 @@ export default function PeoplePage() {
       {canManage ? (
         <InviteCard
           organizationId={orgId}
+          organizationName={organization?.name}
           grantableRoles={grantableRoles}
+          canChooseOrg={canChooseOrg}
+          choosableOrgs={choosableOrgs}
+          onSelectOrg={switchOrganization}
           onInvited={load}
         />
       ) : (
@@ -268,21 +281,25 @@ export default function PeoplePage() {
                       {new Date(invitation.expiresAt).toLocaleDateString()}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void cancelInvite(invitation.id, invitation.email)}
-                    className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 size={12} />
-                    Revoke
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <CopyLinkButton url={inviteSignupUrl(invitation.email)} />
+                    <button
+                      type="button"
+                      onClick={() => void cancelInvite(invitation.id, invitation.email)}
+                      className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 size={12} />
+                      Revoke
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
           <p className="mt-3 text-xs text-muted">
-            If they already have a Carbon Logic account, they are added immediately. Otherwise they
-            join this organisation automatically when they sign up with that email.
+            If they already have a Carbon Logic account, they are added immediately. Otherwise share
+            the signup link — Carbon Logic does not email them. They join this organisation when they
+            create an account with that exact email.
           </p>
         </section>
       ) : null}
@@ -314,13 +331,46 @@ export default function PeoplePage() {
   )
 }
 
+function CopyLinkButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      window.prompt('Copy this signup link', url)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs text-brand hover:bg-page"
+    >
+      <Copy size={12} />
+      {copied ? 'Copied' : 'Copy signup link'}
+    </button>
+  )
+}
+
 function InviteCard({
   organizationId,
+  organizationName,
   grantableRoles,
+  canChooseOrg,
+  choosableOrgs,
+  onSelectOrg,
   onInvited,
 }: {
   organizationId?: string
+  organizationName?: string
   grantableRoles: OrgRole[]
+  canChooseOrg: boolean
+  choosableOrgs: Membership[]
+  onSelectOrg: (organizationId: string) => void
   onInvited: () => Promise<void>
 }) {
   const [email, setEmail] = useState('')
@@ -328,6 +378,13 @@ function InviteCard({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!grantableRoles.includes(role)) {
+      setRole(grantableRoles[0] ?? 'viewer')
+    }
+  }, [grantableRoles, role])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -335,17 +392,25 @@ function InviteCard({
     setBusy(true)
     setError(null)
     setNotice(null)
+    setShareUrl(null)
     try {
       const result = await inviteMember(organizationId, email, role)
       if (result.error) {
         setError(result.error)
         return
       }
-      setNotice(
-        result.addedImmediately
-          ? `${email} already had an account and now has ${ROLE_LABELS[role]} access to this organisation.`
-          : `${email} has been invited as ${ROLE_LABELS[role]}. They join automatically when they sign up.`,
-      )
+      const invitedEmail = email.trim().toLowerCase()
+      if (result.addedImmediately) {
+        setNotice(
+          `${invitedEmail} already had an account and now has ${ROLE_LABELS[role]} access to ${organizationName}. No email was sent.`,
+        )
+      } else {
+        const url = inviteSignupUrl(invitedEmail)
+        setShareUrl(url)
+        setNotice(
+          `${invitedEmail} is invited to ${organizationName} as ${ROLE_LABELS[role]}. Carbon Logic does not email them. Copy the signup link and send it yourself — they must create an account with that exact email.`,
+        )
+      }
       setEmail('')
       await onInvited()
     } finally {
@@ -357,9 +422,34 @@ function InviteCard({
     <section className="rounded-2xl border border-line bg-white p-5">
       <h2 className="text-lg font-semibold text-ink">Add or invite someone</h2>
       <p className="mt-1 text-sm text-muted">
-        Grant access to this organisation only. They will not see any other company’s data.
+        {canChooseOrg
+          ? 'Choose the organisation this person should join. Managers and other roles cannot move people into a different company.'
+          : `This invite can only add someone to ${organizationName}. You cannot place them in another organisation.`}
       </p>
       <form onSubmit={submit} className="mt-4 flex flex-wrap items-end gap-3">
+        {canChooseOrg && choosableOrgs.length > 0 ? (
+          <div className="w-56">
+            <FormField label="Organisation">
+              <select
+                value={organizationId}
+                onChange={(event) => onSelectOrg(event.target.value)}
+                className={inputClass}
+              >
+                {choosableOrgs.map((membership) => (
+                  <option key={membership.organizationId} value={membership.organizationId}>
+                    {membership.organization.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          </div>
+        ) : (
+          <div className="min-w-[180px]">
+            <FormField label="Organisation">
+              <input readOnly value={organizationName ?? ''} className={`${inputClass} bg-page text-muted`} />
+            </FormField>
+          </div>
+        )}
         <div className="min-w-[240px] flex-1">
           <FormField label="Work email">
             <input
@@ -404,6 +494,12 @@ function InviteCard({
       {notice ? (
         <div className="mt-3">
           <Alert tone="success">{notice}</Alert>
+        </div>
+      ) : null}
+      {shareUrl ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-line bg-page px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink">{shareUrl}</span>
+          <CopyLinkButton url={shareUrl} />
         </div>
       ) : null}
     </section>
