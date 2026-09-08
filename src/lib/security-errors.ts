@@ -21,7 +21,9 @@ export function isPermissionError(error: { message?: string; code?: string } | n
     message.includes('row-level security') ||
     message.includes('violates row level') ||
     message.includes('jwt') ||
-    message.includes('permission denied')
+    message.includes('permission denied') ||
+    message.includes('not authenticated') ||
+    message.includes('not a member of this organisation')
   )
 }
 
