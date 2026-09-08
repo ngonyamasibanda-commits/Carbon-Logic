@@ -16,6 +16,7 @@ import {
   SBTI_SOURCES,
   calculateSbti,
   inventoryByYear,
+  alignConfigWithInventory,
   type CriterionCheck,
   type SbtiConfig,
 } from '../lib/sbti'
@@ -47,21 +48,16 @@ export default function TargetsPage() {
     () => new Map(inventory.map((row) => [row.year, row.total])),
     [inventory],
   )
-  const baseYearInventory = inventory.find((row) => row.year === config.baseYear)
-  const recentYearInventory = inventory.find((row) => row.year === config.mostRecentYear)
 
-  const effectiveConfig = useMemo<SbtiConfig>(() => {
-    if (!config.useLiveInventory) return config
-    return {
-      ...config,
-      baseScope1: baseYearInventory?.scope1 ?? 0,
-      baseScope2: baseYearInventory?.scope2 ?? 0,
-      baseScope3: baseYearInventory?.scope3 ?? 0,
-      recentScope1: recentYearInventory?.scope1 ?? baseYearInventory?.scope1 ?? 0,
-      recentScope2: recentYearInventory?.scope2 ?? baseYearInventory?.scope2 ?? 0,
-      recentScope3: recentYearInventory?.scope3 ?? baseYearInventory?.scope3 ?? 0,
-    }
-  }, [config, baseYearInventory, recentYearInventory])
+  const effectiveConfig = useMemo(
+    () => alignConfigWithInventory(config, inventory),
+    [config, inventory],
+  )
+  const yearsAlignedToInventory =
+    config.useLiveInventory &&
+    inventory.length > 0 &&
+    (effectiveConfig.baseYear !== config.baseYear ||
+      effectiveConfig.mostRecentYear !== config.mostRecentYear)
 
   const result = useMemo(
     () => calculateSbti(effectiveConfig, organisationName, actualByYear),
@@ -189,10 +185,18 @@ export default function TargetsPage() {
             />
             Fill from logged emissions
           </label>
-          {config.useLiveInventory && !baseYearInventory ? (
+          {config.useLiveInventory && inventory.length === 0 ? (
             <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              No entries logged for {config.baseYear}. Add data for that year or untick the box and
-              enter the inventory manually.
+              No entries logged yet. Add data or untick the box and enter the inventory manually.
+            </p>
+          ) : null}
+          {yearsAlignedToInventory ? (
+            <p className="mt-2 rounded-md border border-line bg-page px-3 py-2 text-xs text-muted">
+              Logged emissions are in {effectiveConfig.baseYear}
+              {effectiveConfig.mostRecentYear !== effectiveConfig.baseYear
+                ? `–${effectiveConfig.mostRecentYear}`
+                : ''}
+              , so the pathway uses those years instead of {config.baseYear}/{config.mostRecentYear}.
             </p>
           ) : null}
 
@@ -272,10 +276,10 @@ export default function TargetsPage() {
 
         <Card step="Step 2" title="Target settings">
           <div className="grid gap-3 sm:grid-cols-2">
-            <NumberField label="Base year" value={config.baseYear} onChange={(v) => set('baseYear', v)} />
+            <NumberField label="Base year" value={effectiveConfig.baseYear} onChange={(v) => set('baseYear', v)} />
             <NumberField
               label="Most recent inventory year"
-              value={config.mostRecentYear}
+              value={effectiveConfig.mostRecentYear}
               onChange={(v) => set('mostRecentYear', v)}
             />
             <NumberField
@@ -431,52 +435,67 @@ export default function TargetsPage() {
       <section className="rounded-2xl border border-line bg-white p-5">
         <h2 className="text-lg font-semibold text-ink">Decarbonisation pathway</h2>
         <p className="mt-1 text-sm text-muted">
-          Required trajectory from the {config.baseYear} base year through the {config.targetYear}{' '}
-          near-term target to net-zero in {config.netZeroYear}, with your logged emissions plotted
-          against it.
+          Required trajectory from the {effectiveConfig.baseYear} base year through the{' '}
+          {effectiveConfig.targetYear} near-term target to net-zero in {effectiveConfig.netZeroYear}
+          {inventory.length > 0 ? ', with your logged emissions plotted against it' : ''}.
         </p>
-        <div className="mt-4">
-          <ResponsiveContainer width="100%" height={320}>
-            <LineChart data={result.pathway} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-              <CartesianGrid stroke="#e2e8f0" vertical={false} />
-              <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 12 }} minTickGap={24} />
-              <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
-              <Tooltip
-                formatter={(value, name) => [`${t(Number(value))} tCO₂e`, String(name)]}
-                labelFormatter={(label) => `Year ${label}`}
-              />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="required"
-                name="Near-term pathway"
-                stroke={NAVY}
-                strokeWidth={2.5}
-                dot={false}
-                connectNulls={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="netZero"
-                name="Net-zero pathway"
-                stroke={SLATE}
-                strokeWidth={2}
-                strokeDasharray="6 5"
-                dot={false}
-                connectNulls={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="actual"
-                name="Actual emissions"
-                stroke={GREEN}
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: GREEN }}
-                connectNulls
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        {result.baseTotal <= 0 ? (
+          <p className="mt-4 rounded-md border border-line bg-page px-4 py-8 text-center text-sm text-muted">
+            Enter base-year emissions, or log activities, to plot the science-based pathway.
+          </p>
+        ) : (
+          <div className="mt-4 h-[320px] w-full min-w-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={result.pathway} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+                <CartesianGrid stroke="#e2e8f0" vertical={false} />
+                <XAxis dataKey="year" tick={{ fill: '#64748b', fontSize: 12 }} minTickGap={24} />
+                <YAxis
+                  tick={{ fill: '#64748b', fontSize: 12 }}
+                  domain={[0, (max: number) => (Number.isFinite(max) && max > 0 ? Math.ceil(max * 1.15) : 1)]}
+                  tickFormatter={(value) => (value >= 1000 ? `${Math.round(value / 100) / 10}k` : String(value))}
+                />
+                <Tooltip
+                  formatter={(value, name) =>
+                    value == null ? ['—', String(name)] : [`${t(Number(value))} tCO₂e`, String(name)]
+                  }
+                  labelFormatter={(label) => `Year ${label}`}
+                />
+                <Legend />
+                <Line
+                  type="linear"
+                  dataKey="required"
+                  name="Near-term pathway"
+                  stroke={NAVY}
+                  strokeWidth={2.5}
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey="netZero"
+                  name="Net-zero pathway"
+                  stroke={SLATE}
+                  strokeWidth={2}
+                  strokeDasharray="6 5"
+                  dot={false}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="linear"
+                  dataKey="actual"
+                  name="Actual emissions"
+                  stroke={GREEN}
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: GREEN }}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-line bg-white p-5">

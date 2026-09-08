@@ -179,9 +179,48 @@ export type TargetLeg = DynamicTargetResult & {
 
 export type PathwayPoint = {
   year: number
-  required: number | null
-  netZero: number | null
-  actual: number | null
+  /** Near-term contraction. Omitted after the target year so the chart does not drop to zero. */
+  required?: number
+  /** Long-term net-zero contraction. Omitted before the target year. */
+  netZero?: number
+  actual?: number
+}
+
+/** When filling from logged entries, use years that actually have data. */
+export function alignConfigWithInventory(config: SbtiConfig, inventory: InventoryYear[]): SbtiConfig {
+  if (!config.useLiveInventory) return config
+  const byYear = new Map(inventory.map((row) => [row.year, row]))
+  if (byYear.size === 0) {
+    return {
+      ...config,
+      baseScope1: 0,
+      baseScope2: 0,
+      baseScope3: 0,
+      recentScope1: 0,
+      recentScope2: 0,
+      recentScope3: 0,
+    }
+  }
+  const years = inventory.map((row) => row.year)
+  const earliest = years[0]
+  const latest = years[years.length - 1]
+  const baseYear = byYear.has(config.baseYear) ? config.baseYear : earliest
+  const mostRecentYear = byYear.has(config.mostRecentYear)
+    ? Math.max(config.mostRecentYear, baseYear)
+    : Math.max(latest, baseYear)
+  const baseRow = byYear.get(baseYear)
+  const recentRow = byYear.get(mostRecentYear) ?? baseRow
+  return {
+    ...config,
+    baseYear,
+    mostRecentYear,
+    baseScope1: baseRow?.scope1 ?? 0,
+    baseScope2: baseRow?.scope2 ?? 0,
+    baseScope3: baseRow?.scope3 ?? 0,
+    recentScope1: recentRow?.scope1 ?? 0,
+    recentScope2: recentRow?.scope2 ?? 0,
+    recentScope3: recentRow?.scope3 ?? 0,
+  }
 }
 
 export type CriterionCheck = {
@@ -222,29 +261,28 @@ function buildPathway(
   const lastYear = Math.max(config.netZeroYear, config.targetYear)
 
   for (let year = config.baseYear; year <= lastYear; year += 1) {
-    let required: number | null = null
+    const point: PathwayPoint = { year }
+
     if (year <= config.targetYear) {
       // Equation 8 applied to any year between the base year and the target year.
       const s12Year = s12.baseEmissions * (1 - s12.rate * (year - config.baseYear))
       const s3Year = s3.baseEmissions * (1 - s3.rate * (year - config.baseYear))
-      required = Math.max(0, s12Year) + Math.max(0, s3Year)
+      point.required = Number((Math.max(0, s12Year) + Math.max(0, s3Year)).toFixed(3))
     }
 
-    let netZero: number | null = null
     if (year >= config.targetYear && config.netZeroYear > config.targetYear) {
       const span = config.netZeroYear - config.targetYear
       const progress = span > 0 ? (year - config.targetYear) / span : 1
-      netZero = targetTotal + (netZeroTotal - targetTotal) * progress
+      point.netZero = Number((targetTotal + (netZeroTotal - targetTotal) * progress).toFixed(3))
     } else if (year === config.targetYear) {
-      netZero = targetTotal
+      point.netZero = Number(targetTotal.toFixed(3))
     }
 
-    points.push({
-      year,
-      required: required == null ? null : Number(required.toFixed(3)),
-      netZero: netZero == null ? null : Number(netZero.toFixed(3)),
-      actual: actualByYear.has(year) ? Number((actualByYear.get(year) ?? 0).toFixed(3)) : null,
-    })
+    if (actualByYear.has(year)) {
+      point.actual = Number((actualByYear.get(year) ?? 0).toFixed(3))
+    }
+
+    points.push(point)
   }
   return points
 }

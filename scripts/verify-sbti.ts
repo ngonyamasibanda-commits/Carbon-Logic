@@ -100,4 +100,24 @@ console.log(
   `\n2025 base year, 2035 target, 50:50 scope 1:2 -> ${(headline.s12.adjustedAmbition * 100).toFixed(1)}% reduction`,
 )
 
+const path = headline.pathway
+const afterTarget = path.filter((point) => point.year > 2035)
+const requiredAfterTarget = afterTarget.some((point) => point.required != null)
+const netZeroBeforeTarget = path.some((point) => point.year < 2035 && point.netZero != null)
+const targetJoin = path.find((point) => point.year === 2035)
+const joinOk =
+  targetJoin?.required != null &&
+  targetJoin.netZero != null &&
+  Math.abs((targetJoin.required ?? 0) - (targetJoin.netZero ?? 0)) < 0.02
+if (requiredAfterTarget) failed += 1
+if (netZeroBeforeTarget) failed += 1
+if (!joinOk) failed += 1
+console.log(
+  `${requiredAfterTarget ? 'FAIL' : 'PASS'}  near-term series stops after the target year`,
+)
+console.log(
+  `${netZeroBeforeTarget ? 'FAIL' : 'PASS'}  net-zero series starts at the target year`,
+)
+console.log(`${joinOk ? 'PASS' : 'FAIL'}  pathways meet at the target year`)
+
 process.exit(failed > 0 ? 1 : 0)
