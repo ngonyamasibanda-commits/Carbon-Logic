@@ -16,7 +16,8 @@ import {
 } from 'recharts'
 import { ChevronRight, Download, FileDown } from 'lucide-react'
 import { CATEGORIES, getCategory } from '../lib/categories'
-import { downloadCsv, downloadText, printReport } from '../lib/export'
+import { downloadInventoryCsv, downloadText, printAnalysisReport } from '../lib/export'
+import { summarizeInventory } from '../lib/ghg'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
 import { useOrg } from '../providers/OrgProvider'
@@ -156,6 +157,7 @@ export default function AnalysisPage() {
   const scope1 = byScope.find((row) => row.name === 'Scope 1')?.value ?? 0
   const scope2 = byScope.find((row) => row.name === 'Scope 2')?.value ?? 0
   const scope3 = byScope.find((row) => row.name === 'Scope 3')?.value ?? 0
+  const inventory = useMemo(() => summarizeInventory(filtered), [filtered])
 
   const rowsByScope = useMemo(() => {
     const groups = new Map<string, { name: string; value: number }[]>()
@@ -181,10 +183,19 @@ export default function AnalysisPage() {
         <div>
           <p className="text-sm text-muted">Home / Analysis</p>
           <h1 className="text-3xl font-bold text-ink">Yearly Analysis</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            What the numbers mean for {organization?.name ?? 'this organisation'}: mix, hotspots, and gaps.
+            Combined Results is the GHG Protocol inventory for disclosure.
+          </p>
         </div>
         <button
           type="button"
-          onClick={() => printReport('Carbon Logic yearly analysis', filtered)}
+          onClick={() =>
+            printAnalysisReport(filtered, {
+              organizationName: organization?.name ?? 'Organisation',
+              revenue,
+            })
+          }
           className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white"
         >
           <FileDown size={16} />
@@ -350,7 +361,7 @@ export default function AnalysisPage() {
           <button
             type="button"
             className="text-sm text-brand hover:underline"
-            onClick={() => downloadCsv('results-breakdown.csv', filtered)}
+            onClick={() => downloadInventoryCsv('analysis-inventory.csv', filtered)}
           >
             Export CSV
           </button>
@@ -415,37 +426,46 @@ export default function AnalysisPage() {
       </section>
 
       <section className="rounded-xl border border-line bg-white p-5 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold">Entries</h2>
-        <p className="mb-3 text-xs text-muted">Each row shows the GHG scope and input category. Calculation workings stay on the category form, not here.</p>
+        <h2 className="mb-3 text-lg font-semibold">In plain language</h2>
+        <ul className="list-disc space-y-2 pl-5 text-sm text-muted">
+          {inventory.insights.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="rounded-xl border border-line bg-white p-5 shadow-sm">
+        <h2 className="mb-1 text-lg font-semibold">Scope 3 · GHG Protocol Categories 1 to 15</h2>
+        <p className="mb-3 text-xs text-muted">
+          Categories 1–7 are the usual priorities for construction and logistics. 8–15 are listed so a
+          report looks complete; empty means not logged, not necessarily zero.
+        </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line text-left text-muted">
-                <th className="py-2 font-semibold">Date</th>
-                <th className="py-2 font-semibold">Scope</th>
                 <th className="py-2 font-semibold">Category</th>
-                <th className="py-2 font-semibold">Site</th>
+                <th className="py-2 font-semibold">Name</th>
                 <th className="py-2 font-semibold">tCO₂e</th>
+                <th className="py-2 font-semibold">% of total</th>
+                <th className="py-2 font-semibold">Status</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-muted">
-                    No entries match these filters.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((entry) => (
-                  <tr key={entry.id} className="border-b border-line">
-                    <td className="py-2">{entry.created_at.slice(0, 10)}</td>
-                    <td className="py-2">{entry.scope}</td>
-                    <td className="py-2">{getCategory(entry.category)?.name ?? entry.category}</td>
-                    <td className="py-2 text-muted">{entry.site || '—'}</td>
-                    <td className="py-2 font-medium">{entry.emissions_tco2e.toFixed(2)}</td>
+              {inventory.rows
+                .filter((row) => row.scope === 'Scope 3')
+                .map((row) => (
+                  <tr key={row.key} className="border-b border-line">
+                    <td className="py-2 font-medium">{row.code}</td>
+                    <td className="py-2">
+                      {row.name}
+                      <div className="text-xs text-muted">{row.plain}</div>
+                    </td>
+                    <td className="py-2 font-medium">{row.status === 'reported' ? row.tco2e.toFixed(2) : '—'}</td>
+                    <td className="py-2 text-muted">{row.status === 'reported' ? `${row.percent.toFixed(1)}%` : '—'}</td>
+                    <td className="py-2 text-xs">{row.status === 'reported' ? 'Reported' : 'Not yet logged'}</td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
         </div>

@@ -2,7 +2,7 @@ export default function FaqsPage() {
   const items = [
     {
       q: 'How is tCO₂e calculated?',
-      a: 'Every entry uses (Activity Amount × Conversion Value) / 1000. Conversion values are kg CO₂e per unit, loaded from the emission factors database. Analysis and results tables show the GHG scope and input category for each entry, rather than the calculation working.',
+      a: 'Every entry uses (Activity Amount × Conversion Value) / 1000. Conversion values are kg CO₂e per unit, loaded from the emission factors database. Combined Results and Analysis show GHG Protocol totals, not the calculation working for each row.',
     },
     {
       q: 'Which activities are in Scope 1, 2, and 3?',
@@ -31,6 +31,10 @@ export default function FaqsPage() {
     {
       q: 'What is PAS 2080 and why does it matter for construction?',
       a: 'PAS 2080 is the UK standard for managing infrastructure carbon. It requires whole-life carbon assessment across stages A1–A5 (product and construction), B1–B7 (use), and C1–C4 (end of life). This tool covers A1–A3 (cradle-to-gate embodied carbon) via the Bulk Materials category.',
+    },
+    {
+      q: 'What is the difference between Combined Results and Analysis?',
+      a: 'Combined Results is your GHG Protocol inventory: Scope 1, Scope 2, and Scope 3 Categories 1–15, including empty categories so a report looks complete. Analysis is for decisions: mix, hotspots, trends, and what to log next. Individual activity rows stay on each data-input form as the audit trail.',
     },
     {
       q: 'Why did I not get an invite or confirmation email?',
