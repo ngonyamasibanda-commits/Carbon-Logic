@@ -101,25 +101,29 @@ export default function Header() {
 
             <div className="border-b border-line py-1.5">
               <div className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                Organisations
+                Organisation
               </div>
-              {memberships.map((membership) => (
-                <button
-                  key={membership.id}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    switchOrganization(membership.organizationId)
-                    setOpen(false)
-                  }}
-                  className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-page"
-                >
-                  <span className="truncate">{membership.organization.name}</span>
-                  {membership.organizationId === organization?.id ? (
-                    <Check size={14} className="shrink-0 text-accent-dark" />
-                  ) : null}
-                </button>
-              ))}
+              {canCreateOrganizations ? (
+                memberships.map((membership) => (
+                  <button
+                    key={membership.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      switchOrganization(membership.organizationId)
+                      setOpen(false)
+                    }}
+                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-page"
+                  >
+                    <span className="truncate">{membership.organization.name}</span>
+                    {membership.organizationId === organization?.id ? (
+                      <Check size={14} className="shrink-0 text-accent-dark" />
+                    ) : null}
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-2 text-sm text-ink">{organization?.name ?? 'No organisation'}</div>
+              )}
               {canCreateOrganizations && creatingOrg ? (
                 <form onSubmit={(event) => void submitNewOrg(event)} className="space-y-2 px-4 py-2">
                   <input
