@@ -44,7 +44,7 @@ function friendlyError(message: string): string {
     return 'That email and password combination is not correct.'
   }
   if (normalised.includes('email not confirmed')) {
-    return 'Confirm your email address first. Check your inbox for the link.'
+    return 'This address is not confirmed yet. Check spam for a message from Supabase, or ask a Carbon Logic owner to turn off Confirm email until Custom SMTP is set up.'
   }
   if (normalised.includes('rate limit') || normalised.includes('too many')) {
     return 'Too many attempts. Wait a minute before trying again.'
@@ -345,6 +345,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error ? friendlyError(error.message) : null }
   }, [])
 
+  const resendSignupConfirmation = useCallback(async (email: string) => {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.trim(),
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    })
+    return { error: error ? friendlyError(error.message) : null }
+  }, [])
+
   const switchOrganization = useCallback((organizationId: string) => {
     // Same class of bug as “change ?studentId= in the URL”: the client must not
     // adopt an organisation the session is not a member of. RLS would still
@@ -391,6 +400,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithSso,
       signUpWithPassword,
       requestPasswordReset,
+      resendSignupConfirmation,
       signOut,
       signOutEverywhere,
       switchOrganization,
@@ -417,6 +427,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithSso,
       signUpWithPassword,
       requestPasswordReset,
+      resendSignupConfirmation,
       signOut,
       signOutEverywhere,
       switchOrganization,

@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Building2, KeyRound, Mail } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import AuthLayout, {
   Alert,
   FormField,
@@ -25,17 +26,28 @@ export default function LoginPage() {
     signInWithSso,
     signUpWithPassword,
     requestPasswordReset,
+    resendSignupConfirmation,
     lastSignOutReason,
   } = useAuth()
+  const [searchParams] = useSearchParams()
+  const invitedEmail = (searchParams.get('email') ?? '').trim()
+  const fromInvite = searchParams.get('invite') === '1' && Boolean(invitedEmail)
 
-  const [mode, setMode] = useState<Mode>('password')
-  const [email, setEmail] = useState('')
+  const [mode, setMode] = useState<Mode>(fromInvite ? 'signup' : 'password')
+  const [email, setEmail] = useState(invitedEmail)
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [acceptedTerms, setAcceptedTerms] = useState(false)
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false)
+
+  useEffect(() => {
+    if (!invitedEmail) return
+    setEmail(invitedEmail)
+    if (fromInvite) setMode('signup')
+  }, [invitedEmail, fromInvite])
 
   const passwordCheck = assessPassword(password, email)
   const signedOutNotice =
@@ -47,6 +59,7 @@ export default function LoginPage() {
     setMode(next)
     setError(null)
     setNotice(null)
+    setAwaitingConfirmation(false)
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -54,6 +67,7 @@ export default function LoginPage() {
     setBusy(true)
     setError(null)
     setNotice(null)
+    setAwaitingConfirmation(false)
 
     try {
       if (mode === 'password') {
@@ -65,7 +79,11 @@ export default function LoginPage() {
       if (mode === 'magic') {
         const { error: linkError } = await signInWithMagicLink(email)
         if (linkError) setError(linkError)
-        else setNotice(`If ${email} has an account, a sign-in link is on its way.`)
+        else {
+          setNotice(
+            `If ${email} has an account, Supabase will try to email a sign-in link. That message often never arrives until Custom SMTP is set up — use a password if nothing comes.`,
+          )
+        }
         return
       }
 
@@ -78,7 +96,11 @@ export default function LoginPage() {
       if (mode === 'forgot') {
         const { error: resetError } = await requestPasswordReset(email)
         if (resetError) setError(resetError)
-        else setNotice(`If ${email} has an account, a reset link is on its way.`)
+        else {
+          setNotice(
+            `If ${email} has an account, Supabase will try to email a reset link. Check spam. If nothing arrives, Custom SMTP is not configured yet.`,
+          )
+        }
         return
       }
 
@@ -93,7 +115,12 @@ export default function LoginPage() {
       const result = await signUpWithPassword(email, password, fullName)
       if (result.error) setError(result.error)
       else if (result.needsConfirmation) {
-        setNotice('Check your inbox and confirm your email address to finish setting up.')
+        setAwaitingConfirmation(true)
+        setNotice(
+          fromInvite
+            ? 'Your account is created for this invited email. Carbon Logic does not send the confirmation message — it comes from Supabase and often never arrives. Check spam, or ask the person who invited you to turn off Confirm email in Supabase until SMTP is set up.'
+            : 'Your account is created. Carbon Logic does not send the confirmation message — it comes from Supabase and often never arrives. Check spam, or ask a Carbon Logic owner to turn off Confirm email in Supabase until Custom SMTP is set up.',
+        )
       }
     } finally {
       setBusy(false)
@@ -104,7 +131,7 @@ export default function LoginPage() {
     password: { title: 'Sign in', subtitle: 'Use your Carbon Logic account.', cta: 'Sign in' },
     magic: {
       title: 'Email me a link',
-      subtitle: 'We will send a single-use link that signs you in.',
+      subtitle: 'Supabase will try to email a single-use link. Use a password if it does not arrive.',
       cta: 'Send sign-in link',
     },
     sso: {
@@ -114,12 +141,14 @@ export default function LoginPage() {
     },
     signup: {
       title: 'Create your account',
-      subtitle: 'You will join an organisation once someone invites you.',
+      subtitle: fromInvite
+        ? 'Use this exact invited email so you join the right organisation automatically.'
+        : 'If someone invited you, use that exact email. Only a Carbon Logic owner can create a new organisation.',
       cta: 'Create account',
     },
     forgot: {
       title: 'Reset your password',
-      subtitle: 'We will email you a link to choose a new one.',
+      subtitle: 'Supabase will try to email a reset link. It often does not arrive without Custom SMTP.',
       cta: 'Send reset link',
     },
   }[mode]
@@ -150,6 +179,25 @@ export default function LoginPage() {
         {signedOutNotice && !error && !notice ? <Alert tone="info">{signedOutNotice}</Alert> : null}
         {error ? <Alert tone="error">{error}</Alert> : null}
         {notice ? <Alert tone="success">{notice}</Alert> : null}
+        {awaitingConfirmation ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void (async () => {
+                setBusy(true)
+                setError(null)
+                const { error: resendError } = await resendSignupConfirmation(email)
+                setBusy(false)
+                if (resendError) setError(resendError)
+                else setNotice('Tried to resend the Supabase confirmation email. Check spam. If nothing arrives, SMTP is not configured.')
+              })()
+            }}
+            className="text-sm font-medium text-brand hover:underline"
+          >
+            Try sending the confirmation email again
+          </button>
+        ) : null}
 
         {mode === 'signup' ? (
           <FormField label="Full name">
@@ -169,6 +217,7 @@ export default function LoginPage() {
             type="email"
             autoComplete="email"
             required
+            readOnly={fromInvite}
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             className={inputClass}

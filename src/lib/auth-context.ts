@@ -40,6 +40,7 @@ export type AuthContextValue = {
     fullName: string,
   ) => Promise<AuthResult & { needsConfirmation: boolean }>
   requestPasswordReset: (email: string) => Promise<AuthResult>
+  resendSignupConfirmation: (email: string) => Promise<AuthResult>
   signOut: (reason?: SignOutReason) => Promise<void>
   signOutEverywhere: () => Promise<void>
   switchOrganization: (organizationId: string) => void

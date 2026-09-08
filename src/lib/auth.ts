@@ -90,6 +90,13 @@ export function isFounderEmail(email: string | null | undefined): boolean {
   return isPlatformOwnerEmail(email)
 }
 
+export function inviteSignupUrl(email: string, origin = window.location.origin) {
+  const url = new URL('/login', origin)
+  url.searchParams.set('email', email.trim().toLowerCase())
+  url.searchParams.set('invite', '1')
+  return url.toString()
+}
+
 export type Organization = {
   id: string
   name: string

@@ -33,6 +33,10 @@ export default function FaqsPage() {
       a: 'PAS 2080 is the UK standard for managing infrastructure carbon. It requires whole-life carbon assessment across stages A1–A5 (product and construction), B1–B7 (use), and C1–C4 (end of life). This tool covers A1–A3 (cradle-to-gate embodied carbon) via the Bulk Materials category.',
     },
     {
+      q: 'Why did I not get an invite or confirmation email?',
+      a: 'Carbon Logic does not send invitation emails. The person who invited you should share a signup link. You must create an account with that exact email to join their organisation. Confirmation, magic-link, and password-reset messages come from Supabase, not Carbon Logic, and often never arrive until Custom SMTP is configured. Until then, a Carbon Logic owner can turn off Confirm email in Supabase Authentication.',
+    },
+    {
       q: 'Can I use spend-based factors for Scope 3?',
       a: 'Yes — the Purchased Goods & Services category uses DEFRA\'s EEIO (environmentally extended input–output) factors based on £ thousands of spend. However, activity-based methods (e.g. actual material weights, fuel volumes, tkm) are always more accurate and should be preferred when data is available.',
     },
