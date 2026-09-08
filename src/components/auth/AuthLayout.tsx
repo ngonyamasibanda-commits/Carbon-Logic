@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { LogoLockup } from '../brand/Logo'
 
@@ -62,6 +63,43 @@ export function FormField({
 
 export const inputClass =
   'mt-1 w-full rounded-md border border-line px-3 py-2 text-sm font-normal outline-none focus:border-brand focus:ring-2 focus:ring-brand/15'
+
+export function PasswordInput({
+  autoComplete,
+  required,
+  value,
+  onChange,
+}: {
+  autoComplete?: string
+  required?: boolean
+  value: string
+  onChange: (value: string) => void
+}) {
+  const [visible, setVisible] = useState(false)
+
+  return (
+    <div className="relative mt-1">
+      <input
+        type={visible ? 'text' : 'password'}
+        autoComplete={autoComplete}
+        required={required}
+        value={value}
+        spellCheck={false}
+        onChange={(event) => onChange(event.target.value)}
+        className={`${inputClass} mt-0 pr-10`}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((current) => !current)}
+        className="absolute inset-y-0 right-0 flex items-center px-3 text-muted hover:text-ink"
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        aria-pressed={visible}
+      >
+        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  )
+}
 
 export const primaryButtonClass =
   'w-full rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60'
