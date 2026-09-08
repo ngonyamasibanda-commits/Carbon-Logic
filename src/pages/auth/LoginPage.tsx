@@ -3,6 +3,7 @@ import { Building2, KeyRound, Mail } from 'lucide-react'
 import AuthLayout, {
   Alert,
   FormField,
+  PasswordInput,
   inputClass,
   primaryButtonClass,
 } from '../../components/auth/AuthLayout'
@@ -184,13 +185,11 @@ export default function LoginPage() {
                 : undefined
             }
           >
-            <input
-              type="password"
+            <PasswordInput
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               required
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className={inputClass}
+              onChange={setPassword}
             />
           </FormField>
         ) : null}
