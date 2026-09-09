@@ -98,6 +98,8 @@ export type EmissionEntry = {
   tags: string[]
   customFields: CustomField[]
   files: AttachedFile[]
+  /** Set when the row is stored for an organisation; omitted on unsynced local drafts. */
+  organization_id?: string
 }
 
 export type AdditionalState = {

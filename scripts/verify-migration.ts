@@ -137,6 +137,15 @@ async function main() {
   await db.exec(platformOwners)
   check('platform-owner access migration is idempotent (second run is clean)', true)
 
+  const orgEntries = readFileSync(join(root, 'supabase/migrations/0005_org_scoped_entries.sql'), 'utf8')
+  await db.exec(orgEntries)
+  check('organisation-scoped entries migration applies cleanly', true)
+  await db.exec(orgEntries)
+  check('organisation-scoped entries migration is idempotent (second run is clean)', true)
+
+  await db.exec(readFileSync(join(root, 'supabase/fix_entry_save.sql'), 'utf8'))
+  check('entry-save repair script applies cleanly', true)
+
   console.log('\nProvisioning users\n')
   const users = await db.query<{ id: string; email: string }>(`
     insert into auth.users (email, raw_user_meta_data) values
@@ -454,6 +463,66 @@ async function main() {
           [acme, id['owner@acme.test']],
         ),
       /row-level security/i,
+    ),
+  )
+
+  function listedRows(value: unknown): Array<Record<string, unknown>> {
+    if (typeof value === 'string') return JSON.parse(value) as Array<Record<string, unknown>>
+    if (Array.isArray(value)) return value as Array<Record<string, unknown>>
+    return []
+  }
+
+  await asUser(id['editor@acme.test'], async () => {
+    const listed = await db.query<{ list_emission_entries: unknown }>(
+      'select public.list_emission_entries($1)',
+      [acme],
+    )
+    const rows = listedRows(listed.rows[0].list_emission_entries)
+    check(
+      'an editor lists every organisation entry, not only their own',
+      rows.length >= 3,
+      `got ${rows.length}`,
+    )
+  })
+
+  const logged = await asUser(id['owner@acme.test'], async () => {
+    const result = await db.query<{ log_emission_entry: Record<string, unknown> }>(
+      `select public.log_emission_entry($1, 'fuels', 'Scope 1', 1.5, 'shared org row')`,
+      [acme],
+    )
+    return result.rows[0].log_emission_entry
+  })
+  check(
+    'logging an entry stores it on the organisation',
+    String(logged.organization_id) === acme,
+    `got ${JSON.stringify(logged)}`,
+  )
+
+  await asUser(id['editor@acme.test'], async () => {
+    const listed = await db.query<{ list_emission_entries: unknown }>(
+      'select public.list_emission_entries($1)',
+      [acme],
+    )
+    const rows = listedRows(listed.rows[0].list_emission_entries)
+    check(
+      'a second account in the same organisation sees the first account’s entries',
+      rows.some((row) => row.details === 'shared org row'),
+    )
+  })
+
+  await expectFailure(
+    'another tenant cannot list this organisation’s entries by id',
+    () =>
+      asUser(id['rival@other.test'], () => db.query('select public.list_emission_entries($1)', [acme])),
+    /not a member/i,
+  )
+
+  await asUser(id['viewer@acme.test'], () =>
+    expectFailure(
+      'a viewer cannot log an entry through the RPC',
+      () =>
+        db.query(`select public.log_emission_entry($1, 'fuels', 'Scope 1', 1, 'viewer row')`, [acme]),
+      /not a member|row-level security/i,
     ),
   )
 

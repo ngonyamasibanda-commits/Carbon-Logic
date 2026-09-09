@@ -573,31 +573,11 @@ export function assessPassword(password: string, email = ''): PasswordAssessment
 }
 
 /**
- * Clears session-only workspace cache on sign-out. Emission entries, sites, and
- * the last organisation must survive: a failed cloud write previously lived only
- * in localStorage, so wiping it made logged work vanish on the next login.
+ * Clears session timers on sign-out. Organisation inventory (entries, sites,
+ * targets, factors) must survive: it is shared by every account in the org and
+ * a failed cloud write may still only exist in this browser.
  */
 export function clearLocalWorkspaceData() {
-  const prefixes = ['carbon-logic-']
-  const keepExact = new Set([
-    'carbon-logic-auth',
-    'carbon-logic-profile',
-    'carbon-logic-sites',
-    'carbon-logic-active-org',
-    'carbon-logic-entry-meta',
-    'carbon-logic-revenue',
-  ])
-  const keepPrefixes = [
-    'carbon-logic-entries:',
-    'carbon-logic-sites:',
-    'carbon-logic-revenue:',
-  ]
-  const doomed: string[] = []
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const key = localStorage.key(i)
-    if (!key) continue
-    if (keepExact.has(key) || keepPrefixes.some((prefix) => key.startsWith(prefix))) continue
-    if (prefixes.some((prefix) => key.startsWith(prefix))) doomed.push(key)
-  }
-  for (const key of doomed) localStorage.removeItem(key)
+  localStorage.removeItem('carbon-logic-session-start')
+  localStorage.removeItem('carbon-logic-last-activity')
 }
