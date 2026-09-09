@@ -117,6 +117,11 @@ function main() {
       peekLocalEntries(orgB).some((row) => row.id === '99'),
   )
 
+  check(
+    'a browser-only row is treated as unsynced',
+    localDraft.id.startsWith('local-') && saved.id === '42',
+  )
+
   console.log(`\n${passed} passed, ${failed} failed\n`)
   if (failed > 0) process.exit(1)
 }

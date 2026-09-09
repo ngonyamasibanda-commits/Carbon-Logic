@@ -1,6 +1,8 @@
 -- Fix emission entries so they belong to the organisation, not the browser session.
 --
--- Paste into the Supabase SQL editor and run once. Safe to re-run.
+-- ONE-TIME database setup. Paste into the Supabase SQL editor and run once.
+-- Safe to re-run. Never run this when logging an activity — after this exists,
+-- every save writes to the organisation automatically.
 --
 -- What this does:
 --   1. Keeps the hourly quota trigger from aborting a save when quota tables
