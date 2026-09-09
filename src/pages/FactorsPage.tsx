@@ -1,7 +1,19 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Download, Upload } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, ChevronUp, Download, Search, Upload, X } from 'lucide-react'
 import { downloadText } from '../lib/export'
 import { factorsToCsv, monthsStale, parseFactorSpreadsheet } from '../lib/factors-store'
+import {
+  DEFAULT_FACTOR_QUERY,
+  FACTOR_FRESHNESS_FILTERS,
+  FACTOR_SCOPE_FILTERS,
+  FACTOR_SOURCE_FILTERS,
+  factorQueryIsFiltered,
+  nextFactorSort,
+  queryFactors,
+  uniqueSortedValues,
+  type FactorQuery,
+  type FactorSortKey,
+} from '../lib/factors-query'
 import { safeHttpUrl } from '../lib/safe'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from '../lib/types'
 import { useEntries } from '../lib/entries-context'
@@ -37,25 +49,28 @@ const emptyForm = (): EmissionFactor => ({
 
 export default function FactorsPage() {
   const { factors, saveFactors } = useEntries()
-  const [query, setQuery] = useState('')
+  const [tableQuery, setTableQuery] = useState<FactorQuery>(DEFAULT_FACTOR_QUERY)
   const [editing, setEditing] = useState<EmissionFactor | null>(null)
   const [form, setForm] = useState<EmissionFactor>(emptyForm)
   const [status, setStatus] = useState<string | null>(null)
 
-  const rows = useMemo(() => {
-    const list = [...factors.values()].sort((a, b) => a.name.localeCompare(b.name))
-    const q = query.toLowerCase()
-    return list.filter(
-      (factor) =>
-        factor.key.toLowerCase().includes(q) ||
-        factor.name.toLowerCase().includes(q) ||
-        factor.category.toLowerCase().includes(q) ||
-        factor.source.toLowerCase().includes(q) ||
-        factor.sourceFamily.toLowerCase().includes(q),
-    )
-  }, [factors, query])
+  const allFactors = useMemo(() => [...factors.values()], [factors])
+  const categories = useMemo(() => uniqueSortedValues(allFactors, 'category'), [allFactors])
+  const regions = useMemo(() => uniqueSortedValues(allFactors, 'region'), [allFactors])
+  const rows = useMemo(() => queryFactors(allFactors, tableQuery), [allFactors, tableQuery])
+  const filtered = factorQueryIsFiltered(tableQuery)
+  const staleCount = allFactors.filter((factor) => monthsStale(factor) || factor.isPlaceholder).length
 
-  const staleCount = rows.filter((factor) => monthsStale(factor) || factor.isPlaceholder).length
+  function patchQuery(patch: Partial<FactorQuery>) {
+    setTableQuery((current) => ({ ...current, ...patch }))
+  }
+
+  function onSort(column: FactorSortKey) {
+    setTableQuery((current) => ({
+      ...current,
+      ...nextFactorSort(current.sortKey, current.sortDir, column),
+    }))
+  }
 
   async function persist(next: EmissionFactor[]) {
     await saveFactors(next)
@@ -155,7 +170,7 @@ export default function FactorsPage() {
 
       {staleCount > 0 ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {staleCount} factor{staleCount === 1 ? '' : 's'} are older than 12 months or still
+          {staleCount} factor{staleCount === 1 ? ' is' : 's are'} older than 12 months or still
           marked as seed/placeholder. Update them before using figures in a filing.
         </p>
       ) : null}
@@ -219,84 +234,148 @@ export default function FactorsPage() {
         </div>
       </form>
 
-      <input
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search factors or source (DEFRA, DESNZ, ICE, EIO)..."
-        className="w-full rounded-md border border-line px-3 py-2 text-sm"
-      />
+      <div className="space-y-3 rounded-xl border border-line bg-white p-4">
+        <label className="relative block">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            value={tableQuery.search}
+            onChange={(event) => patchQuery({ search: event.target.value })}
+            placeholder="Search name, key, category, unit, region, or source…"
+            className="w-full rounded-md border border-line py-2 pl-9 pr-3 text-sm"
+            aria-label="Search emission factors"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterSelect
+            label="Scope"
+            value={tableQuery.scope}
+            onChange={(value) => patchQuery({ scope: value as FactorQuery['scope'] })}
+            options={FACTOR_SCOPE_FILTERS.map((scope) => [scope, scope === 'all' ? 'All scopes' : scope])}
+          />
+          <FilterSelect
+            label="Source"
+            value={tableQuery.sourceFamily}
+            onChange={(value) => patchQuery({ sourceFamily: value as FactorQuery['sourceFamily'] })}
+            options={FACTOR_SOURCE_FILTERS.map((family) => [family, family === 'all' ? 'All sources' : family])}
+          />
+          <FilterSelect
+            label="Category"
+            value={tableQuery.category}
+            onChange={(value) => patchQuery({ category: value })}
+            options={[['all', 'All categories'], ...categories.map((item) => [item, item] as const)]}
+          />
+          <FilterSelect
+            label="Region"
+            value={tableQuery.region}
+            onChange={(value) => patchQuery({ region: value })}
+            options={[['all', 'All regions'], ...regions.map((item) => [item, item] as const)]}
+          />
+          <FilterSelect
+            label="Status"
+            value={tableQuery.freshness}
+            onChange={(value) => patchQuery({ freshness: value as FactorQuery['freshness'] })}
+            options={FACTOR_FRESHNESS_FILTERS}
+          />
+          {filtered ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-xs text-muted hover:text-ink"
+              onClick={() =>
+                setTableQuery((current) => ({
+                  ...DEFAULT_FACTOR_QUERY,
+                  sortKey: current.sortKey,
+                  sortDir: current.sortDir,
+                }))
+              }
+            >
+              <X size={12} /> Clear filters
+            </button>
+          ) : null}
+          <p className="ml-auto text-xs text-muted">
+            Showing {rows.length} of {allFactors.length} factor{allFactors.length === 1 ? '' : 's'}
+          </p>
+        </div>
+      </div>
 
       <div className="overflow-x-auto rounded-xl border border-line bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-page text-muted">
             <tr>
-              <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2">Key</th>
-              <th className="px-3 py-2">Category</th>
-              <th className="px-3 py-2">Scope</th>
-              <th className="px-3 py-2">Value</th>
-              <th className="px-3 py-2">Unit</th>
-              <th className="px-3 py-2">Source</th>
-              <th className="px-3 py-2">Verified</th>
+              <SortHeader label="Name" column="name" query={tableQuery} onSort={onSort} />
+              <SortHeader label="Key" column="key" query={tableQuery} onSort={onSort} />
+              <SortHeader label="Category" column="category" query={tableQuery} onSort={onSort} />
+              <SortHeader label="Scope" column="scope" query={tableQuery} onSort={onSort} />
+              <SortHeader label="Value" column="conversionValue" query={tableQuery} onSort={onSort} />
+              <SortHeader label="Unit" column="unit" query={tableQuery} onSort={onSort} />
+              <SortHeader label="Source" column="sourceFamily" query={tableQuery} onSort={onSort} />
+              <SortHeader label="Verified" column="lastVerifiedAt" query={tableQuery} onSort={onSort} />
               <th className="px-3 py-2" />
             </tr>
           </thead>
           <tbody>
-            {rows.map((factor) => (
-              <tr key={factor.key} className="border-t border-line">
-                <td className="px-3 py-2">
-                  {factor.name}
-                  {factor.isPlaceholder ? (
-                    <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
-                      seed
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">{factor.key}</td>
-                <td className="px-3 py-2">{factor.category}</td>
-                <td className="px-3 py-2">{factor.scope}</td>
-                <td className="px-3 py-2">{factor.conversionValue}</td>
-                <td className="px-3 py-2">{factor.unit}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${FAMILY_STYLE[factor.sourceFamily]}`}
-                  >
-                    {factor.sourceFamily}
-                  </span>
-                  {safeHttpUrl(factor.sourceUrl) ? (
-                    <a
-                      href={safeHttpUrl(factor.sourceUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 block max-w-[220px] truncate text-[11px] text-brand hover:underline"
-                      title={factor.source}
-                    >
-                      {factor.source}
-                    </a>
-                  ) : (
-                    <div className="mt-1 max-w-[220px] truncate text-[11px] text-muted" title={factor.source}>
-                      {factor.source}
-                    </div>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  {factor.lastVerifiedAt}
-                  {monthsStale(factor) ? <span className="ml-1 text-amber-700">stale</span> : null}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <button type="button" className="text-brand hover:underline" onClick={() => startEdit(factor)}>
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="ml-3 text-muted hover:underline"
-                    onClick={() => void removeFactor(factor.key)}
-                  >
-                    Delete
-                  </button>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-3 py-10 text-center text-sm text-muted">
+                  No factors match those filters. Clear them to see the full library.
                 </td>
               </tr>
-            ))}
+            ) : (
+              rows.map((factor) => (
+                <tr key={factor.key} className="border-t border-line">
+                  <td className="px-3 py-2">
+                    {factor.name}
+                    {factor.isPlaceholder ? (
+                      <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
+                        seed
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-xs">{factor.key}</td>
+                  <td className="px-3 py-2">{factor.category}</td>
+                  <td className="px-3 py-2">{factor.scope}</td>
+                  <td className="px-3 py-2">{factor.conversionValue}</td>
+                  <td className="px-3 py-2">{factor.unit}</td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${FAMILY_STYLE[factor.sourceFamily]}`}
+                    >
+                      {factor.sourceFamily}
+                    </span>
+                    {safeHttpUrl(factor.sourceUrl) ? (
+                      <a
+                        href={safeHttpUrl(factor.sourceUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 block max-w-[220px] truncate text-[11px] text-brand hover:underline"
+                        title={factor.source}
+                      >
+                        {factor.source}
+                      </a>
+                    ) : (
+                      <div className="mt-1 max-w-[220px] truncate text-[11px] text-muted" title={factor.source}>
+                        {factor.source}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {factor.lastVerifiedAt}
+                    {monthsStale(factor) ? <span className="ml-1 text-amber-700">stale</span> : null}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <button type="button" className="text-brand hover:underline" onClick={() => startEdit(factor)}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="ml-3 text-muted hover:underline"
+                      onClick={() => void removeFactor(factor.key)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -322,5 +401,68 @@ function Field({
         className="mt-1 w-full rounded-md border border-line px-3 py-2 font-normal"
       />
     </label>
+  )
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: ReadonlyArray<readonly [string, string]>
+}) {
+  return (
+    <label className="rounded-full border border-dashed border-line bg-page px-3 py-1 text-xs">
+      <span className="mr-2 text-muted">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="bg-transparent font-medium"
+      >
+        {options.map(([id, name]) => (
+          <option key={id} value={id}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function SortHeader({
+  label,
+  column,
+  query,
+  onSort,
+}: {
+  label: string
+  column: FactorSortKey
+  query: FactorQuery
+  onSort: (column: FactorSortKey) => void
+}) {
+  const active = query.sortKey === column
+  return (
+    <th className="px-3 py-2" aria-sort={active ? (query.sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        className={`inline-flex items-center gap-1 ${active ? 'font-semibold text-ink' : 'font-medium text-muted hover:text-ink'}`}
+        onClick={() => onSort(column)}
+      >
+        {label}
+        {active ? (
+          query.sortDir === 'asc' ? (
+            <ChevronUp size={14} />
+          ) : (
+            <ChevronDown size={14} />
+          )
+        ) : (
+          <ArrowUpDown size={12} className="opacity-40" />
+        )}
+      </button>
+    </th>
   )
 }
