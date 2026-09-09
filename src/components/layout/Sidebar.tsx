@@ -49,7 +49,7 @@ export default function Sidebar() {
               Carbon Logic
             </div>
             <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em] text-accent-dark">
-              Construction & logistics
+              Construction, mining, & logistics
             </div>
           </div>
         </Link>

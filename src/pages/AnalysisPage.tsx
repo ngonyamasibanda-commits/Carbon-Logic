@@ -437,7 +437,7 @@ export default function AnalysisPage() {
       <section className="rounded-xl border border-line bg-white p-5 shadow-sm">
         <h2 className="mb-1 text-lg font-semibold">Scope 3 · GHG Protocol Categories 1 to 15</h2>
         <p className="mb-3 text-xs text-muted">
-          Categories 1–7 are the usual priorities for construction and logistics. 8–15 are listed so a
+          Categories 1–7 are the usual priorities for construction, mining, and logistics. 8–15 are listed so a
           report looks complete; empty means not logged, not necessarily zero.
         </p>
         <div className="overflow-x-auto">

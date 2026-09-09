@@ -1,7 +1,7 @@
 const ARTICLES = [
   {
     title: 'Scope 1 — Direct emissions from owned assets',
-    body: 'Owned generators, excavators, fleet vehicles, and refrigerant leaks are Scope 1. Log litres of diesel, gas oil, petrol, LPG, or natural gas consumed and keep delivery notes as evidence. HVO (hydrotreated vegetable oil) emits significantly less CO₂ than fossil diesel.',
+    body: 'Owned generators, excavators, haul trucks, drills, blasting explosives, fleet vehicles, refrigerant leaks, and mine methane are Scope 1. Log litres of diesel, gas oil, petrol, LPG, or natural gas consumed and keep delivery notes as evidence. HVO (hydrotreated vegetable oil) emits significantly less CO₂ than fossil diesel.',
   },
   {
     title: 'Scope 2 — Purchased energy',
@@ -9,7 +9,7 @@ const ARTICLES = [
   },
   {
     title: 'Scope 3 — Upstream & downstream value chain',
-    body: 'Scope 3 is usually the largest share of a construction or logistics company\'s footprint. It covers: freight transport (road, rail, sea, air), embodied carbon in materials (concrete, steel, timber), waste disposal, water, employee commuting, business travel, and purchased goods & services. The GHG Protocol defines 15 categories — this tool covers the most material ones.',
+    body: 'Scope 3 is usually a large share of a construction, mining, or logistics company\'s footprint. It covers: freight transport (road, rail, sea, air), embodied carbon in materials (concrete, steel, timber, lime), waste disposal including waste rock and tailings, water, employee commuting, business travel, and purchased goods & services. The GHG Protocol defines 15 categories — this tool covers the most material ones.',
   },
   {
     title: 'Freight and the GLEC Framework / ISO 14083',
@@ -40,6 +40,10 @@ const ARTICLES = [
     body: '(1) Track diesel and gas oil per machine using fuel cards or tank dips. (2) Get monthly electricity invoices for each site compound. (3) Require ready-mix concrete suppliers to provide EPDs. (4) Weigh skip loads and record disposal routes. (5) Add all subcontractor haulage under Scope 3. (6) Benchmark tCO₂e per £M contract value across projects.',
   },
   {
+    title: 'Tips for mining companies',
+    body: '(1) Log diesel for haul trucks, drills, and LHDs under Heavy Machinery, not Fleet Vehicles. (2) Record blasting agents under Explosives & blasting. (3) Convert ventilation air to methane before logging Mine methane & ventilation. (4) Assign electricity to the mine and the processing plant as separate facilities. (5) Put lime and grinding media in Bulk Materials; put ore and concentrate movements in freight. (6) Record waste rock and tailings under Site Waste with the disposal route.',
+  },
+  {
     title: 'Tips for logistics companies',
     body: '(1) Use tkm (tonne-kilometres) as your primary activity metric. (2) Track fuel consumption per vehicle/route. (3) Report Scope 1 (own fleet), Scope 3 (subcontracted transport). (4) Include well-to-tank (WTT) factors for completeness. (5) Benchmark tCO₂e per tkm against GLEC benchmarks. (6) Consider modal shift analysis (road → rail → sea).',
   },
@@ -51,7 +55,7 @@ export default function LearningHubPage() {
       <div>
         <h1 className="text-3xl font-bold text-ink">Learning Hub</h1>
         <p className="mt-2 text-sm text-muted">
-          Guides for construction and logistics carbon accounting. Covers GHG Protocol, SECR, PAS 2080, SBTi, and practical tips.
+          Guides for construction, mining, and logistics carbon accounting. Covers GHG Protocol, SECR, PAS 2080, SBTi, and practical tips.
         </p>
       </div>
       {ARTICLES.map((article) => (

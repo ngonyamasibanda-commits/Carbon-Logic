@@ -6,11 +6,11 @@ export default function FaqsPage() {
     },
     {
       q: 'Which activities are in Scope 1, 2, and 3?',
-      a: 'Scope 1 covers owned site fuel, heavy machinery, fleet vehicles, and refrigerant leaks. Scope 2 covers purchased site electricity and heat/steam. Scope 3 covers freight (road, rail, sea, air), construction waste, water, wastewater, crew transport, employee commuting, business travel, bulk materials (embodied carbon), purchased goods & services, and subcontracted logistics.',
+      a: 'Scope 1 covers owned site fuel, heavy machinery, explosives used in blasting, fleet vehicles, refrigerant leaks, and mine methane. Scope 2 covers purchased site electricity and heat/steam. Scope 3 covers freight (road, rail, sea, air), site waste (including construction arisings, waste rock, and tailings), water, wastewater, crew transport, employee commuting, business travel, bulk materials (embodied carbon), purchased goods & services, and subcontracted logistics.',
     },
     {
       q: 'Where do emission factors come from?',
-      a: 'Fuel and energy factors come from DEFRA/DESNZ UK GHG Conversion Factors 2025. Embodied carbon in materials uses the ICE Database v3.0 (University of Bath). All factors show their source, source family, and verification date. You can add your own factors from EPDs or other sources.',
+      a: 'Fuel and energy factors come from DEFRA/DESNZ UK GHG Conversion Factors 2025. Embodied carbon in materials uses the ICE Database v3.0 (University of Bath). Mine methane uses IPCC AR5 GWP 28. Explosives combustion uses NGER Method 1 factors. All factors show their source, source family, and verification date. You can add your own factors from EPDs or other sources.',
     },
     {
       q: 'Can I log data by project site?',
@@ -31,6 +31,10 @@ export default function FaqsPage() {
     {
       q: 'What is PAS 2080 and why does it matter for construction?',
       a: 'PAS 2080 is the UK standard for managing infrastructure carbon. It requires whole-life carbon assessment across stages A1–A5 (product and construction), B1–B7 (use), and C1–C4 (end of life). This tool covers A1–A3 (cradle-to-gate embodied carbon) via the Bulk Materials category.',
+    },
+    {
+      q: 'How should mining companies log blasting and methane?',
+      a: 'Use Explosives & blasting for ANFO, emulsion, or other blasting agents (Scope 1 combustion CO₂). Use Mine methane & ventilation for drained coal-mine gas or ventilation air methane after converting mixed air to CH₄. Haul trucks, drills, and LHDs go under Heavy Machinery. Processing-plant power is Site Electricity. Tailings and waste rock go under Site Waste.',
     },
     {
       q: 'What is the difference between Combined Results and Analysis?',

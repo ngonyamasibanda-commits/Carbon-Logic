@@ -4,7 +4,7 @@ import { X } from 'lucide-react'
 const STEPS = [
   {
     title: 'Choose the site',
-    body: 'Assign the entry to a construction site, depot, or warehouse in Additional Data. Manage sites under Multi-site & Team.',
+    body: 'Assign the entry to a construction site, mine, processing plant, depot, or warehouse in Additional Data. Manage sites under Multi-site & Team.',
   },
   {
     title: 'Enter activity data',

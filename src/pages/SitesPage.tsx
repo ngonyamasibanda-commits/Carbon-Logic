@@ -24,8 +24,8 @@ export default function SitesPage() {
       <div>
         <h1 className="text-3xl font-bold text-ink">Facilities</h1>
         <p className="mt-2 text-sm text-muted">
-          Construction sites, depots, warehouses, and offices. Facilities appear on the dashboard
-          chart, in every data-entry form, and in Analysis filters.
+          Construction sites, mines, processing plants, depots, warehouses, and offices. Facilities
+          appear on the dashboard chart, in every data-entry form, and in Analysis filters.
         </p>
       </div>
 
@@ -45,6 +45,8 @@ export default function SitesPage() {
             className="rounded-md border border-line px-3 py-2 text-sm"
           >
             <option value="construction_site">Construction site</option>
+            <option value="mine">Mine</option>
+            <option value="processing_plant">Processing plant</option>
             <option value="depot">Depot</option>
             <option value="warehouse">Warehouse</option>
             <option value="office">Office</option>

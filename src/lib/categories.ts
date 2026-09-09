@@ -51,7 +51,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 2',
     group: 'input',
     instructions:
-      'Enter purchased or on-site electricity used at construction sites, depots, and warehouses. Link utility bills in Additional Data.',
+      'Enter purchased or on-site electricity used at construction sites, mines, processing plants, depots, and warehouses. Link utility bills in Additional Data.',
     fields: [
       {
         key: 'source',
@@ -83,7 +83,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Log diesel, gas oil, petrol, LPG, or natural gas used in site generators, heaters, and stationery plant.',
+      'Log diesel, gas oil, petrol, LPG, or natural gas used in generators, heaters, pumps, and stationary plant at sites, mines, and processing plants.',
     fields: [
       {
         key: 'fuel',
@@ -118,13 +118,24 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Capture fuel burned by excavators, cranes, loaders, and other owned construction plant.',
+      'Capture fuel burned by excavators, haul trucks, drills, loaders, crushers, and other owned plant at construction sites and mines.',
     fields: [
       {
         key: 'equipment',
         label: 'Equipment type',
         type: 'select',
-        options: ['Excavator', 'Crane', 'Loader / dozer', 'Concrete mixer', 'Other plant'],
+        options: [
+          'Excavator',
+          'Haul truck',
+          'Drill rig',
+          'Loader / dozer',
+          'Underground LHD',
+          'Crusher / mill',
+          'Dragline',
+          'Crane',
+          'Concrete mixer',
+          'Other plant',
+        ],
       },
       {
         key: 'fuel',
@@ -151,18 +162,47 @@ export const CATEGORIES: CategoryConfig[] = [
       `${amount.toLocaleString()} ${v.unit || 'L'} ${v.fuel || 'diesel'} — ${v.equipment || 'plant'}`,
   },
   {
+    id: 'explosives',
+    name: 'Explosives & blasting',
+    scope: 'Scope 1',
+    group: 'input',
+    instructions:
+      'Log ANFO, emulsion, or other explosives used in blasting at mines and quarries. Combustion CO₂ from the blast is Scope 1. Prefer a manufacturer or NGER factor when you have one.',
+    fields: [
+      {
+        key: 'type',
+        label: 'Explosive type',
+        type: 'select',
+        options: ['ANFO', 'Emulsion', 'Other blasting agent'],
+      },
+      {
+        key: 'amount',
+        label: 'Mass used',
+        type: 'number',
+        hint: 'Mass of explosive consumed in the reporting period.',
+      },
+    ],
+    amountField: 'amount',
+    amountLabel: 'kg',
+    unitOptions: MASS_KG_UNITS,
+    resolveFactorKey: (v) => (v.type === 'Emulsion' ? 'explosives_emulsion_kg' : 'explosives_anfo_kg'),
+    resolveUnit: (v) => v.unit || 'kg',
+    resolveDetails: (v, amount) =>
+      `${amount.toLocaleString()} ${v.unit || 'kg'} ${v.type || 'explosives'}`,
+  },
+  {
     id: 'fleet',
     name: 'Fleet Vehicles',
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Company-owned vans, pickups, and HGVs used for site supervision and material drops.',
+      'Company-owned vans, pickups, light vehicles, and HGVs used for site supervision, shift changes, and material drops. Mine haul trucks belong under Heavy Machinery.',
     fields: [
       {
         key: 'vehicle',
         label: 'Vehicle type',
         type: 'select',
-        options: ['Van / pickup', 'HGV', 'Company car'],
+        options: ['Van / pickup', 'Light vehicle', 'HGV', 'Company car'],
       },
       {
         key: 'fuel',
@@ -194,7 +234,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Record refrigerant top-ups for site welfare HVAC, cold stores, and refrigerated logistics assets.',
+      'Record refrigerant top-ups for site welfare HVAC, processing-plant HVAC, cold stores, and refrigerated logistics assets.',
     fields: [
       {
         key: 'gas',
@@ -222,12 +262,62 @@ export const CATEGORIES: CategoryConfig[] = [
       `${amount.toLocaleString()} ${v.unit || 'kg'} ${v.gas || 'refrigerant'}`,
   },
   {
+    id: 'mine_gas',
+    name: 'Mine methane & ventilation',
+    scope: 'Scope 1',
+    group: 'input',
+    instructions:
+      'Log fugitive methane from underground or surface mines: ventilation air methane, drained coal-mine gas, or measured CH₄. Use tonnes or cubic metres of methane, not mixed mine air unless you have converted it to CH₄.',
+    fields: [
+      {
+        key: 'source',
+        label: 'Gas source',
+        type: 'select',
+        options: [
+          'Coal mine methane (drained)',
+          'Ventilation air methane',
+          'Metalliferous mine gas',
+          'Other mine methane',
+        ],
+      },
+      {
+        key: 'measure',
+        label: 'How methane is measured',
+        type: 'select',
+        options: ['Tonnes of CH₄', 'Kilograms of CH₄', 'Cubic metres of CH₄'],
+      },
+      {
+        key: 'amount',
+        label: 'Amount',
+        type: 'number',
+        hint: 'Quantity of methane (CH₄), not total ventilation air.',
+      },
+    ],
+    amountField: 'amount',
+    amountLabel: 't',
+    resolveFactorKey: (v) => {
+      if (v.measure === 'Kilograms of CH₄') return 'mine_ch4_kg'
+      if (v.measure === 'Cubic metres of CH₄') return 'mine_ch4_m3'
+      return 'mine_ch4_t'
+    },
+    resolveUnit: (v) => {
+      if (v.measure === 'Kilograms of CH₄') return 'kg'
+      if (v.measure === 'Cubic metres of CH₄') return 'm³'
+      return 't'
+    },
+    resolveDetails: (v, amount) => {
+      const unit =
+        v.measure === 'Kilograms of CH₄' ? 'kg' : v.measure === 'Cubic metres of CH₄' ? 'm³' : 't'
+      return `${amount.toLocaleString()} ${unit} CH₄ — ${v.source || 'mine methane'}`
+    },
+  },
+  {
     id: 'road_freight',
     name: 'Road Freight',
     scope: 'Scope 3',
     group: 'input',
     instructions:
-      'Log contracted road haulage of materials and equipment. Activity amount is tonne-kilometres (weight × distance).',
+      'Log contracted road haulage of materials, equipment, ore, concentrate, and waste. Activity amount is tonne-kilometres (weight × distance).',
     fields: [
       {
         key: 'mode',
@@ -258,7 +348,7 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Rail Freight',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Record inbound or outbound rail movements of bulk construction materials.',
+    instructions: 'Record inbound or outbound rail movements of bulk materials, ore, concentrate, and aggregates.',
     fields: [
       { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
@@ -283,7 +373,7 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Sea Freight',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Log ocean or coastal shipping of steel, plant, and other imported materials.',
+    instructions: 'Log ocean or coastal shipping of steel, plant, reagents, concentrate, and other imported materials.',
     fields: [
       {
         key: 'mode',
@@ -314,7 +404,7 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Air Freight',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Use for time-critical plant parts and high-value construction materials moved by air.',
+    instructions: 'Use for time-critical plant parts, reagents, and high-value materials moved by air.',
     fields: [
       { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
@@ -336,11 +426,24 @@ export const CATEGORIES: CategoryConfig[] = [
   },
   {
     id: 'waste',
-    name: 'Construction Waste',
+    name: 'Site Waste',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Enter demolition and construction waste by disposal route (landfill, recycling, or recovery).',
+    instructions:
+      'Enter construction and demolition waste, waste rock, tailings, and other site arisings by disposal route (landfill, recycling, or recovery).',
     fields: [
+      {
+        key: 'waste_type',
+        label: 'Waste type',
+        type: 'select',
+        options: [
+          'Construction & demolition',
+          'Waste rock',
+          'Tailings',
+          'Mineral / inert',
+          'Mixed / other',
+        ],
+      },
       {
         key: 'route',
         label: 'Disposal route',
@@ -356,14 +459,14 @@ export const CATEGORIES: CategoryConfig[] = [
       v.route === 'Recycling' ? 'waste_recycling_kg' : 'waste_landfill_kg',
     resolveUnit: (v) => v.unit || 'kg',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} ${v.unit || 'kg'} construction waste — ${v.route || 'disposal'}`,
+      `${amount.toLocaleString()} ${v.unit || 'kg'} ${v.waste_type || 'site waste'} — ${v.route || 'disposal'}`,
   },
   {
     id: 'water',
     name: 'Water',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Site potable and process water supplied to construction compounds and wash-out areas.',
+    instructions: 'Site potable and process water supplied to construction compounds, mines, processing plants, and wash-out areas.',
     fields: [
       {
         key: 'type',
@@ -387,7 +490,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'input',
     instructions:
-      'Workforce travel to remote job sites by shuttle, van, or public transport. Enter one-way distance; return trips are included.',
+      'Workforce travel to remote job sites, mines, and camps by shuttle, van, or public transport. Enter one-way distance; return trips are included.',
     fields: [
       {
         key: 'mode',
@@ -421,7 +524,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Embodied carbon of concrete, steel, timber, asphalt, and aggregates (EN 15978 A1–A3 cradle-to-gate).',
+      'Embodied carbon of concrete, steel, timber, asphalt, aggregates, lime, and other bulk materials (EN 15978 A1–A3 cradle-to-gate). Mining reagents such as lime sit here; ore haulage belongs under freight.',
     fields: [
       {
         key: 'material',
@@ -429,6 +532,7 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: [
           'Concrete', 'Steel', 'Timber', 'Asphalt', 'Aggregates', 'Cement', 'Rebar',
+          'Lime', 'Grinding media (steel)',
           'Glass', 'Aluminium', 'Bricks', 'Insulation', 'Plasterboard', 'Copper', 'PVC', 'Soil / earthworks',
         ],
       },
@@ -446,6 +550,8 @@ export const CATEGORIES: CategoryConfig[] = [
         Aggregates: 'material_aggregates_t',
         Cement: 'material_cement_t',
         Rebar: 'material_rebar_t',
+        Lime: 'material_lime_t',
+        'Grinding media (steel)': 'material_steel_t',
         Glass: 'material_glass_t',
         Aluminium: 'material_aluminium_t',
         Bricks: 'material_bricks_t',
@@ -466,7 +572,7 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Heat and steam',
     scope: 'Scope 2',
     group: 'scope3',
-    instructions: 'Purchased heat or steam supplied to site compounds, curing, or workshops.',
+    instructions: 'Purchased heat or steam supplied to site compounds, curing, processing plants, or workshops.',
     fields: [
       {
         key: 'type',
@@ -490,7 +596,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Third-party haulage and plant moves organised by subcontractors (upstream Scope 3 category 4).',
+      'Third-party haulage and plant moves organised by subcontractors (upstream Scope 3 category 4), including contract mining and concentrate haulage.',
     fields: [
       { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
@@ -595,7 +701,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Wastewater and sewerage from site welfare, concrete washout, and compound drainage (GHG Protocol Scope 3, Category 5).',
+      'Wastewater and sewerage from site welfare, concrete washout, process water, and compound drainage (GHG Protocol Scope 3, Category 5).',
     fields: [
       { key: 'amount', label: 'Volume', type: 'number' },
     ],
@@ -638,7 +744,7 @@ export const CATEGORIES: CategoryConfig[] = [
     instructions:
       'Enter an activity amount and conversion value from a verified source. tCO₂e = (activity × conversion value) / 1000.',
     fields: [
-      { key: 'label', label: 'Activity name', type: 'text', placeholder: 'e.g. imported cladding' },
+      { key: 'label', label: 'Activity name', type: 'text', placeholder: 'e.g. imported cladding or process reagent' },
       { key: 'amount', label: 'Activity amount', type: 'number' },
       {
         key: 'conversion',

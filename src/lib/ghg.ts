@@ -18,7 +18,7 @@ export const GHG_SCOPE1: GhgBucket[] = [
     scope: 'Scope 1',
     code: 'S1 · Stationary combustion',
     name: 'Stationary combustion',
-    plain: 'Fuel burned in generators, heaters, and other equipment that stays on site.',
+    plain: 'Fuel burned in generators, heaters, explosives used in blasting, and other equipment that stays on site.',
     materialForConstruction: true,
   },
   {
@@ -26,7 +26,7 @@ export const GHG_SCOPE1: GhgBucket[] = [
     scope: 'Scope 1',
     code: 'S1 · Mobile combustion',
     name: 'Mobile combustion',
-    plain: 'Fuel burned in company vehicles and owned plant that moves around.',
+    plain: 'Fuel burned in company vehicles, haul trucks, drills, and owned plant that moves around.',
     materialForConstruction: true,
   },
   {
@@ -34,7 +34,7 @@ export const GHG_SCOPE1: GhgBucket[] = [
     scope: 'Scope 1',
     code: 'S1 · Fugitive emissions',
     name: 'Fugitive emissions',
-    plain: 'Refrigerant leaks from welfare HVAC, cold stores, and similar equipment.',
+    plain: 'Refrigerant leaks and fugitive mine methane from ventilation or drained coal-mine gas.',
     materialForConstruction: true,
   },
 ]
@@ -45,7 +45,7 @@ export const GHG_SCOPE2: GhgBucket[] = [
     scope: 'Scope 2',
     code: 'S2 · Purchased electricity',
     name: 'Purchased electricity',
-    plain: 'Electricity bought for sites, depots, and offices.',
+    plain: 'Electricity bought for sites, mines, processing plants, depots, and offices.',
     materialForConstruction: true,
   },
   {
@@ -65,7 +65,7 @@ export const GHG_SCOPE3: Array<GhgBucket & { category: GhgScope3Number }> = [
     scope: 'Scope 3',
     code: 'Category 1',
     name: 'Purchased goods and services',
-    plain: 'Things you buy to do the work — materials, water, and bought-in services.',
+    plain: 'Things you buy to do the work — materials, reagents such as lime, water, and bought-in services.',
     materialForConstruction: true,
   },
   {
@@ -92,7 +92,7 @@ export const GHG_SCOPE3: Array<GhgBucket & { category: GhgScope3Number }> = [
     scope: 'Scope 3',
     code: 'Category 4',
     name: 'Upstream transportation and distribution',
-    plain: 'Haulage of materials and equipment to your sites, including subcontracted logistics.',
+    plain: 'Haulage of materials, equipment, ore, concentrate, and waste, including subcontracted logistics.',
     materialForConstruction: true,
   },
   {
@@ -101,7 +101,7 @@ export const GHG_SCOPE3: Array<GhgBucket & { category: GhgScope3Number }> = [
     scope: 'Scope 3',
     code: 'Category 5',
     name: 'Waste generated in operations',
-    plain: 'Construction waste, demolition arisings, and wastewater from site welfare.',
+    plain: 'Construction waste, demolition arisings, waste rock, tailings, and wastewater from site welfare.',
     materialForConstruction: true,
   },
   {
@@ -119,7 +119,7 @@ export const GHG_SCOPE3: Array<GhgBucket & { category: GhgScope3Number }> = [
     scope: 'Scope 3',
     code: 'Category 7',
     name: 'Employee commuting',
-    plain: 'People travelling between home and work, including crew shuttles to remote sites.',
+    plain: 'People travelling between home and work, including crew shuttles to remote sites, mines, and camps.',
     materialForConstruction: true,
   },
   {
@@ -198,9 +198,11 @@ export const GHG_SCOPE3: Array<GhgBucket & { category: GhgScope3Number }> = [
 
 const INPUT_TO_BUCKET: Record<string, string> = {
   site_fuel: 's1-stationary',
+  explosives: 's1-stationary',
   heavy_machinery: 's1-mobile',
   fleet: 's1-mobile',
   refrigerants: 's1-fugitive',
+  mine_gas: 's1-fugitive',
   site_electricity: 's2-electricity',
   heat_steam: 's2-heat',
   bulk_materials: 's3-1',
@@ -350,7 +352,7 @@ function buildInsights(input: {
 }): string[] {
   if (input.entryCount === 0) {
     return [
-      'No activity is logged yet. For a construction or logistics business, start with site electricity, site fuel, and bulk materials — those three usually explain most of the footprint.',
+      'No activity is logged yet. For a construction, mining, or logistics business, start with site electricity, site fuel, and bulk materials — those three usually explain most of the footprint. Mines should also log explosives and methane where they apply.',
       'You do not need to complete every GHG Protocol Scope 3 category. Categories 1, 4, 5, 6 and 7 are the usual priorities for this sector.',
     ]
   }
@@ -366,7 +368,7 @@ function buildInsights(input: {
 
   if (s3share >= 60) {
     insights.push(
-      `Scope 3 is ${s3share.toFixed(0)}% of the total. That is normal for construction and logistics: most emissions sit in materials, freight, and waste rather than in fuel and electricity you buy yourself.`,
+      `Scope 3 is ${s3share.toFixed(0)}% of the total. That is common in construction, mining, and logistics: most emissions sit in materials, freight, and waste rather than in fuel and electricity you buy yourself.`,
     )
   } else if (s12share >= 50) {
     insights.push(
@@ -388,11 +390,11 @@ function buildInsights(input: {
   if (input.gaps.length > 0) {
     const names = input.gaps.map((row) => `${row.code} (${row.name})`).join(', ')
     insights.push(
-      `These usually-material Scope 3 categories still have no data: ${names}. Logging them will make a GHG Protocol or PPN 06/21 report more complete. Categories 8–15 are often not relevant for a typical contractor.`,
+      `These usually-material Scope 3 categories still have no data: ${names}. Logging them will make a GHG Protocol or PPN 06/21 report more complete. Categories 8–15 are often not relevant for a typical contractor, miner, or logistics operator.`,
     )
   } else {
     insights.push(
-      'The Scope 3 categories that usually matter for construction and logistics all have some data. Empty categories 8–15 can stay empty if you do not lease assets, sell products, operate franchises, or hold investments.',
+      'The Scope 3 categories that usually matter for construction, mining, and logistics all have some data. Empty categories 8–15 can stay empty if you do not lease assets, sell products, operate franchises, or hold investments.',
     )
   }
 

@@ -12,6 +12,13 @@ const DESNZ =
   'UK GHG Conversion Factors for Company Reporting 2025 — electricity / heat (DESNZ). kg CO₂e, IPCC AR5. Published 10 June 2025.'
 const ICE =
   'Inventory of Carbon and Energy (ICE) Database v3.0, Circular Ecology / University of Bath. Cradle-to-gate A1–A3, kg CO₂e per kg converted to per tonne.'
+const IPCC =
+  'IPCC Fifth Assessment Report (AR5) Working Group I, 100-year GWP without climate-carbon feedbacks. Methane GWP = 28.'
+const NGER =
+  'Australian National Greenhouse and Energy Reporting (Measurement) Determination, Method 1 explosives combustion CO₂. Prefer a manufacturer or site-specific factor when available.'
+const IPCC_URL = 'https://www.ipcc.ch/report/ar5/wg1/'
+const NGER_URL =
+  'https://www.cleanenergyregulator.gov.au/NGER/About-the-National-Greenhouse-and-Energy-Reporting-scheme/Greenhouse-gases-and-energy'
 
 function factor(
   key: string,
@@ -471,6 +478,64 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
   factor('material_copper_t', 'Copper (primary)', 'Bulk materials', 'Scope 3', 3010, 't', 'ICE', `${ICE} Copper, primary: 3.01 kg CO₂e/kg.`, ICE_URL),
   factor('material_pvc_t', 'PVC pipe / general', 'Bulk materials', 'Scope 3', 3230, 't', 'ICE', `${ICE} PVC, general: 3.23 kg CO₂e/kg.`, ICE_URL),
   factor('material_soil_t', 'Soil / earthworks', 'Bulk materials', 'Scope 3', 0.0024, 't', 'DEFRA', `${DEFRA} Material use — soils, primary material production. (Minimal embodied carbon — mainly for completeness.)`, GOV_URL),
+  factor('material_lime_t', 'Lime (general)', 'Bulk materials', 'Scope 3', 760, 't', 'ICE', `${ICE} Lime, general: 0.76 kg CO₂e/kg. Used for construction and mineral processing reagents.`, ICE_URL),
+
+  // ── Mining: explosives (Scope 1 combustion) and fugitive methane ────────
+  factor(
+    'explosives_anfo_kg',
+    'ANFO explosives (combustion)',
+    'Explosives',
+    'Scope 1',
+    0.17,
+    'kg',
+    'IPCC',
+    `${NGER} ANFO ≈ 0.17 kg CO₂e/kg explosive. Covers blast CO₂, not manufactured embodied carbon.`,
+    NGER_URL,
+  ),
+  factor(
+    'explosives_emulsion_kg',
+    'Emulsion explosives (combustion)',
+    'Explosives',
+    'Scope 1',
+    0.18,
+    'kg',
+    'IPCC',
+    `${NGER} Emulsion blasting agent ≈ 0.18 kg CO₂e/kg explosive.`,
+    NGER_URL,
+  ),
+  factor(
+    'mine_ch4_t',
+    'Mine methane (tonnes CH₄)',
+    'Mine gas',
+    'Scope 1',
+    28000,
+    't',
+    'IPCC',
+    `${IPCC} 1 t CH₄ × GWP 28 = 28,000 kg CO₂e.`,
+    IPCC_URL,
+  ),
+  factor(
+    'mine_ch4_kg',
+    'Mine methane (kg CH₄)',
+    'Mine gas',
+    'Scope 1',
+    28,
+    'kg',
+    'IPCC',
+    `${IPCC} 1 kg CH₄ × GWP 28 = 28 kg CO₂e.`,
+    IPCC_URL,
+  ),
+  factor(
+    'mine_ch4_m3',
+    'Mine methane (m³ CH₄)',
+    'Mine gas',
+    'Scope 1',
+    20.08,
+    'm³',
+    'IPCC',
+    `${IPCC} CH₄ density 0.717 kg/m³ at 0 °C, 1 atm × GWP 28 ≈ 20.08 kg CO₂e/m³. Convert ventilation air to CH₄ first.`,
+    IPCC_URL,
+  ),
 ]
 
 export const PLACEHOLDER_FACTORS = FACTOR_CATALOG

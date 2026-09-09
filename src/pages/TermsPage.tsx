@@ -83,7 +83,7 @@ export default function TermsPage() {
 
           <Section id="service" title="2. Nature of the service">
             <p>
-              Carbon Logic provides software tools intended to help construction and logistics
+              Carbon Logic provides software tools intended to help construction, mining, and logistics
               organisations estimate, organise, analyse, and report greenhouse-gas (GHG) emissions
               and related sustainability metrics. The Service is a decision-support and record-keeping
               aid. It does not replace professional carbon accounting, assurance, legal advice, or
@@ -255,7 +255,7 @@ export default function TermsPage() {
             </p>
             <p>
               <strong>Who we are.</strong> Carbon Logic provides carbon-accounting software for
-              construction and logistics organisations. For personal data processed to operate
+              construction, mining, and logistics organisations. For personal data processed to operate
               accounts and the platform, Carbon Logic acts as a controller (or joint controller with
               your organisation where you administer workspace membership). For activity and emissions
               data you enter about your business operations, your organisation is typically the
