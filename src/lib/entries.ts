@@ -1,6 +1,11 @@
 import { isLocalOrganizationId } from './auth'
 import { applyMeta, deleteEntryMeta, setEntryMeta } from './entry-meta'
-import { PermissionDeniedError, RateLimitError, throwIfUnsafeToFallback } from './security-errors'
+import {
+  CloudSaveError,
+  PermissionDeniedError,
+  RateLimitError,
+  throwIfUnsafeToFallback,
+} from './security-errors'
 import { supabase } from './supabase'
 import type { EmissionEntry } from './types'
 
@@ -17,7 +22,7 @@ function userKey(userId: string) {
   return `carbon-logic-entries:user:${userId}`
 }
 
-export { PermissionDeniedError, RateLimitError } from './security-errors'
+export { CloudSaveError, PermissionDeniedError, RateLimitError } from './security-errors'
 
 type PostgrestLikeError = { message?: string; code?: string } | null
 
@@ -361,18 +366,53 @@ async function fetchRemote(tenant: Tenant): Promise<{ rows: EmissionEntry[]; ok:
   return scopedRemote(tenant, result.data.map((row) => fromRow(row)), true)
 }
 
-export async function pushLocalEntries(tenant: Tenant): Promise<void> {
+function wait(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+async function insertRemoteWithRetry(
+  tenant: Tenant,
+  input: Omit<EmissionEntry, 'id' | 'created_at'>,
+): Promise<EmissionEntry | null> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const saved = await insertRemote(tenant, input)
+      if (saved) return saved
+    } catch (error) {
+      if (error instanceof RateLimitError || error instanceof PermissionDeniedError) throw error
+      lastError = error
+    }
+    if (attempt < 2) await wait(400 * (attempt + 1))
+  }
+  if (lastError instanceof Error) throw lastError
+  return null
+}
+
+/** True once the live database has the organisation inventory functions. */
+export async function inventoryBackendReady(): Promise<boolean> {
+  const { error } = await supabase.rpc('list_emission_entries')
+  if (!error) return true
+  return !isMissingRpc(error)
+}
+
+export async function pushLocalEntries(tenant: Tenant): Promise<number> {
   const unsynced = readMergedLocal(tenant).filter(isUnsynced)
+  let pushed = 0
   for (const entry of unsynced) {
     const { id, created_at: _createdAt, ...input } = entry
     void _createdAt
     try {
       const saved = await insertRemote(tenant, input)
-      if (saved) replaceLocalId(tenant, id, applyMeta({ ...saved, ...extrasFrom(entry) }))
+      if (saved) {
+        replaceLocalId(tenant, id, applyMeta({ ...saved, ...extrasFrom(entry) }))
+        pushed += 1
+      }
     } catch {
       // Keep the local row; the next save or login will try again.
     }
   }
+  return pushed
 }
 
 export async function fetchEntries(tenant: Tenant, category?: string): Promise<EmissionEntry[]> {
@@ -400,19 +440,22 @@ export async function saveEntry(
   setEntryMeta(localEntry.id, extras)
   upsertLocal(tenant, localEntry)
 
+  if (isLocalOrganizationId(tenant.organizationId)) return localEntry
+
   try {
-    const saved = await insertRemote(tenant, input)
+    const saved = await insertRemoteWithRetry(tenant, input)
     if (saved) {
       const entry = applyMeta({ ...saved, ...extras })
       replaceLocalId(tenant, localEntry.id, entry)
       return entry
     }
   } catch (error) {
-    if (error instanceof RateLimitError || error instanceof PermissionDeniedError) {
-      return localEntry
-    }
+    removeLocal(tenant, localEntry.id)
+    if (error instanceof RateLimitError || error instanceof PermissionDeniedError) throw error
+    throw new CloudSaveError()
   }
-  return localEntry
+  removeLocal(tenant, localEntry.id)
+  throw new CloudSaveError()
 }
 
 export async function deleteEntry(tenant: Tenant, id: string): Promise<void> {

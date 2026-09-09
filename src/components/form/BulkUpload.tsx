@@ -86,8 +86,13 @@ export default function BulkUpload({ category, onClose }: Props) {
         ...extras,
       }
 
-      await addEntry(entry)
-      imported += 1
+      try {
+        await addEntry(entry)
+        imported += 1
+      } catch (err) {
+        skipped += 1
+        failures.push(`Row ${index + 2}: ${err instanceof Error ? err.message : 'could not save'}`)
+      }
     }
 
     setImporting(false)

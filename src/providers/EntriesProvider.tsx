@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { loadFactors } from '../lib/calculate'
-import { deleteEntry, fetchEntries, peekLocalEntries, saveEntry, type Tenant } from '../lib/entries'
+import {
+  deleteEntry,
+  fetchEntries,
+  peekLocalEntries,
+  pushLocalEntries,
+  saveEntry,
+  type Tenant,
+} from '../lib/entries'
 import { FACTOR_CATALOG } from '../lib/factor-catalog'
 import { persistFactors } from '../lib/factors-store'
 import { EntriesContext } from '../lib/entries-context'
@@ -49,6 +56,17 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     }
     setEntries(peekLocalEntries(tenant))
     void refresh()
+  }, [refresh, tenant])
+
+  useEffect(() => {
+    if (!tenant || isLocalOrganizationId(tenant.organizationId)) return
+    const tick = () => {
+      void pushLocalEntries(tenant).then((pushed) => {
+        if (pushed > 0) void refresh()
+      })
+    }
+    const id = window.setInterval(tick, 20000)
+    return () => window.clearInterval(id)
   }, [refresh, tenant])
 
   const addEntry = useCallback(
