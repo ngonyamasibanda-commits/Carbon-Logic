@@ -170,7 +170,7 @@ export function printInventoryReport(entries: EmissionEntry[], context: ReportCo
     </tbody></table>`
         : ''
     }
-    <p class="footnote">Method: tCO₂e = (activity amount × conversion value in kg CO₂e) ÷ 1000. Conversion values are taken from the organisation’s emission-factor library (typically DESNZ/DEFRA and ICE). Empty Scope 3 categories are shown on purpose: “not yet logged” is a completeness signal, not a zero. Categories 8–15 are often not relevant for a typical contractor.</p>
+    <p class="footnote">Method: tCO₂e = (activity amount × conversion value in kg CO₂e) ÷ 1000. Conversion values are taken from the organisation’s emission-factor library (typically DESNZ/DEFRA and ICE). Empty Scope 3 categories are shown on purpose: “not yet logged” is a completeness signal, not a zero. Categories 8–15 are often not relevant for a typical contractor, miner, or logistics operator.</p>
   `
   openPrint(`${org} — GHG inventory`, body)
 }
@@ -194,7 +194,7 @@ export function printAnalysisReport(entries: EmissionEntry[], context: ReportCon
       `Log ${summary.gaps
         .slice(0, 3)
         .map((row) => row.name.toLowerCase())
-        .join(', ')} next. These are the material gaps for a construction or logistics reporter.`,
+        .join(', ')} next. These are the material gaps for a construction, mining, or logistics reporter.`,
     )
   }
   actions.push(

@@ -1,7 +1,7 @@
 export type Site = {
   id: string
   name: string
-  type: 'office' | 'depot' | 'construction_site' | 'warehouse'
+  type: 'office' | 'depot' | 'construction_site' | 'warehouse' | 'mine' | 'processing_plant'
   region: string
 }
 

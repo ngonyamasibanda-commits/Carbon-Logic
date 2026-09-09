@@ -105,7 +105,7 @@ function NoOrganization() {
               value={name}
               onChange={(event) => setName(event.target.value)}
               className={inputClass}
-              placeholder="Acme Construction Ltd"
+              placeholder="Acme Ltd"
             />
           </FormField>
           <button type="submit" disabled={busy || !name.trim()} className={primaryButtonClass}>
