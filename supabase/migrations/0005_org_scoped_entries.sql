@@ -1,87 +1,14 @@
--- Fix emission entries so they belong to the organisation, not the browser session.
---
--- Paste into the Supabase SQL editor and run once. Safe to re-run.
---
--- What this does:
---   1. Keeps the hourly quota trigger from aborting a save when quota tables
---      were never created (that failure was silently falling back to the browser).
---   2. Adds log/list/delete functions the app uses so a save is not dependent on
---      PostgREST column cache / insert-then-select RLS.
---   3. Stores and lists rows by organisation, so every member sees the same
---      inventory after logout or when signing in with a different account.
+-- Inventory is organisation-owned: every member sees the same rows, and a
+-- logout cannot strand work against the logged-in user instead of the org.
 
 begin;
-
-create table if not exists public.emission_entries (
-    id bigserial primary key,
-    user_id text not null default 'default_user',
-    category text not null,
-    scope text,
-    emissions_tco2e double precision not null default 0,
-    details text,
-    amount double precision,
-    unit text,
-    comment text,
-    link text,
-    created_at timestamptz default now()
-);
 
 alter table public.emission_entries add column if not exists organization_id uuid;
 alter table public.emission_entries add column if not exists owner_id uuid;
 
-create index if not exists emission_entries_org_idx
-  on public.emission_entries (organization_id, created_at desc);
-create index if not exists emission_entries_owner_idx
-  on public.emission_entries (owner_id, created_at desc);
-
-do $$
-begin
-  if exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public' and table_name = 'emission_entries' and column_name = 'user_id'
-  ) then
-    execute $q$
-      alter table public.emission_entries
-        alter column user_id set default 'default_user'
-    $q$;
-  end if;
-end
-$$;
-
-create or replace function public.enforce_entry_quota()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if new.organization_id is null then
-    return new;
-  end if;
-  begin
-    perform public.consume_org_quota(new.organization_id, 'entry_write');
-  exception
-    when undefined_table then
-      null;
-    when undefined_function then
-      null;
-    when others then
-      if sqlerrm ilike '%rate limit%' then
-        raise;
-      end if;
-      -- Missing quota infra must not discard a logged activity.
-      null;
-  end;
-  return new;
-end;
-$$;
-
-drop trigger if exists emission_entries_quota on public.emission_entries;
-create trigger emission_entries_quota
-  before insert on public.emission_entries
-  for each row execute function public.enforce_entry_quota();
-
--- Recover rows that were saved against the user instead of the organisation.
+-- Rows saved without an organisation were invisible to other members (and to
+-- the saver after logout, once the browser cache was gone). Attach them to
+-- that user's earliest membership so they join the org inventory.
 update public.emission_entries e
 set organization_id = s.organization_id
 from (
@@ -114,19 +41,13 @@ begin
 end
 $$;
 
-alter table public.emission_entries enable row level security;
-
-drop policy if exists "read entries in your organizations" on public.emission_entries;
 drop policy if exists "read own emission entries" on public.emission_entries;
-drop policy if exists "editors create entries" on public.emission_entries;
-drop policy if exists "editors update entries" on public.emission_entries;
-drop policy if exists "editors delete entries" on public.emission_entries;
-drop policy if exists "entries must belong to an organisation" on public.emission_entries;
-
+drop policy if exists "read entries in your organizations" on public.emission_entries;
 create policy "read entries in your organizations" on public.emission_entries
   for select to authenticated
   using (organization_id in (select public.user_org_ids()));
 
+drop policy if exists "editors create entries" on public.emission_entries;
 create policy "editors create entries" on public.emission_entries
   for insert to authenticated
   with check (
@@ -135,15 +56,18 @@ create policy "editors create entries" on public.emission_entries
     and owner_id = (select auth.uid())
   );
 
+drop policy if exists "editors update entries" on public.emission_entries;
 create policy "editors update entries" on public.emission_entries
   for update to authenticated
   using (public.has_org_role(organization_id, 'editor'))
   with check (public.has_org_role(organization_id, 'editor'));
 
+drop policy if exists "editors delete entries" on public.emission_entries;
 create policy "editors delete entries" on public.emission_entries
   for delete to authenticated
   using (public.has_org_role(organization_id, 'editor'));
 
+drop policy if exists "entries must belong to an organisation" on public.emission_entries;
 create policy "entries must belong to an organisation" on public.emission_entries
   as restrictive
   for all to authenticated
@@ -295,15 +219,6 @@ revoke all on function public.delete_emission_entry(bigint) from public, anon;
 grant execute on function public.log_emission_entry(uuid, text, text, double precision, text, double precision, text, text, text) to authenticated;
 grant execute on function public.list_emission_entries(uuid) to authenticated;
 grant execute on function public.delete_emission_entry(bigint) to authenticated;
-
-grant select, insert, update, delete on table public.emission_entries to authenticated;
-do $$
-begin
-  if to_regclass('public.emission_entries_id_seq') is not null then
-    execute 'grant usage, select on sequence public.emission_entries_id_seq to authenticated';
-  end if;
-end
-$$;
 
 notify pgrst, 'reload schema';
 

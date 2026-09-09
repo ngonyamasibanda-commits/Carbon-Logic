@@ -31,6 +31,7 @@ function extrasFrom(row: Partial<EmissionEntry>) {
 }
 
 function fromRow(row: Record<string, unknown>): EmissionEntry {
+  const organizationId = row.organization_id ?? row.organizationId
   return applyMeta({
     id: String(row.id),
     category: String(row.category ?? ''),
@@ -48,6 +49,7 @@ function fromRow(row: Record<string, unknown>): EmissionEntry {
       ? (row.custom_fields as EmissionEntry['customFields'])
       : [],
     files: [],
+    organization_id: organizationId ? String(organizationId) : undefined,
   })
 }
 
@@ -77,10 +79,6 @@ function readUserBackup(userId: string): Record<string, EmissionEntry[]> {
   return readJson<Record<string, EmissionEntry[]>>(userKey(userId), {})
 }
 
-function flattenUserBackup(userId: string): EmissionEntry[] {
-  return hydrate(Object.values(readUserBackup(userId)).flat())
-}
-
 function uniqueById(rows: EmissionEntry[]): EmissionEntry[] {
   const map = new Map<string, EmissionEntry>()
   for (const row of rows) map.set(row.id, row)
@@ -88,14 +86,42 @@ function uniqueById(rows: EmissionEntry[]): EmissionEntry[] {
 }
 
 function persistOrg(tenant: Tenant, entries: EmissionEntry[]) {
-  localStorage.setItem(orgKey(tenant.organizationId), JSON.stringify(entries))
+  const tagged = entries.map((row) => ({
+    ...row,
+    organization_id: row.organization_id ?? tenant.organizationId,
+  }))
+  localStorage.setItem(orgKey(tenant.organizationId), JSON.stringify(tagged))
   const backup = readUserBackup(tenant.userId)
-  backup[tenant.organizationId] = entries
+  backup[tenant.organizationId] = tagged
   localStorage.setItem(userKey(tenant.userId), JSON.stringify(backup))
 }
 
 function readMergedLocal(tenant: Tenant): EmissionEntry[] {
-  return uniqueById([...flattenUserBackup(tenant.userId), ...readOrgLocal(tenant.organizationId)])
+  const orgRows = readOrgLocal(tenant.organizationId)
+  if (orgRows.length > 0) return orgRows
+  return hydrate(readUserBackup(tenant.userId)[tenant.organizationId] ?? [])
+}
+
+/** Cloud rows for this organisation. Rows with no org tag are treated as this org (legacy). */
+export function rowsForOrganization(rows: EmissionEntry[], organizationId: string): EmissionEntry[] {
+  if (isLocalOrganizationId(organizationId)) return rows
+  return rows.filter((row) => !row.organization_id || row.organization_id === organizationId)
+}
+
+/**
+ * Combine the organisation's cloud inventory with this browser's unsynced drafts.
+ * An empty cloud result must not wipe local work: that is how logout looked like a delete.
+ */
+export function mergeOrgInventory(
+  remote: EmissionEntry[],
+  local: EmissionEntry[],
+  remoteOk: boolean,
+): EmissionEntry[] {
+  if (!remoteOk) return local
+  if (remote.length === 0) return local
+  const remoteIds = new Set(remote.map((row) => row.id))
+  const unsynced = local.filter((row) => isUnsynced(row) && !remoteIds.has(row.id))
+  return uniqueById([...unsynced, ...remote])
 }
 
 function upsertLocal(tenant: Tenant, entry: EmissionEntry) {
@@ -182,25 +208,30 @@ function basePayload(input: Omit<EmissionEntry, 'id' | 'created_at'>) {
   }
 }
 
-function insertAttempts(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>) {
+function insertAttempts(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>): Record<string, unknown>[] {
   const base = basePayload(input)
-  const attempts: Record<string, unknown>[] = []
-  if (!isLocalOrganizationId(tenant.organizationId)) {
-    attempts.push({
+  if (isLocalOrganizationId(tenant.organizationId)) {
+    return [
+      { ...base, user_id: tenant.userId, owner_id: tenant.userId },
+      { ...base, user_id: tenant.userId },
+    ]
+  }
+  // Never save against the user alone: those rows vanish for other members and
+  // are hidden by organisation RLS after logout.
+  return [
+    {
       ...base,
       organization_id: tenant.organizationId,
       owner_id: tenant.userId,
       user_id: tenant.userId,
-    })
-    attempts.push({
+    },
+    {
       ...base,
       organization_id: tenant.organizationId,
       owner_id: tenant.userId,
-    })
-  }
-  attempts.push({ ...base, user_id: tenant.userId, owner_id: tenant.userId })
-  attempts.push({ ...base, user_id: tenant.userId })
-  return attempts
+    },
+    { ...base, organization_id: tenant.organizationId },
+  ]
 }
 
 async function insertViaRpc(
@@ -235,7 +266,7 @@ async function insertRemote(
 
   let lastError: PostgrestLikeError = null
   for (const payload of insertAttempts(tenant, input)) {
-    const { data, error } = await supabase.from(TABLE).insert(payload).select('*').single()
+    const { data, error } = await supabase.from(TABLE).insert(payload as never).select('*').single()
     if (!error && data) return fromRow(data as Record<string, unknown>)
 
     lastError = error
@@ -284,54 +315,42 @@ async function queryRemote(
   tenant: Tenant,
   timeoutMs: number,
 ): Promise<{ data: Record<string, unknown>[] | null; error: PostgrestLikeError }> {
-  const scoped = !isLocalOrganizationId(tenant.organizationId)
-  const attempts = scoped
-    ? [
-        () =>
-          supabase
-            .from(TABLE)
-            .select('*')
-            .eq('organization_id', tenant.organizationId)
-            .order('created_at', { ascending: false }),
-        () =>
-          supabase.from(TABLE).select('*').eq('owner_id', tenant.userId).order('created_at', { ascending: false }),
-        () =>
-          supabase.from(TABLE).select('*').eq('user_id', tenant.userId).order('created_at', { ascending: false }),
-      ]
-    : [() => supabase.from(TABLE).select('*').order('created_at', { ascending: false })]
+  const run = isLocalOrganizationId(tenant.organizationId)
+    ? () => supabase.from(TABLE).select('*').order('created_at', { ascending: false })
+    : () =>
+        supabase
+          .from(TABLE)
+          .select('*')
+          .eq('organization_id', tenant.organizationId)
+          .order('created_at', { ascending: false })
 
-  let lastError: PostgrestLikeError = { message: 'timeout' }
-  let emptySuccess: Record<string, unknown>[] | null = null
-  for (const run of attempts) {
-    const result = await Promise.race([
-      run(),
-      new Promise<{ data: null; error: { message: string } }>((resolve) =>
-        setTimeout(() => resolve({ data: null, error: { message: 'timeout' } }), timeoutMs),
-      ),
-    ])
-    if (!result.error && result.data) {
-      const rows = result.data as Record<string, unknown>[]
-      if (rows.length > 0) return { data: rows, error: null }
-      emptySuccess = rows
-      continue
-    }
-    lastError = result.error
-    if (result.error?.message === 'timeout') continue
-    if (!isMissingColumnError(result.error) && !isNotNullViolation(result.error)) break
-  }
-  if (emptySuccess) return { data: emptySuccess, error: null }
-  return { data: null, error: lastError }
+  const result = await Promise.race([
+    run(),
+    new Promise<{ data: null; error: { message: string } }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: { message: 'timeout' } }), timeoutMs),
+    ),
+  ])
+  if (!result.error && result.data) return { data: result.data as Record<string, unknown>[], error: null }
+  return { data: null, error: result.error }
+}
+
+function scopedRemote(
+  tenant: Tenant,
+  rows: EmissionEntry[],
+  ok: boolean,
+): { rows: EmissionEntry[]; ok: boolean } {
+  return { rows: rowsForOrganization(rows, tenant.organizationId), ok }
 }
 
 async function fetchRemote(tenant: Tenant): Promise<{ rows: EmissionEntry[]; ok: boolean }> {
   const viaRpc = await listViaRpc(tenant)
-  if (viaRpc?.ok && viaRpc.rows.length > 0) return viaRpc
+  if (viaRpc?.ok && viaRpc.rows.length > 0) return scopedRemote(tenant, viaRpc.rows, true)
   if (viaRpc?.ok) {
     const table = await queryRemote(tenant, 8000)
     if (!table.error && table.data && table.data.length > 0) {
-      return { rows: table.data.map((row) => fromRow(row)), ok: true }
+      return scopedRemote(tenant, table.data.map((row) => fromRow(row)), true)
     }
-    return viaRpc
+    return scopedRemote(tenant, viaRpc.rows, true)
   }
 
   let result = await queryRemote(tenant, 8000)
@@ -339,19 +358,7 @@ async function fetchRemote(tenant: Tenant): Promise<{ rows: EmissionEntry[]; ok:
     result = await queryRemote(tenant, 15000)
   }
   if (result.error || !result.data) return { rows: [], ok: false }
-  return { rows: result.data.map((row) => fromRow(row)), ok: true }
-}
-
-function mergeRemoteAndLocal(
-  remote: EmissionEntry[],
-  local: EmissionEntry[],
-  remoteOk: boolean,
-): EmissionEntry[] {
-  if (!remoteOk) return local
-  if (remote.length === 0) return local
-  const remoteIds = new Set(remote.map((row) => row.id))
-  const unsynced = local.filter((row) => isUnsynced(row) && !remoteIds.has(row.id))
-  return uniqueById([...unsynced, ...remote])
+  return scopedRemote(tenant, result.data.map((row) => fromRow(row)), true)
 }
 
 export async function pushLocalEntries(tenant: Tenant): Promise<void> {
@@ -371,7 +378,10 @@ export async function pushLocalEntries(tenant: Tenant): Promise<void> {
 export async function fetchEntries(tenant: Tenant, category?: string): Promise<EmissionEntry[]> {
   await pushLocalEntries(tenant)
   const remote = await fetchRemote(tenant)
-  const merged = mergeRemoteAndLocal(remote.rows, readMergedLocal(tenant), remote.ok)
+  const merged = mergeOrgInventory(remote.rows, readMergedLocal(tenant), remote.ok)
+  if (remote.ok && (remote.rows.length > 0 || merged.length === 0)) {
+    persistOrg(tenant, merged)
+  }
   return category ? merged.filter((row) => row.category === category) : merged
 }
 
@@ -385,6 +395,7 @@ export async function saveEntry(
     ...extras,
     id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     created_at: new Date().toISOString(),
+    organization_id: isLocalOrganizationId(tenant.organizationId) ? undefined : tenant.organizationId,
   }
   setEntryMeta(localEntry.id, extras)
   upsertLocal(tenant, localEntry)
@@ -423,4 +434,9 @@ export async function deleteEntry(tenant: Tenant, id: string): Promise<void> {
 
 export function peekLocalEntries(tenant: Tenant): EmissionEntry[] {
   return readMergedLocal(tenant)
+}
+
+/** Test helper and org-cache writer: store this organisation's inventory locally. */
+export function cacheOrgEntries(tenant: Tenant, entries: EmissionEntry[]) {
+  persistOrg(tenant, entries)
 }

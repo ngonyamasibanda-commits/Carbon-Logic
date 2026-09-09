@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "verify:sbti": "tsx scripts/verify-sbti.ts",
-    "verify:migration": "tsx scripts/verify-migration.ts"
+    "verify:migration": "tsx scripts/verify-migration.ts",
+    "verify:entries": "tsx scripts/verify-entries.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",
