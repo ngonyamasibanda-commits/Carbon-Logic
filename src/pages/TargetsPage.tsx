@@ -56,8 +56,8 @@ export default function TargetsPage() {
   const yearsAlignedToInventory =
     config.useLiveInventory &&
     inventory.length > 0 &&
-    (effectiveConfig.baseYear !== config.baseYear ||
-      effectiveConfig.mostRecentYear !== config.mostRecentYear)
+    (!inventory.some((row) => row.year === config.baseYear) ||
+      !inventory.some((row) => row.year === config.mostRecentYear))
 
   const result = useMemo(
     () => calculateSbti(effectiveConfig, organisationName, actualByYear),
@@ -87,9 +87,9 @@ export default function TargetsPage() {
       ['Target year', String(effectiveConfig.targetYear)],
       ['Submission year', String(effectiveConfig.submissionYear)],
       ['Net-zero year', String(effectiveConfig.netZeroYear)],
-      ['Base year scope 1 (tCO2e)', effectiveConfig.baseScope1.toFixed(3)],
-      ['Base year scope 2 (tCO2e)', effectiveConfig.baseScope2.toFixed(3)],
-      ['Base year scope 3 (tCO2e)', effectiveConfig.baseScope3.toFixed(3)],
+      ['Base year scope 1 (tCO2e)', (effectiveConfig.baseScope1 ?? 0).toFixed(3)],
+      ['Base year scope 2 (tCO2e)', (effectiveConfig.baseScope2 ?? 0).toFixed(3)],
+      ['Base year scope 3 (tCO2e)', (effectiveConfig.baseScope3 ?? 0).toFixed(3)],
       ['Most recent inventory year', String(effectiveConfig.mostRecentYear)],
       ['Scope 3 share of inventory', pct(result.scope3Share)],
       ['Scope 3 target required', result.scope3TargetRequired ? 'Yes' : 'No'],
@@ -181,7 +181,23 @@ export default function TargetsPage() {
             <input
               type="checkbox"
               checked={config.useLiveInventory}
-              onChange={(event) => set('useLiveInventory', event.target.checked)}
+              onChange={(event) => {
+                const checked = event.target.checked
+                setConfig((prev) => ({
+                  ...prev,
+                  useLiveInventory: checked,
+                  ...(checked
+                    ? {}
+                    : {
+                        baseScope1: prev.baseScope1 || null,
+                        baseScope2: prev.baseScope2 || null,
+                        baseScope3: prev.baseScope3 || null,
+                        recentScope1: prev.recentScope1 || null,
+                        recentScope2: prev.recentScope2 || null,
+                        recentScope3: prev.recentScope3 || null,
+                      }),
+                }))
+              }}
             />
             Fill from logged emissions
           </label>
@@ -192,11 +208,10 @@ export default function TargetsPage() {
           ) : null}
           {yearsAlignedToInventory ? (
             <p className="mt-2 rounded-md border border-line bg-page px-3 py-2 text-xs text-muted">
-              Logged emissions are in {effectiveConfig.baseYear}
-              {effectiveConfig.mostRecentYear !== effectiveConfig.baseYear
-                ? `–${effectiveConfig.mostRecentYear}`
-                : ''}
-              , so the pathway uses those years instead of {config.baseYear}/{config.mostRecentYear}.
+              No logged emissions in {config.baseYear}
+              {config.mostRecentYear !== config.baseYear ? ` / ${config.mostRecentYear}` : ''}.
+              Choose years that appear in Combined Results, or untick the box and enter the
+              inventory manually.
             </p>
           ) : null}
 
@@ -206,19 +221,19 @@ export default function TargetsPage() {
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
             <NumberField
               label="Scope 1 (tCO₂e)"
-              value={effectiveConfig.baseScope1}
+              value={config.useLiveInventory ? effectiveConfig.baseScope1 : config.baseScope1}
               disabled={config.useLiveInventory}
               onChange={(value) => set('baseScope1', value)}
             />
             <NumberField
               label="Scope 2 (tCO₂e)"
-              value={effectiveConfig.baseScope2}
+              value={config.useLiveInventory ? effectiveConfig.baseScope2 : config.baseScope2}
               disabled={config.useLiveInventory}
               onChange={(value) => set('baseScope2', value)}
             />
             <NumberField
               label="Scope 3 (tCO₂e)"
-              value={effectiveConfig.baseScope3}
+              value={config.useLiveInventory ? effectiveConfig.baseScope3 : config.baseScope3}
               disabled={config.useLiveInventory}
               onChange={(value) => set('baseScope3', value)}
             />
@@ -234,19 +249,19 @@ export default function TargetsPage() {
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
             <NumberField
               label="Scope 1 (tCO₂e)"
-              value={effectiveConfig.recentScope1}
+              value={config.useLiveInventory ? effectiveConfig.recentScope1 : config.recentScope1}
               disabled={config.useLiveInventory}
               onChange={(value) => set('recentScope1', value)}
             />
             <NumberField
               label="Scope 2 (tCO₂e)"
-              value={effectiveConfig.recentScope2}
+              value={config.useLiveInventory ? effectiveConfig.recentScope2 : config.recentScope2}
               disabled={config.useLiveInventory}
               onChange={(value) => set('recentScope2', value)}
             />
             <NumberField
               label="Scope 3 (tCO₂e)"
-              value={effectiveConfig.recentScope3}
+              value={config.useLiveInventory ? effectiveConfig.recentScope3 : config.recentScope3}
               disabled={config.useLiveInventory}
               onChange={(value) => set('recentScope3', value)}
             />
@@ -264,39 +279,69 @@ export default function TargetsPage() {
             <NumberField
               label="Scope 1 + 2 boundary coverage (%)"
               value={config.scope12Coverage}
-              onChange={(value) => set('scope12Coverage', value)}
+              onChange={(value) => {
+                if (value == null) return
+                set('scope12Coverage', value)
+              }}
             />
             <NumberField
               label="Scope 3 target coverage (%)"
               value={config.scope3Coverage}
-              onChange={(value) => set('scope3Coverage', value)}
+              onChange={(value) => {
+                if (value == null) return
+                set('scope3Coverage', value)
+              }}
             />
           </div>
         </Card>
 
         <Card step="Step 2" title="Target settings">
           <div className="grid gap-3 sm:grid-cols-2">
-            <NumberField label="Base year" value={effectiveConfig.baseYear} onChange={(v) => set('baseYear', v)} />
+            <NumberField
+              label="Base year"
+              value={config.baseYear}
+              integer
+              onChange={(v) => {
+                if (v == null) return
+                set('baseYear', v)
+              }}
+            />
             <NumberField
               label="Most recent inventory year"
-              value={effectiveConfig.mostRecentYear}
-              onChange={(v) => set('mostRecentYear', v)}
+              value={config.mostRecentYear}
+              integer
+              onChange={(v) => {
+                if (v == null) return
+                set('mostRecentYear', v)
+              }}
             />
             <NumberField
               label="Submission year"
               value={config.submissionYear}
-              onChange={(v) => set('submissionYear', v)}
+              integer
+              onChange={(v) => {
+                if (v == null) return
+                set('submissionYear', v)
+              }}
             />
             <NumberField
               label="Target year"
               value={config.targetYear}
-              onChange={(v) => set('targetYear', v)}
+              integer
+              onChange={(v) => {
+                if (v == null) return
+                set('targetYear', v)
+              }}
               hint={`${config.targetYear - config.submissionYear} years from submission`}
             />
             <NumberField
               label="Net-zero year"
               value={config.netZeroYear}
-              onChange={(v) => set('netZeroYear', v)}
+              integer
+              onChange={(v) => {
+                if (v == null) return
+                set('netZeroYear', v)
+              }}
               hint="2050 at the latest"
             />
           </div>
@@ -342,7 +387,10 @@ export default function TargetsPage() {
               <NumberField
                 label="Renewable electricity today (%)"
                 value={config.renewableShareBaseYear}
-                onChange={(value) => set('renewableShareBaseYear', value)}
+                onChange={(value) => {
+                  if (value == null) return
+                  set('renewableShareBaseYear', value)
+                }}
                 hint="SBTi thresholds: 80% by 2025, 100% by 2030"
               />
             </div>
@@ -689,22 +737,44 @@ function NumberField({
   onChange,
   disabled,
   hint,
+  integer,
 }: {
   label: string
-  value: number
-  onChange: (value: number) => void
+  value: number | null
+  onChange: (value: number | null) => void
   disabled?: boolean
   hint?: string
+  integer?: boolean
 }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const display =
+    value == null || !Number.isFinite(value) ? '' : integer ? String(Math.round(value)) : String(value)
+
   return (
     <label className="block text-sm font-medium">
       {label}
       <input
         type="number"
-        step="any"
-        value={Number.isFinite(value) ? Number(value.toFixed(3)) : 0}
+        step={integer ? 1 : 'any'}
+        value={editing ? draft : display}
         disabled={disabled}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onFocus={() => {
+          setEditing(true)
+          setDraft(display)
+        }}
+        onBlur={() => setEditing(false)}
+        onChange={(event) => {
+          const raw = event.target.value
+          setDraft(raw)
+          if (raw.trim() === '' || raw === '-') {
+            onChange(null)
+            return
+          }
+          const next = Number(raw)
+          if (!Number.isFinite(next)) return
+          onChange(integer ? Math.round(next) : next)
+        }}
         className="mt-1 w-full rounded-md border border-line px-3 py-2 font-normal disabled:bg-page disabled:text-muted"
       />
       {hint ? <span className="mt-1 block text-xs font-normal text-muted">{hint}</span> : null}
