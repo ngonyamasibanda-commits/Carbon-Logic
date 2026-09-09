@@ -241,12 +241,50 @@ export async function ensureHomeOrganization(
 
   const { error } = await supabase.rpc('create_organization', { p_name: HOME_ORGANIZATION_NAME })
   if (error) return existing
-  const { memberships } = await loadMemberships(userId)
+  const { memberships } = await loadMemberships(userId, email)
+  return memberships
+}
+
+async function attachPlatformOrganizations(
+  userId: string,
+  email: string | null | undefined,
+  memberships: Membership[],
+): Promise<Membership[]> {
+  if (!isPlatformOwnerEmail(email)) return memberships
+
+  const selects = [
+    'id, name, slug, allowed_email_domains, require_mfa, session_idle_minutes, session_absolute_hours, created_at',
+    'id, name, slug, created_at',
+    'id, name, slug',
+  ]
+
+  for (const select of selects) {
+    const { data, error } = await supabase.from('organizations').select(select).order('name', { ascending: true })
+    if (error || !data) continue
+
+    const seen = new Set(memberships.map((membership) => membership.organizationId))
+    const extras: Membership[] = []
+    for (const row of data) {
+      const org = toOrganization(row as unknown as OrganizationRow)
+      if (seen.has(org.id)) continue
+      extras.push({
+        id: `platform:${org.id}`,
+        organizationId: org.id,
+        userId,
+        role: 'owner',
+        createdAt: String((row as unknown as { created_at?: string }).created_at ?? ''),
+        organization: org,
+      })
+    }
+    return [...memberships, ...extras]
+  }
+
   return memberships
 }
 
 export async function loadMemberships(
   userId: string,
+  email?: string | null,
 ): Promise<{ memberships: Membership[]; reliable: boolean }> {
   const selects = [
     'id, organization_id, user_id, role, created_at, organizations!inner(id, name, slug, allowed_email_domains, require_mfa, session_idle_minutes, session_absolute_hours)',
@@ -266,34 +304,41 @@ export async function loadMemberships(
 
     const mapped = data.map((row) => mapMembershipRow(row))
     const missingOrg = mapped.filter((membership) => membership.organization.slug === 'workspace')
-    if (missingOrg.length === 0) return { memberships: mapped, reliable: true }
+    if (missingOrg.length === 0) {
+      return {
+        memberships: await attachPlatformOrganizations(userId, email, mapped),
+        reliable: true,
+      }
+    }
 
     const ids = [...new Set(missingOrg.map((membership) => membership.organizationId))]
     const { data: orgs } = await supabase.from('organizations').select('id, name, slug').in('id', ids)
     const byId = new Map((orgs ?? []).map((org) => [org.id as string, org]))
+    const filled = mapped.map((membership) => {
+      const org = byId.get(membership.organizationId)
+      if (!org) return membership
+      return {
+        ...membership,
+        organization: {
+          ...membership.organization,
+          id: org.id as string,
+          name: (org.name as string) ?? membership.organization.name,
+          slug: (org.slug as string) ?? membership.organization.slug,
+        },
+      }
+    })
     return {
-      memberships: mapped.map((membership) => {
-        const org = byId.get(membership.organizationId)
-        if (!org) return membership
-        return {
-          ...membership,
-          organization: {
-            ...membership.organization,
-            id: org.id as string,
-            name: (org.name as string) ?? membership.organization.name,
-            slug: (org.slug as string) ?? membership.organization.slug,
-          },
-        }
-      }),
+      memberships: await attachPlatformOrganizations(userId, email, filled),
       reliable: true,
     }
   }
 
-  return { memberships: [], reliable: false }
+  const fallback = await attachPlatformOrganizations(userId, email, [])
+  return { memberships: fallback, reliable: fallback.length > 0 }
 }
 
-export async function fetchMemberships(userId: string): Promise<Membership[]> {
-  const { memberships } = await loadMemberships(userId)
+export async function fetchMemberships(userId: string, email?: string | null): Promise<Membership[]> {
+  const { memberships } = await loadMemberships(userId, email)
   return memberships
 }
 
@@ -398,6 +443,21 @@ export async function setMemberRole(membershipId: string, role: OrgRole): Promis
 export async function removeOrgMember(membershipId: string): Promise<{ error: string | null }> {
   const { error } = await supabase.rpc('remove_member', { p_membership: membershipId })
   return { error: error?.message ?? null }
+}
+
+export async function deleteOrganization(organizationId: string): Promise<{ error: string | null }> {
+  if (isLocalOrganizationId(organizationId)) {
+    return { error: 'A local workspace cannot be deleted from the server.' }
+  }
+  const { error } = await supabase.rpc('delete_organization', { p_org: organizationId })
+  if (!error) return { error: null }
+  if (/could not find the function|schema cache/i.test(error.message)) {
+    return {
+      error:
+        'Organisation deletion is not registered on the database yet. In the Supabase SQL editor, paste supabase/fix_platform_owners.sql, click Run, then refresh.',
+    }
+  }
+  return { error: error.message }
 }
 
 export async function revokeInvitation(invitationId: string): Promise<{ error: string | null }> {

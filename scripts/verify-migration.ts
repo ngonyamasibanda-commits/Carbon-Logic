@@ -131,6 +131,12 @@ async function main() {
   await db.exec(ipLimits)
   check('IP rate-limit migration is idempotent (second run is clean)', true)
 
+  const platformOwners = readFileSync(join(root, 'supabase/migrations/0004_platform_owner_access.sql'), 'utf8')
+  await db.exec(platformOwners)
+  check('platform-owner access migration applies cleanly', true)
+  await db.exec(platformOwners)
+  check('platform-owner access migration is idempotent (second run is clean)', true)
+
   console.log('\nProvisioning users\n')
   const users = await db.query<{ id: string; email: string }>(`
     insert into auth.users (email, raw_user_meta_data) values
@@ -300,6 +306,42 @@ async function main() {
       /Only admins and owners/,
     ),
   )
+
+  await asUser(id['founders@carbonlogichq.com'], async () => {
+    const visible = await db.query<{ id: string }>(
+      'select id from public.organizations where id = $1',
+      [acme],
+    )
+    check('a platform owner can view an organisation they do not belong to', visible.rows.length === 1)
+    await db.query('select public.invite_member($1, $2, $3)', [acme, 'viewer@acme.test', 'viewer'])
+  })
+  const platformInvite = await db.query<{ role: string }>(
+    'select role from public.memberships where organization_id = $1 and user_id = $2',
+    [acme, id['viewer@acme.test']],
+  )
+  check(
+    'a platform owner can invite people into an organisation they do not belong to',
+    platformInvite.rows[0]?.role === 'viewer',
+  )
+
+  const disposable = await asUser(id['ngonyamasibanda@gmail.com'], async () => {
+    const created = await db.query<{ create_organization: string }>(
+      "select public.create_organization('Disposable Ltd')",
+    )
+    return created.rows[0].create_organization
+  })
+  await asUser(id['owner@acme.test'], () =>
+    expectFailure(
+      'a tenant owner cannot delete an organisation',
+      () => db.query('select public.delete_organization($1)', [disposable]),
+      /Only Carbon Logic owners/,
+    ),
+  )
+  await asUser(id['ngonyamasibanda@gmail.com'], async () => {
+    await db.query('select public.delete_organization($1)', [disposable])
+  })
+  const gone = await db.query<{ id: string }>('select id from public.organizations where id = $1', [disposable])
+  check('a platform owner can delete an organisation', gone.rows.length === 0)
 
   console.log('\nClaiming the legacy data\n')
 

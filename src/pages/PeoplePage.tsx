@@ -11,6 +11,7 @@ import {
   fetchPendingInvitations,
   inviteMember,
   inviteSignupUrl,
+  isPlatformOwnerEmail,
   removeOrgMember,
   revokeInvitation,
   setMemberRole,
@@ -23,7 +24,7 @@ import {
 import { useAuth } from '../lib/auth-context'
 
 export default function PeoplePage() {
-  const { organization, role, user, memberships, canCreateOrganizations, switchOrganization, reloadWorkspace } =
+  const { organization, role, user, memberships, canCreateOrganizations, switchOrganization, reloadWorkspace, deleteOrganization } =
     useAuth()
   const [members, setMembers] = useState<OrgMember[]>([])
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])
@@ -34,7 +35,8 @@ export default function PeoplePage() {
   const [notice, setNotice] = useState<string | null>(null)
 
   const orgId = organization?.id
-  const canManage = role === 'owner' || role === 'admin'
+  const isPlatformOwner = isPlatformOwnerEmail(user?.email)
+  const canManage = isPlatformOwner || role === 'owner' || role === 'admin'
   const canChooseOrg = canCreateOrganizations
   const choosableOrgs = useMemo(
     () => (canCreateOrganizations ? memberships : []),
@@ -63,8 +65,11 @@ export default function PeoplePage() {
   }, [load])
 
   const grantableRoles = useMemo(
-    () => ORG_ROLES.filter((candidate) => (role ? ROLE_RANK[candidate] <= ROLE_RANK[role] : false)),
-    [role],
+    () =>
+      isPlatformOwner
+        ? ORG_ROLES
+        : ORG_ROLES.filter((candidate) => (role ? ROLE_RANK[candidate] <= ROLE_RANK[role] : false)),
+    [isPlatformOwner, role],
   )
 
   const visibleMembers = useMemo(() => {
@@ -119,15 +124,31 @@ export default function PeoplePage() {
     }
   }
 
+  async function destroyOrganization() {
+    if (!orgId || !organization) return
+    const confirmed = window.prompt(
+      `This permanently deletes ${organization.name}, its people, invitations, and logged emissions. Type the organisation name to confirm.`,
+    )
+    if (confirmed !== organization.name) {
+      if (confirmed !== null) setError('Organisation name did not match. Nothing was deleted.')
+      return
+    }
+    setError(null)
+    setNotice(null)
+    const { error: rpcError } = await deleteOrganization(orgId)
+    if (rpcError) setError(rpcError)
+    else setNotice(`${organization.name} was deleted.`)
+  }
+
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-2xl border border-line bg-white">
         <div className="px-6 py-7">
           <h1 className="text-2xl font-semibold text-brand">People and access</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            Carbon Logic owners choose which organisation a person joins. Everyone else can only
-            invite into this organisation. Nobody else can see, create, or place people into another
-            company’s data — that isolation is enforced in the database.
+            Carbon Logic owners can see every organisation, invite or remove people in them, and
+            delete organisations. Everyone else can only manage people inside this organisation.
+            That isolation is enforced in the database.
           </p>
           <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-brand/20 bg-brand-soft px-3 py-1.5 text-sm text-brand">
             <Building2 size={14} />
@@ -140,6 +161,24 @@ export default function PeoplePage() {
 
       {error ? <Alert tone="error">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
+
+      {isPlatformOwner && orgId ? (
+        <section className="rounded-2xl border border-red-200 bg-white p-5">
+          <h2 className="text-lg font-semibold text-ink">Delete organisation</h2>
+          <p className="mt-1 text-sm text-muted">
+            Permanently remove {organization?.name}, including its people, invitations, and emissions
+            data. Only Carbon Logic owners can do this.
+          </p>
+          <button
+            type="button"
+            onClick={() => void destroyOrganization()}
+            className="mt-3 inline-flex items-center gap-2 rounded-md border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+          >
+            <Trash2 size={14} />
+            Delete {organization?.name}
+          </button>
+        </section>
+      ) : null}
 
       {canManage ? (
         <InviteCard

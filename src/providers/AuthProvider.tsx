@@ -11,6 +11,7 @@ import {
   isPlatformOwnerEmail,
   recordAuditEvent,
   roleAllows,
+  deleteOrganization as requestDeleteOrganization,
   type Membership,
   type Organization,
   type Permission,
@@ -90,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const [nextProfile, loaded] = await Promise.all([
           fetchProfile(userId),
-          loadMemberships(userId),
+          loadMemberships(userId, email),
         ])
         const resolvedEmail = email ?? nextProfile?.email
         const nextMemberships = await ensureHomeOrganization(
@@ -193,10 +194,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return match?.organization ?? memberships[0]?.organization ?? null
   }, [memberships, activeOrgId])
 
+  const isPlatformOwner = isPlatformOwnerEmail(user?.email ?? profile?.email)
+
   const role = useMemo(() => {
+    if (isPlatformOwner) return 'owner'
     const match = memberships.find((m) => m.organizationId === organization?.id)
     return match?.role ?? null
-  }, [memberships, organization])
+  }, [isPlatformOwner, memberships, organization])
 
   const signOut = useCallback(
     async (reason: SignOutReason = 'user') => {
@@ -297,7 +301,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return 'ready'
   }, [bootstrapping, session, aal, workspaceLoading, memberships, organization, verifiedFactors])
 
-  const can = useCallback((permission: Permission) => roleAllows(role, permission), [role])
+  const can = useCallback(
+    (permission: Permission) => (isPlatformOwner ? true : roleAllows(role, permission)),
+    [isPlatformOwner, role],
+  )
 
   const signInWithPassword = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
@@ -390,6 +397,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [userId, user?.email, profile?.email, loadWorkspace],
   )
 
+  const deleteOrganization = useCallback(
+    async (organizationId: string) => {
+      if (!isPlatformOwnerEmail(user?.email ?? profile?.email)) {
+        return { error: 'Only Carbon Logic owners can delete organisations.' }
+      }
+      const { error } = await requestDeleteOrganization(organizationId)
+      if (error) return { error: friendlyError(error) }
+      if (userId) {
+        const nextId = memberships.find((membership) => membership.organizationId !== organizationId)?.organizationId
+        await loadWorkspace(userId, user?.email, nextId)
+      }
+      return { error: null }
+    },
+    [userId, user?.email, profile?.email, memberships, loadWorkspace],
+  )
+
   const reloadWorkspace = useCallback(async () => {
     if (userId) await loadWorkspace(userId, user?.email)
   }, [userId, user?.email, loadWorkspace])
@@ -418,6 +441,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOutEverywhere,
       switchOrganization,
       createOrganization,
+      deleteOrganization,
       canCreateOrganizations: isPlatformOwnerEmail(user?.email ?? profile?.email),
       reloadWorkspace,
       refreshMfaState,
@@ -445,6 +469,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOutEverywhere,
       switchOrganization,
       createOrganization,
+      deleteOrganization,
       reloadWorkspace,
       refreshMfaState,
     ],
