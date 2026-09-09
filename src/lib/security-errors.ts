@@ -43,6 +43,15 @@ export class RateLimitError extends Error {
   }
 }
 
+export class CloudSaveError extends Error {
+  constructor(
+    message = 'Could not save this activity to your organisation. Try again in a moment.',
+  ) {
+    super(message)
+    this.name = 'CloudSaveError'
+  }
+}
+
 export function throwIfUnsafeToFallback(error: { message?: string; code?: string } | null) {
   if (isRateLimitError(error)) throw new RateLimitError()
   if (isPermissionError(error)) throw new PermissionDeniedError()
