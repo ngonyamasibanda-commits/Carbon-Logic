@@ -130,13 +130,14 @@ export type SbtiConfig = {
   submissionYear: number
   netZeroYear: number
   useLiveInventory: boolean
-  baseScope1: number
-  baseScope2: number
-  baseScope3: number
+  /** Null means the field has not been entered yet (blank in the form). */
+  baseScope1: number | null
+  baseScope2: number | null
+  baseScope3: number | null
   mostRecentYear: number
-  recentScope1: number
-  recentScope2: number
-  recentScope3: number
+  recentScope1: number | null
+  recentScope2: number | null
+  recentScope3: number | null
   scope3Ambition: Scope3Ambition
   scope12Coverage: number
   scope3Coverage: number
@@ -186,34 +187,18 @@ export type PathwayPoint = {
   actual?: number
 }
 
-/** When filling from logged entries, use years that actually have data. */
+function tonnes(value: number | null | undefined): number {
+  return value == null || !Number.isFinite(value) ? 0 : value
+}
+
+/** When filling from logged entries, pull tonnes for the years the user chose. */
 export function alignConfigWithInventory(config: SbtiConfig, inventory: InventoryYear[]): SbtiConfig {
   if (!config.useLiveInventory) return config
   const byYear = new Map(inventory.map((row) => [row.year, row]))
-  if (byYear.size === 0) {
-    return {
-      ...config,
-      baseScope1: 0,
-      baseScope2: 0,
-      baseScope3: 0,
-      recentScope1: 0,
-      recentScope2: 0,
-      recentScope3: 0,
-    }
-  }
-  const years = inventory.map((row) => row.year)
-  const earliest = years[0]
-  const latest = years[years.length - 1]
-  const baseYear = byYear.has(config.baseYear) ? config.baseYear : earliest
-  const mostRecentYear = byYear.has(config.mostRecentYear)
-    ? Math.max(config.mostRecentYear, baseYear)
-    : Math.max(latest, baseYear)
-  const baseRow = byYear.get(baseYear)
-  const recentRow = byYear.get(mostRecentYear) ?? baseRow
+  const baseRow = byYear.get(config.baseYear)
+  const recentRow = byYear.get(config.mostRecentYear)
   return {
     ...config,
-    baseYear,
-    mostRecentYear,
     baseScope1: baseRow?.scope1 ?? 0,
     baseScope2: baseRow?.scope2 ?? 0,
     baseScope3: baseRow?.scope3 ?? 0,
@@ -461,8 +446,14 @@ export function calculateSbti(
   organisation: string,
   actualByYear: Map<number, number>,
 ): SbtiResult {
-  const scope12Base = config.baseScope1 + config.baseScope2
-  const scope3Base = config.baseScope3
+  const baseScope1 = tonnes(config.baseScope1)
+  const baseScope2 = tonnes(config.baseScope2)
+  const baseScope3 = tonnes(config.baseScope3)
+  const recentScope1 = tonnes(config.recentScope1)
+  const recentScope2 = tonnes(config.recentScope2)
+  const recentScope3 = tonnes(config.recentScope3)
+  const scope12Base = baseScope1 + baseScope2
+  const scope3Base = baseScope3
   const baseTotal = scope12Base + scope3Base
   const scope3Share = baseTotal > 0 ? scope3Base / baseTotal : 0
   const scope3TargetRequired = scope3Share >= SCOPE3_MATERIALITY_THRESHOLD || config.sellsFossilFuels
@@ -478,7 +469,7 @@ export function calculateSbti(
     Math.min(PATHWAY_PARAMS.scope2.nzy, config.netZeroYear),
     config.mostRecentYear,
   )
-  const scope1Share = scope12Base > 0 ? config.baseScope1 / scope12Base : 1
+  const scope1Share = scope12Base > 0 ? baseScope1 / scope12Base : 1
   const blendedRate = scope1Rate * scope1Share + scope2Rate * (1 - scope1Share)
 
   const s12Core = dynamicTarget({
@@ -486,7 +477,7 @@ export function calculateSbti(
     targetYear: config.targetYear,
     mostRecentYear: config.mostRecentYear,
     baseEmissions: scope12Base,
-    mostRecentEmissions: config.recentScope1 + config.recentScope2,
+    mostRecentEmissions: recentScope1 + recentScope2,
     initialRate: blendedRate,
     larrMin: PATHWAY_PARAMS.scope1.larrMin,
   })
@@ -498,7 +489,7 @@ export function calculateSbti(
     targetYear: config.targetYear,
     mostRecentYear: config.mostRecentYear,
     baseEmissions: scope3Base,
-    mostRecentEmissions: config.recentScope3,
+    mostRecentEmissions: recentScope3,
     initialRate: initialDlarr(
       s3Params.nza,
       Math.min(s3Params.nzy, config.netZeroYear),

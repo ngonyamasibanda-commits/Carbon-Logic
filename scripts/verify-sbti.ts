@@ -2,7 +2,7 @@
  * Checks the dLARR implementation against the reference rates published in
  * CNZS v1.3.1 Method Appendix, Table 1.
  */
-import { calculateSbti, type SbtiConfig } from '../src/lib/sbti'
+import { alignConfigWithInventory, calculateSbti, type SbtiConfig } from '../src/lib/sbti'
 
 function config(overrides: Partial<SbtiConfig>): SbtiConfig {
   return {
@@ -119,5 +119,32 @@ console.log(
   `${netZeroBeforeTarget ? 'FAIL' : 'PASS'}  net-zero series starts at the target year`,
 )
 console.log(`${joinOk ? 'PASS' : 'FAIL'}  pathways meet at the target year`)
+
+const live = alignConfigWithInventory(
+  config({ useLiveInventory: true, baseYear: 2020, mostRecentYear: 2022, baseScope1: null }),
+  [
+    { year: 2023, scope1: 10, scope2: 20, scope3: 30, total: 60 },
+    { year: 2024, scope1: 8, scope2: 15, scope3: 25, total: 48 },
+  ],
+)
+const yearsKept = live.baseYear === 2020 && live.mostRecentYear === 2022
+const tonnesFromChosenYears = live.baseScope1 === 0 && live.recentScope1 === 0
+if (!yearsKept) failed += 1
+if (!tonnesFromChosenYears) failed += 1
+console.log(`${yearsKept ? 'PASS' : 'FAIL'}  fill-from-inventory keeps the years the user entered`)
+console.log(
+  `${tonnesFromChosenYears ? 'PASS' : 'FAIL'}  missing inventory years do not overwrite the user's years`,
+)
+
+const liveHit = alignConfigWithInventory(
+  config({ useLiveInventory: true, baseYear: 2023, mostRecentYear: 2024 }),
+  [
+    { year: 2023, scope1: 10, scope2: 20, scope3: 30, total: 60 },
+    { year: 2024, scope1: 8, scope2: 15, scope3: 25, total: 48 },
+  ],
+)
+const hitOk = liveHit.baseScope1 === 10 && liveHit.recentScope1 === 8 && liveHit.baseYear === 2023
+if (!hitOk) failed += 1
+console.log(`${hitOk ? 'PASS' : 'FAIL'}  fill-from-inventory uses tonnes from the chosen years`)
 
 process.exit(failed > 0 ? 1 : 0)
