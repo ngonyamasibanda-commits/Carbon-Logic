@@ -21,7 +21,7 @@ const ARTICLES = [
   },
   {
     title: 'Well-to-tank (WTT) emissions',
-    body: 'WTT factors account for emissions from extracting, refining, and transporting fuel before it reaches your site. WTT is Scope 3 and is mandatory for complete GHG reporting. This tool includes DEFRA WTT factors for diesel, petrol, LPG, gas oil, and natural gas.',
+    body: 'WTT factors account for emissions from extracting, refining, and transporting fuel before it reaches your site. WTT is Scope 3 and is mandatory for complete GHG reporting. This tool includes DESNZ/DEFRA 2026 WTT factors for diesel, petrol, LPG, gas oil, natural gas, and UK electricity generation.',
   },
   {
     title: 'UK reporting: SECR and ESOS',

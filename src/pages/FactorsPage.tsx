@@ -120,8 +120,9 @@ export default function FactorsPage() {
           <p className="mt-2 max-w-3xl text-sm text-muted">
             Conversion values are kg CO₂e per activity unit. tCO₂e = (activity × conversion
             value) / 1000. Each row shows the publisher: DEFRA / DESNZ (UK government
-            conversion factors 2025, formerly BEIS), ICE (Circular Ecology), or EIO / EPA /
-            IPCC when you import spend-based or GWP sources.
+            conversion factors 2026, formerly BEIS), ICE v4.1 (Circular Ecology) where DESNZ
+            has no equivalent, or EIO / EPA / IPCC for spend-based, explosives, and GWP
+            sources.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
