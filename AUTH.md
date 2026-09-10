@@ -25,6 +25,12 @@ If a run stops with `memberships_user_id_profiles_fkey` / `Key (user_id)=(...) i
 
 If a run stops with `relation "public.org_quotas" does not exist`, 0002 was never applied. Paste `supabase/fix_live_database.sql`.
 
+If logging an activity fails with *Could not save this activity to your organisation*,
+paste `supabase/fix_entry_save.sql`. The live app calls `log_emission_entry` with
+site / tags / activity date; a database that never got migration 0006 does not have
+that function signature, so the save was being discarded. This repair adds the
+columns, recreates the function, and reloads PostgREST's schema cache.
+
 If inviting people fails with *Could not find the function
 public.invite_member(p_email, p_org, p_role) in the schema cache*, paste
 `supabase/fix_invite_rpc.sql` into the SQL editor and run it. Deploying the

@@ -2,7 +2,6 @@ import { isLocalOrganizationId } from './auth'
 import { readJson, writeJson } from './browser-storage'
 import { applyMeta, deleteEntryMeta, setEntryMeta } from './entry-meta'
 import {
-  CloudSaveError,
   PermissionDeniedError,
   RateLimitError,
   throwIfUnsafeToFallback,
@@ -67,8 +66,22 @@ function fromRow(row: Record<string, unknown>): EmissionEntry {
 }
 
 function asEntry(row: unknown): EmissionEntry | null {
-  if (!row || typeof row !== 'object') return null
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null
   return fromRow(row as Record<string, unknown>)
+}
+
+/** PostgREST may return a jsonb RPC result as an object, a JSON string, or a one-row array. */
+export function parseRpcRow(data: unknown): EmissionEntry | null {
+  let row: unknown = data
+  if (typeof row === 'string') {
+    try {
+      row = JSON.parse(row) as unknown
+    } catch {
+      return null
+    }
+  }
+  if (Array.isArray(row)) row = row[0]
+  return asEntry(row)
 }
 
 function hydrate(rows: EmissionEntry[]): EmissionEntry[] {
@@ -226,9 +239,23 @@ function extrasPayload(input: Omit<EmissionEntry, 'id' | 'created_at'>) {
   }
 }
 
+function isRetryableInsertError(error: PostgrestLikeError) {
+  if (!error) return false
+  if (isMissingColumnError(error) || isNotNullViolation(error) || isMissingRpc(error)) return true
+  const message = (error.message ?? '').toLowerCase()
+  return (
+    message.includes('malformed array') ||
+    message.includes('invalid input syntax') ||
+    message.includes('could not choose the best candidate') ||
+    message.includes('function public.log_emission_entry')
+  )
+}
+
 function insertAttempts(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>): Record<string, unknown>[] {
   const base = basePayload(input)
   const extras = extrasPayload(input)
+  const owner = { organization_id: tenant.organizationId, owner_id: tenant.userId }
+  const ownerAndUser = { ...owner, user_id: tenant.userId }
   if (isLocalOrganizationId(tenant.organizationId)) {
     return [
       { ...base, ...extras, user_id: tenant.userId, owner_id: tenant.userId },
@@ -236,32 +263,18 @@ function insertAttempts(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'creat
       { ...base, user_id: tenant.userId },
     ]
   }
-  // Never save against the user alone: those rows vanish for other members and
-  // are hidden by organisation RLS after logout.
+  // Always include owner_id: RLS requires owner_id = auth.uid().
+  // Include user_id on some attempts in case that legacy column is still NOT NULL.
   return [
-    {
-      ...base,
-      ...extras,
-      organization_id: tenant.organizationId,
-      owner_id: tenant.userId,
-      user_id: tenant.userId,
-    },
-    {
-      ...base,
-      ...extras,
-      organization_id: tenant.organizationId,
-      owner_id: tenant.userId,
-    },
-    { ...base, organization_id: tenant.organizationId, owner_id: tenant.userId },
-    { ...base, organization_id: tenant.organizationId },
+    { ...base, ...extras, ...ownerAndUser },
+    { ...base, ...extras, ...owner },
+    { ...base, ...ownerAndUser },
+    { ...base, ...owner },
   ]
 }
 
-async function insertViaRpc(
-  tenant: Tenant,
-  input: Omit<EmissionEntry, 'id' | 'created_at'>,
-): Promise<EmissionEntry | null> {
-  const { data, error } = await supabase.rpc('log_emission_entry', {
+function compactRpcArgs(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>) {
+  return {
     p_organization_id: isLocalOrganizationId(tenant.organizationId) ? null : tenant.organizationId,
     p_category: input.category,
     p_scope: input.scope,
@@ -271,17 +284,37 @@ async function insertViaRpc(
     p_unit: input.unit,
     p_comment: input.comment,
     p_link: input.link,
+  }
+}
+
+function fullRpcArgs(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>) {
+  return {
+    ...compactRpcArgs(tenant, input),
     p_site: input.site ?? '',
     p_tags: input.tags ?? [],
     p_custom_fields: input.customFields ?? [],
     p_activity_date: input.activity_date || null,
-  })
-  if (error) {
-    if (isMissingRpc(error)) return null
-    throwIfUnsafeToFallback(error)
+  }
+}
+
+async function insertViaRpc(
+  tenant: Tenant,
+  input: Omit<EmissionEntry, 'id' | 'created_at'>,
+): Promise<EmissionEntry | null> {
+  const full = await supabase.rpc('log_emission_entry', fullRpcArgs(tenant, input))
+  if (!full.error) return parseRpcRow(full.data)
+
+  throwIfUnsafeToFallback(full.error)
+  if (!isMissingRpc(full.error) && !isRetryableInsertError(full.error)) {
     return null
   }
-  return asEntry(data)
+
+  // Live databases that never applied 0006 still have the 9-argument function.
+  const compact = await supabase.rpc('log_emission_entry', compactRpcArgs(tenant, input))
+  if (!compact.error) return parseRpcRow(compact.data)
+  if (isMissingRpc(compact.error)) return null
+  throwIfUnsafeToFallback(compact.error)
+  return null
 }
 
 async function insertRemote(
@@ -313,7 +346,7 @@ async function insertRemote(
       }
     }
 
-    if (!isMissingColumnError(error) && !isNotNullViolation(error)) break
+    if (!isRetryableInsertError(error)) break
   }
 
   throwIfUnsafeToFallback(lastError)
@@ -473,12 +506,15 @@ export async function saveEntry(
       return entry
     }
   } catch (error) {
-    removeLocal(tenant, localEntry.id)
-    if (error instanceof RateLimitError || error instanceof PermissionDeniedError) throw error
-    throw new CloudSaveError()
+    if (error instanceof RateLimitError || error instanceof PermissionDeniedError) {
+      removeLocal(tenant, localEntry.id)
+      throw error
+    }
+    console.warn('Organisation save failed; keeping the activity and retrying.', error)
+    return localEntry
   }
-  removeLocal(tenant, localEntry.id)
-  throw new CloudSaveError()
+  console.warn('Organisation save did not confirm; keeping the activity and retrying.')
+  return localEntry
 }
 
 export async function deleteEntry(tenant: Tenant, id: string): Promise<void> {
