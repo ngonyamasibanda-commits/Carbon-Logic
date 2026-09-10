@@ -1,3 +1,5 @@
+import { fetchOrgSettings, saveOrgSbtiConfig } from './org'
+import { readJson, writeJson } from './browser-storage'
 import type { SbtiConfig } from './sbti'
 
 const TARGET_KEY = 'carbon-logic-sbti-target'
@@ -33,28 +35,39 @@ function blankZero(value: number | null | undefined): number | null {
   return value
 }
 
-export function loadSbtiConfig(organizationId?: string | null): SbtiConfig {
-  try {
-    const key = organizationId ? `${TARGET_KEY}:${organizationId}` : TARGET_KEY
-    const raw = localStorage.getItem(key) ?? (organizationId ? localStorage.getItem(TARGET_KEY) : null)
-    if (!raw) return defaultSbtiConfig()
-    const parsed = { ...defaultSbtiConfig(), ...(JSON.parse(raw) as Partial<SbtiConfig>) }
-    if (parsed.useLiveInventory) return parsed
-    return {
-      ...parsed,
-      baseScope1: blankZero(parsed.baseScope1),
-      baseScope2: blankZero(parsed.baseScope2),
-      baseScope3: blankZero(parsed.baseScope3),
-      recentScope1: blankZero(parsed.recentScope1),
-      recentScope2: blankZero(parsed.recentScope2),
-      recentScope3: blankZero(parsed.recentScope3),
-    }
-  } catch {
-    return defaultSbtiConfig()
+function fromStored(raw: Partial<SbtiConfig> | null | undefined): SbtiConfig {
+  const parsed = { ...defaultSbtiConfig(), ...(raw ?? {}) }
+  if (parsed.useLiveInventory) return parsed
+  return {
+    ...parsed,
+    baseScope1: blankZero(parsed.baseScope1),
+    baseScope2: blankZero(parsed.baseScope2),
+    baseScope3: blankZero(parsed.baseScope3),
+    recentScope1: blankZero(parsed.recentScope1),
+    recentScope2: blankZero(parsed.recentScope2),
+    recentScope3: blankZero(parsed.recentScope3),
   }
+}
+
+export function loadSbtiConfig(organizationId?: string | null): SbtiConfig {
+  const key = organizationId ? `${TARGET_KEY}:${organizationId}` : TARGET_KEY
+  return fromStored(readJson<Partial<SbtiConfig> | null>(key, null))
 }
 
 export function saveSbtiConfig(config: SbtiConfig, organizationId?: string | null) {
   const key = organizationId ? `${TARGET_KEY}:${organizationId}` : TARGET_KEY
-  localStorage.setItem(key, JSON.stringify(config))
+  writeJson(key, config)
+  if (organizationId) {
+    void saveOrgSbtiConfig(organizationId, config as unknown as Record<string, unknown>)
+  }
+}
+
+export async function loadSbtiConfigCloud(organizationId: string): Promise<SbtiConfig> {
+  const settings = await fetchOrgSettings(organizationId, '')
+  if (settings.sbtiConfig && Object.keys(settings.sbtiConfig).length > 0) {
+    const parsed = fromStored(settings.sbtiConfig as Partial<SbtiConfig>)
+    writeJson(`${TARGET_KEY}:${organizationId}`, parsed)
+    return parsed
+  }
+  return loadSbtiConfig(organizationId)
 }

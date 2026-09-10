@@ -1,4 +1,5 @@
 import { getCategory } from './categories'
+import { entryActivityDate } from './entry-date'
 import { summarizeInventory, type InventorySummary } from './ghg'
 import { escapeHtml } from './safe'
 import type { EmissionEntry } from './types'
@@ -24,7 +25,7 @@ export function entriesToCsv(entries: EmissionEntry[]) {
   ]
   const rows = entries.map((entry) =>
     [
-      entry.created_at,
+      entryActivityDate(entry),
       getCategory(entry.category)?.name ?? entry.category,
       entry.scope,
       entry.site,

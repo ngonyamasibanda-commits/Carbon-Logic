@@ -1,4 +1,5 @@
 import type { EmissionEntry } from './types'
+import { entryActivityYear } from './entry-date'
 
 /**
  * Science Based Targets initiative — corporate near-term and net-zero target setting.
@@ -159,7 +160,7 @@ export type InventoryYear = {
 export function inventoryByYear(entries: EmissionEntry[]): InventoryYear[] {
   const map = new Map<number, InventoryYear>()
   for (const entry of entries) {
-    const year = new Date(entry.created_at).getFullYear()
+    const year = entryActivityYear(entry)
     if (!Number.isFinite(year)) continue
     const row = map.get(year) ?? { year, scope1: 0, scope2: 0, scope3: 0, total: 0 }
     if (entry.scope === 'Scope 1') row.scope1 += entry.emissions_tco2e

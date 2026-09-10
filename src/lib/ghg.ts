@@ -218,6 +218,7 @@ const INPUT_TO_BUCKET: Record<string, string> = {
   business_travel: 's3-6',
   employee_commuting: 's3-7',
   crew_transport: 's3-7',
+  energy_wtt: 's3-3',
 }
 
 const BUCKETS = [...GHG_SCOPE1, ...GHG_SCOPE2, ...GHG_SCOPE3]

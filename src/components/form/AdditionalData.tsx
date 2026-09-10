@@ -1,14 +1,11 @@
 import { Paperclip, Plus, Tag, X } from 'lucide-react'
-import { safeDownloadUrl } from '../../lib/safe'
-import type { AdditionalState, AttachedFile } from '../../lib/types'
+import type { AdditionalState } from '../../lib/types'
 import { useOrg } from '../../providers/OrgProvider'
 
 type Props = {
   value: AdditionalState
   onChange: (next: AdditionalState) => void
 }
-
-const MAX_FILE_BYTES = 1_500_000
 
 export default function AdditionalData({ value, onChange }: Props) {
   const { sites } = useOrg()
@@ -23,23 +20,24 @@ export default function AdditionalData({ value, onChange }: Props) {
     update({ tags: [...value.tags, tag] })
   }
 
-  async function onFiles(fileList: FileList | null) {
-    if (!fileList) return
-    const next: AttachedFile[] = [...value.files]
-    for (const file of Array.from(fileList)) {
-      if (file.size > MAX_FILE_BYTES) {
-        window.alert(`${file.name} is larger than 1.5 MB and was skipped.`)
-        continue
-      }
-      const dataUrl = await readFile(file)
-      next.push({ name: file.name, size: file.size, type: file.type, dataUrl })
-    }
-    update({ files: next })
-  }
-
   return (
     <aside className="space-y-4">
       <h3 className="text-base font-semibold text-ink">Additional Data</h3>
+
+      <label className="block text-sm font-semibold text-ink">
+        Activity date
+        <input
+          type="date"
+          value={value.activity_date}
+          onChange={(event) => update({ activity_date: event.target.value })}
+          className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
+          required
+        />
+        <span className="mt-1 block text-xs font-normal text-muted">
+          The date this activity happened. Totals, YTD, and science-based targets use this, not the
+          moment you typed it in.
+        </span>
+      </label>
 
       <label className="block text-sm font-semibold text-ink">
         Site
@@ -58,11 +56,11 @@ export default function AdditionalData({ value, onChange }: Props) {
       </label>
 
       <label className="block text-sm font-semibold text-ink">
-        Link
+        Evidence link
         <input
           value={value.link}
           onChange={(event) => update({ link: event.target.value })}
-          placeholder="e.g. Sharepoint or Google Drive"
+          placeholder="SharePoint, Drive, or invoice URL"
           className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
         />
       </label>
@@ -80,30 +78,13 @@ export default function AdditionalData({ value, onChange }: Props) {
       <div className="rounded-md border border-brand/30 bg-brand-soft/40 px-3 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-brand-dark">
           <Paperclip size={14} />
-          File Uploads & Storage
+          Evidence files
         </div>
-        <input
-          type="file"
-          multiple
-          className="mt-2 w-full text-xs"
-          onChange={(event) => void onFiles(event.target.files)}
-        />
-        <ul className="mt-2 space-y-1 text-xs text-ink">
-          {value.files.map((file, index) => (
-            <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
-              <a href={safeDownloadUrl(file.dataUrl)} download={file.name} className="truncate text-sky-700 hover:underline">
-                {file.name}
-              </a>
-              <button
-                type="button"
-                onClick={() => update({ files: value.files.filter((_, i) => i !== index) })}
-                aria-label={`Remove ${file.name}`}
-              >
-                <X size={12} />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <p className="mt-2 text-xs leading-5 text-muted">
+          Files are not stored in this browser or on the organisation database — that is what used
+          to fill device storage. Paste a SharePoint, Google Drive, or document-system link above so
+          every colleague can open the same evidence.
+        </p>
       </div>
 
       <div className="rounded-md border border-brand/30 px-3 py-3">
@@ -185,13 +166,4 @@ export default function AdditionalData({ value, onChange }: Props) {
       </div>
     </aside>
   )
-}
-
-function readFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
 }

@@ -201,7 +201,7 @@ export default function Sidebar() {
             <Scale size={16} className="text-muted" />
             Terms &amp; Conditions
           </a>
-          {can('members:manage') ? (
+          {can('members:read') ? (
             <NavLink to="/people" className={({ isActive }) => navClass(isActive)}>
               {({ isActive }) => (
                 <>

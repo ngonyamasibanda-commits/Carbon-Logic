@@ -24,6 +24,7 @@ export default function BulkUpload({ category, onClose }: Props) {
     'comment',
     'link',
     'tags',
+    'activity_date',
   ]
 
   function downloadTemplate() {
@@ -72,6 +73,8 @@ export default function BulkUpload({ category, onClose }: Props) {
         .split(/[;|]/)
         .map((tag) => tag.trim())
         .filter(Boolean)
+      extras.activity_date = (values.activity_date || extras.activity_date).slice(0, 10)
+      extras.files = []
 
       const totalTco2e = calculateTco2e(activityAmount, factor.conversionValue)
       const entry: Omit<EmissionEntry, 'id' | 'created_at'> = {

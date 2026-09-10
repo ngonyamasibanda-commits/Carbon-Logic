@@ -35,7 +35,7 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError(null)
     try {
-      const nextFactors = await loadFactors()
+      const nextFactors = await loadFactors(tenant.organizationId)
       setFactors(nextFactors)
       const nextEntries = await fetchEntries(tenant)
       setEntries(nextEntries)

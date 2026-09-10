@@ -9,8 +9,8 @@ export function calculateTco2e(activityAmount: number, conversionValue: number):
   return (activityAmount * conversionValue) / 1000
 }
 
-export async function loadFactors(): Promise<Map<string, EmissionFactor>> {
-  return loadFactorLibrary()
+export async function loadFactors(organizationId?: string): Promise<Map<string, EmissionFactor>> {
+  return loadFactorLibrary(organizationId)
 }
 
 export function lookupFactor(

@@ -146,6 +146,12 @@ async function main() {
   await db.exec(readFileSync(join(root, 'supabase/fix_entry_save.sql'), 'utf8'))
   check('entry-save repair script applies cleanly', true)
 
+  const saasWorkspace = readFileSync(join(root, 'supabase/migrations/0006_saas_cloud_workspace.sql'), 'utf8')
+  await db.exec(saasWorkspace)
+  check('SaaS cloud workspace migration applies cleanly', true)
+  await db.exec(saasWorkspace)
+  check('SaaS cloud workspace migration is idempotent (second run is clean)', true)
+
   console.log('\nProvisioning users\n')
   const users = await db.query<{ id: string; email: string }>(`
     insert into auth.users (email, raw_user_meta_data) values
@@ -526,6 +532,71 @@ async function main() {
     ),
   )
 
+  await asUser(id['editor@acme.test'], async () => {
+    await db.query(
+      `insert into public.sites (organization_id, name, type, region)
+       values ($1, 'Pit A', 'mine', 'United Kingdom')`,
+      [acme],
+    )
+    check('an editor can add a facility for the organisation', true)
+  })
+
+  await asUser(id['viewer@acme.test'], async () => {
+    const rows = await db.query<{ name: string }>('select name from public.sites')
+    check('a colleague sees the same facilities', rows.rows.some((row) => row.name === 'Pit A'))
+  })
+
+  await asUser(id['rival@other.test'], async () => {
+    const rows = await db.query('select * from public.sites')
+    check('another tenant cannot see those facilities', rows.rows.length === 0)
+  })
+
+  await asUser(id['owner@acme.test'], async () => {
+    const listed = await db.query<{ list_org_members: unknown }>('select public.list_org_members($1)', [acme])
+    const people = listedRows(listed.rows[0].list_org_members)
+    check(
+      'list_org_members returns people in this organisation',
+      people.length >= 3,
+      `got ${people.length}`,
+    )
+  })
+
+  const lateJoiner = await db.query<{ id: string }>(`
+    insert into auth.users (email) values ('latejoin@acme.test') returning id
+  `)
+  await db.query(
+    `insert into public.invitations (organization_id, email, role, expires_at)
+     values ($1, 'latejoin@acme.test', 'editor', now() + interval '30 days')`,
+    [acme],
+  )
+  await asUser(lateJoiner.rows[0].id, async () => {
+    await db.query('select public.redeem_my_invitations()')
+  })
+  const redeemedLater = await countOf(
+    'select count(*) from public.memberships where organization_id = $1 and user_id = $2',
+    [acme, lateJoiner.rows[0].id],
+  )
+  check('signing in redeems a pending invitation for an existing account', redeemedLater === 1)
+
+  const profileFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  check('memberships reference profiles so People & Access can list colleagues', profileFk === 1)
+
+  await asUser(id['editor@acme.test'], async () => {
+    const logged = await db.query<{ log_emission_entry: Record<string, unknown> }>(
+      `select public.log_emission_entry($1, 'site_fuel', 'Scope 1', 2.2, 'diesel', 100, 'L', '', '', 'Pit A', array['ytd'], '[]'::jsonb, '2025-03-01')`,
+      [acme],
+    )
+    const row = logged.rows[0].log_emission_entry
+    check(
+      'logged activities keep the site and activity date on the organisation',
+      row.site === 'Pit A' && String(row.activity_date).includes('2025-03-01'),
+      `got ${JSON.stringify(row)}`,
+    )
+  })
+
   console.log('\nFactors, audit log and profiles\n')
 
   await asUser(id['viewer@acme.test'], async () => {
@@ -593,7 +664,7 @@ async function main() {
     const emails = rows.rows.map((r) => r.email).sort()
     check(
       'a member sees colleague profiles but not strangers',
-      emails.length === 4 && !emails.includes('rival@other.test'),
+      emails.length === 5 && !emails.includes('rival@other.test'),
       emails.join(', '),
     )
   })
@@ -858,7 +929,7 @@ async function main() {
   check('quota repair script applies cleanly', true)
 
   await db.query(
-    'update public.org_quotas set entries_per_hour = 2000 where organization_id = $1',
+    'update public.org_quotas set entries_per_hour = 50000 where organization_id = $1',
     [acme],
   )
 
@@ -868,9 +939,9 @@ async function main() {
       md5('203.0.113.9'),
       'write_minute',
       date_bin('1 minute', now(), timestamptz '2000-01-01+00'),
-      90
+      400
     )
-    on conflict (ip_hash, action, window_start) do update set count = 90
+    on conflict (ip_hash, action, window_start) do update set count = 400
   `)
   await asUser(
     id['editor@acme.test'],

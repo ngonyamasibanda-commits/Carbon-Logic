@@ -10,6 +10,7 @@ import {
   fetchProfile,
   isPlatformOwnerEmail,
   recordAuditEvent,
+  redeemMyInvitations,
   roleAllows,
   deleteOrganization as requestDeleteOrganization,
   type Membership,
@@ -89,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (userId: string, email?: string | null, preferredOrgId?: string | null) => {
       setWorkspaceLoading(true)
       try {
+        await redeemMyInvitations()
         const [nextProfile, loaded] = await Promise.all([
           fetchProfile(userId),
           loadMemberships(userId, email),
@@ -352,7 +354,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       })
       if (error) return { error: friendlyError(error.message), needsConfirmation: false }
-      return { error: null, needsConfirmation: !data.session }
+      if (data.session) return { error: null, needsConfirmation: false }
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
+      if (!signInError) return { error: null, needsConfirmation: false }
+      if (signInError.message.toLowerCase().includes('email not confirmed')) {
+        return { error: null, needsConfirmation: true }
+      }
+      return { error: null, needsConfirmation: true }
     },
     [],
   )
@@ -377,11 +388,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Same class of bug as “change ?studentId= in the URL”: the client must not
     // adopt an organisation the session is not a member of. RLS would still
     // return empty rows, but the UI should refuse the switch outright.
-    if (!isPlatformOwnerEmail(user?.email ?? profile?.email)) return
     if (!memberships.some((membership) => membership.organizationId === organizationId)) return
     localStorage.setItem(ACTIVE_ORG_KEY, organizationId)
     setActiveOrgId(organizationId)
-  }, [memberships, user?.email, profile?.email])
+  }, [memberships])
 
   const createOrganization = useCallback(
     async (name: string) => {

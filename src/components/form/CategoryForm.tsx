@@ -46,6 +46,7 @@ export default function CategoryForm({ category }: Props) {
   // Reset form whenever the category changes
   useEffect(() => {
     setValues(defaultValues)
+    setAdditional(emptyAdditional())
     // defaultValues is memoised on category; only re-run when category changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category.id])
@@ -106,7 +107,13 @@ export default function CategoryForm({ category }: Props) {
         } | ${activityAmount.toLocaleString()} ${factor.unit} × ${factor.conversionValue} kg CO₂e/${factor.unit} ÷ 1000 = ${totalTco2e.toFixed(4)} tCO₂e | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
         amount: activityAmount,
         unit: category.resolveUnit(values),
-        ...additional,
+        link: additional.link,
+        comment: additional.comment,
+        site: additional.site,
+        tags: additional.tags,
+        customFields: additional.customFields,
+        files: [],
+        activity_date: additional.activity_date,
       })
       setMessage(`Added ${totalTco2e.toFixed(4)} tCO2e to your footprint.`)
       setValues(defaultValues)

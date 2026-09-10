@@ -20,7 +20,7 @@ import {
   type CriterionCheck,
   type SbtiConfig,
 } from '../lib/sbti'
-import { loadSbtiConfig, saveSbtiConfig } from '../lib/targets-store'
+import { loadSbtiConfig, loadSbtiConfigCloud, saveSbtiConfig } from '../lib/targets-store'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
 
@@ -40,7 +40,11 @@ export default function TargetsPage() {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    setConfig(loadSbtiConfig(organization?.id))
+    if (!organization?.id) {
+      setConfig(loadSbtiConfig())
+      return
+    }
+    void loadSbtiConfigCloud(organization.id).then(setConfig)
   }, [organization?.id])
 
   const inventory = useMemo(() => inventoryByYear(entries), [entries])
@@ -70,7 +74,7 @@ export default function TargetsPage() {
 
   function persist() {
     saveSbtiConfig(config, organization?.id)
-    setStatus('Target saved to this workspace.')
+    setStatus('Target saved for this organisation. Every colleague will see it.')
   }
 
   async function copyLanguage() {

@@ -1,4 +1,5 @@
-import type { AttachedFile, CustomField, EmissionEntry } from './types'
+import type { CustomField, EmissionEntry } from './types'
+import { readJson, writeJson } from './browser-storage'
 
 const META_KEY = 'carbon-logic-entry-meta'
 
@@ -6,20 +7,14 @@ export type EntryMeta = {
   site: string
   tags: string[]
   customFields: CustomField[]
-  files: AttachedFile[]
 }
 
 function emptyMeta(): EntryMeta {
-  return { site: '', tags: [], customFields: [], files: [] }
+  return { site: '', tags: [], customFields: [] }
 }
 
 function readAll(): Record<string, EntryMeta> {
-  try {
-    const raw = localStorage.getItem(META_KEY)
-    return raw ? (JSON.parse(raw) as Record<string, EntryMeta>) : {}
-  } catch {
-    return {}
-  }
+  return readJson<Record<string, EntryMeta>>(META_KEY, {})
 }
 
 export function getEntryMeta(id: string): EntryMeta {
@@ -28,14 +23,18 @@ export function getEntryMeta(id: string): EntryMeta {
 
 export function setEntryMeta(id: string, meta: EntryMeta) {
   const all = readAll()
-  all[id] = meta
-  localStorage.setItem(META_KEY, JSON.stringify(all))
+  all[id] = {
+    site: meta.site,
+    tags: meta.tags,
+    customFields: meta.customFields,
+  }
+  writeJson(META_KEY, all)
 }
 
 export function deleteEntryMeta(id: string) {
   const all = readAll()
   delete all[id]
-  localStorage.setItem(META_KEY, JSON.stringify(all))
+  writeJson(META_KEY, all)
 }
 
 export function applyMeta(entry: EmissionEntry): EmissionEntry {
@@ -45,6 +44,6 @@ export function applyMeta(entry: EmissionEntry): EmissionEntry {
     site: entry.site || meta.site,
     tags: entry.tags.length ? entry.tags : meta.tags,
     customFields: entry.customFields.length ? entry.customFields : meta.customFields,
-    files: entry.files.length ? entry.files : meta.files,
+    files: [],
   }
 }
