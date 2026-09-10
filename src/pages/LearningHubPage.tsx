@@ -17,7 +17,7 @@ const ARTICLES = [
   },
   {
     title: 'Embodied carbon in construction materials (PAS 2080)',
-    body: 'Concrete, steel, timber, asphalt, cement, glass, aluminium, and insulation carry embodied carbon from extraction and manufacturing (life-cycle stages A1–A3). PAS 2080 provides a framework for managing infrastructure carbon, and EN 15978 covers building-level whole-life carbon assessment. Prefer EPD (Environmental Product Declaration) values or the ICE Database for material factors.',
+    body: 'Concrete, steel, timber, asphalt, cement, glass, aluminium, and insulation carry embodied carbon from extraction and manufacturing (life-cycle stages A1–A3). PAS 2080 provides a framework for managing infrastructure carbon, and EN 15978 covers building-level whole-life carbon assessment. Prefer EPD (Environmental Product Declaration) values, then DESNZ 2026 material-use factors, then ICE v4.1 where DESNZ has no equivalent.',
   },
   {
     title: 'Well-to-tank (WTT) emissions',

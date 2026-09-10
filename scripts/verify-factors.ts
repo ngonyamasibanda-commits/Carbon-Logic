@@ -6,6 +6,7 @@
  */
 import { FACTOR_CATALOG, FACTOR_VERIFIED_AT, FACTOR_YEAR } from '../src/lib/factor-catalog'
 import { calculateTco2e } from '../src/lib/calculate'
+import { mergeFactorMaps } from '../src/lib/factors-store'
 
 let passed = 0
 let failed = 0
@@ -176,6 +177,34 @@ const stale = FACTOR_CATALOG.filter(
     row.sourceUrl.includes('conversion-factors-2025'),
 )
 check('no leftover 2025 / ICE v3.0 citations', stale.length === 0, stale.map((row) => row.key).join(', '))
+
+const catalogGrid = FACTOR_CATALOG.find((row) => row.key === 'electricity_grid_kwh')
+if (catalogGrid) {
+  const staleCache = {
+    ...catalogGrid,
+    conversionValue: 0.177,
+    lastVerifiedAt: '2026-09-03',
+    source: 'UK GHG Conversion Factors for Company Reporting 2025',
+  }
+  const newerOverride = {
+    ...catalogGrid,
+    conversionValue: 0.2,
+    lastVerifiedAt: '2026-09-11',
+    source: 'Organisation EPD override',
+  }
+  const replaced = mergeFactorMaps(FACTOR_CATALOG, [staleCache], [])
+  const kept = mergeFactorMaps(FACTOR_CATALOG, [newerOverride], [])
+  check(
+    'a cached 2025 electricity row is replaced by the 2026 catalogue',
+    replaced.get('electricity_grid_kwh')?.conversionValue === 0.13096,
+    String(replaced.get('electricity_grid_kwh')?.conversionValue),
+  )
+  check(
+    'a newer organisation override still wins',
+    kept.get('electricity_grid_kwh')?.conversionValue === 0.2,
+    String(kept.get('electricity_grid_kwh')?.conversionValue),
+  )
+}
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 if (failed > 0) process.exit(1)

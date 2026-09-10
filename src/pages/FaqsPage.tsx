@@ -46,7 +46,7 @@ export default function FaqsPage() {
     },
     {
       q: 'Can I use spend-based factors for Scope 3?',
-      a: 'Yes — the Purchased Goods & Services category uses DEFRA\'s EEIO (environmentally extended input–output) factors based on £ thousands of spend. However, activity-based methods (e.g. actual material weights, fuel volumes, tkm) are always more accurate and should be preferred when data is available.',
+      a: 'Yes — Purchased Goods & Services uses Defra’s spend-based SIC-19 multipliers (kg CO₂e per £, shown in the catalogue as kg CO₂e per £1,000). Activity-based methods (material weights, fuel volumes, tkm) are always more accurate and should be preferred when data is available.',
     },
   ]
 
