@@ -342,30 +342,84 @@ export async function fetchMemberships(userId: string, email?: string | null): P
   return memberships
 }
 
+export async function redeemMyInvitations(): Promise<number> {
+  const { data, error } = await supabase.rpc('redeem_my_invitations')
+  if (error) return 0
+  return Number(data) || 0
+}
+
 export async function fetchOrgMembers(organizationId: string): Promise<OrgMember[]> {
+  const { data: rpcData, error: rpcError } = await supabase.rpc('list_org_members', {
+    p_org: organizationId,
+  })
+  if (!rpcError && rpcData) {
+    const raw = Array.isArray(rpcData)
+      ? rpcData
+      : typeof rpcData === 'string'
+        ? (JSON.parse(rpcData) as unknown[])
+        : []
+    const mapped = raw
+      .map((row) => {
+        if (!row || typeof row !== 'object') return null
+        const record = row as Record<string, unknown>
+        return {
+          membershipId: String(record.membership_id ?? record.id ?? ''),
+          userId: String(record.user_id ?? ''),
+          email: String(record.email ?? ''),
+          fullName: String(record.full_name ?? ''),
+          role: record.role as OrgRole,
+          createdAt: String(record.created_at ?? ''),
+        } satisfies OrgMember
+      })
+      .filter((row): row is OrgMember => Boolean(row?.membershipId && row.email))
+    if (mapped.length > 0 || Array.isArray(raw)) return mapped
+  }
+
   const { data, error } = await supabase
     .from('memberships')
     .select('id, user_id, role, created_at, profiles!inner(id, email, full_name)')
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: true })
 
-  if (error || !data) return []
+  if (!error && data) {
+    return data.map((row) => {
+      const record = row as unknown as {
+        id: string
+        user_id: string
+        role: OrgRole
+        created_at: string
+        profiles: { email: string; full_name: string | null }
+      }
+      return {
+        membershipId: record.id,
+        userId: record.user_id,
+        email: record.profiles.email,
+        fullName: record.profiles.full_name ?? '',
+        role: record.role,
+        createdAt: record.created_at,
+      }
+    })
+  }
 
-  return data.map((row) => {
-    const record = row as unknown as {
-      id: string
-      user_id: string
-      role: OrgRole
-      created_at: string
-      profiles: { email: string; full_name: string | null }
-    }
+  const fallback = await supabase
+    .from('memberships')
+    .select('id, user_id, role, created_at')
+    .eq('organization_id', organizationId)
+    .order('created_at', { ascending: true })
+  if (fallback.error || !fallback.data) return []
+
+  const ids = fallback.data.map((row) => row.user_id as string)
+  const { data: profiles } = await supabase.from('profiles').select('id, email, full_name').in('id', ids)
+  const byId = new Map((profiles ?? []).map((profile) => [profile.id as string, profile]))
+  return fallback.data.map((row) => {
+    const profile = byId.get(row.user_id as string)
     return {
-      membershipId: record.id,
-      userId: record.user_id,
-      email: record.profiles.email,
-      fullName: record.profiles.full_name ?? '',
-      role: record.role,
-      createdAt: record.created_at,
+      membershipId: row.id as string,
+      userId: row.user_id as string,
+      email: (profile?.email as string) ?? '',
+      fullName: (profile?.full_name as string) ?? '',
+      role: row.role as OrgRole,
+      createdAt: row.created_at as string,
     }
   })
 }

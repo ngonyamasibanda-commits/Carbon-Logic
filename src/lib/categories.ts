@@ -713,6 +713,46 @@ export const CATEGORIES: CategoryConfig[] = [
     resolveDetails: (v, amount) => `${amount.toLocaleString()} ${v.unit || 'm³'} wastewater treated`,
   },
   {
+    id: 'energy_wtt',
+    name: 'Fuel- and energy-related (WTT)',
+    scope: 'Scope 3',
+    group: 'scope3',
+    instructions:
+      'Well-to-tank emissions from producing the fuel and electricity you already counted in Scope 1 and 2, plus UK grid transmission and distribution losses (GHG Protocol Scope 3, Category 3). Log the same litres or kWh you logged under site fuel or electricity.',
+    fields: [
+      {
+        key: 'source',
+        label: 'Energy source',
+        type: 'select',
+        options: [
+          'Diesel (WTT)',
+          'Petrol (WTT)',
+          'LPG (WTT)',
+          'Gas oil (WTT)',
+          'Natural gas (WTT)',
+          'UK grid electricity T&D',
+        ],
+      },
+      { key: 'amount', label: 'Amount', type: 'number' },
+    ],
+    amountField: 'amount',
+    amountLabel: 'L / kWh',
+    resolveFactorKey: (v) => {
+      const map: Record<string, string> = {
+        'Diesel (WTT)': 'wtt_diesel_litre',
+        'Petrol (WTT)': 'wtt_petrol_litre',
+        'LPG (WTT)': 'wtt_lpg_litre',
+        'Gas oil (WTT)': 'wtt_gas_oil_litre',
+        'Natural gas (WTT)': 'wtt_natural_gas_kwh',
+        'UK grid electricity T&D': 'wtt_electricity_kwh',
+      }
+      return map[v.source] || 'wtt_diesel_litre'
+    },
+    resolveUnit: (v) => (v.source?.includes('electricity') || v.source?.includes('Natural gas') ? 'kWh' : 'L'),
+    resolveDetails: (v, amount) =>
+      `${amount.toLocaleString()} ${v.source?.includes('electricity') || v.source?.includes('Natural gas') ? 'kWh' : 'L'} ${v.source || 'WTT'}`,
+  },
+  {
     id: 'purchased_goods',
     name: 'Purchased Goods & Services',
     scope: 'Scope 3',

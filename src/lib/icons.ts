@@ -53,6 +53,7 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   employee_commuting: Bike,
   wastewater: Droplets,
   purchased_goods: ShoppingCart,
+  energy_wtt: Fuel,
   custom: Plus,
   input: FileText,
   dashboard: LayoutDashboard,

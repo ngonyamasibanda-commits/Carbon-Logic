@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Bar,
@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { LogoLockup } from '../components/brand/Logo'
 import { useEntries } from '../lib/entries-context'
+import { entryActivityYear } from '../lib/entry-date'
 import { useOrg } from '../providers/OrgProvider'
 import { useAuth } from '../lib/auth-context'
 
@@ -26,10 +27,6 @@ function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name
 }
 
-function ytd(date: string) {
-  return new Date(date).getFullYear() === new Date().getFullYear()
-}
-
 const NAVY = '#02234e'
 const GREEN = '#6cbe2c'
 
@@ -40,8 +37,12 @@ export default function DashboardPage() {
   const [baselineDraft, setBaselineDraft] = useState(String(profile.baselineYtdTco2e || ''))
   const [baselineSaved, setBaselineSaved] = useState(false)
 
+  useEffect(() => {
+    setBaselineDraft(String(profile.baselineYtdTco2e || ''))
+  }, [profile.baselineYtdTco2e])
+
   const yearEntries = useMemo(
-    () => entries.filter((entry) => ytd(entry.created_at)),
+    () => entries.filter((entry) => entryActivityYear(entry) === new Date().getFullYear()),
     [entries],
   )
 
@@ -81,7 +82,7 @@ export default function DashboardPage() {
   function saveBaseline() {
     const value = Number(baselineDraft)
     const next = Number.isFinite(value) && value > 0 ? value : 0
-    updateProfile({ ...profile, baselineYtdTco2e: next })
+    void updateProfile({ ...profile, baselineYtdTco2e: next })
     setBaselineSaved(true)
     setTimeout(() => setBaselineSaved(false), 3000)
   }

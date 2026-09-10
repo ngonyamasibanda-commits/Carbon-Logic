@@ -1,31 +1,24 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  loadOrders,
-  loadProfile,
-  loadSites,
-  loadTeam,
-  saveOrders,
-  saveProfile,
-  saveSites,
-  saveTeam,
-  type CreditOrder,
+  createSite,
+  deleteSite,
+  emptyOrgProfile,
+  fetchOrgSettings,
+  fetchSites,
+  saveOrgSettings,
   type OrgProfile,
   type Site,
-  type TeamMember,
 } from '../lib/org'
 import { useAuth } from '../lib/auth-context'
 
 type OrgContextValue = {
   sites: Site[]
-  team: TeamMember[]
   profile: OrgProfile
-  orders: CreditOrder[]
-  addSite: (site: Omit<Site, 'id'>) => void
-  removeSite: (id: string) => void
-  addMember: (member: Omit<TeamMember, 'id'>) => void
-  removeMember: (id: string) => void
-  updateProfile: (profile: OrgProfile) => void
-  addOrder: (order: Omit<CreditOrder, 'id' | 'created_at'>) => void
+  loading: boolean
+  error: string | null
+  addSite: (site: Omit<Site, 'id'>) => Promise<{ error: string | null }>
+  removeSite: (id: string) => Promise<{ error: string | null }>
+  updateProfile: (profile: OrgProfile) => Promise<{ error: string | null }>
 }
 
 const OrgContext = createContext<OrgContextValue | null>(null)
@@ -33,85 +26,76 @@ const OrgContext = createContext<OrgContextValue | null>(null)
 export function OrgProvider({ children }: { children: ReactNode }) {
   const { organization } = useAuth()
   const orgId = organization?.id
+  const orgName = organization?.name ?? ''
 
-  const [sites, setSites] = useState<Site[]>(() => loadSites(orgId))
-  const [team, setTeam] = useState<TeamMember[]>(() => loadTeam(orgId))
-  const [profile, setProfile] = useState<OrgProfile>(() => loadProfile(orgId))
-  const [orders, setOrders] = useState<CreditOrder[]>(() => loadOrders(orgId))
+  const [sites, setSites] = useState<Site[]>([])
+  const [profile, setProfile] = useState<OrgProfile>(() => emptyOrgProfile(orgName))
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setSites(loadSites(orgId))
-    setTeam(loadTeam(orgId))
-    setProfile(loadProfile(orgId))
-    setOrders(loadOrders(orgId))
-  }, [orgId])
+    if (!orgId) {
+      setSites([])
+      setProfile(emptyOrgProfile())
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    void (async () => {
+      const [nextSites, settings] = await Promise.all([
+        fetchSites(orgId),
+        fetchOrgSettings(orgId, orgName),
+      ])
+      if (cancelled) return
+      setSites(nextSites)
+      setProfile({ ...settings.profile, organisation: orgName || settings.profile.organisation })
+      setLoading(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [orgId, orgName])
 
   const addSite = useCallback(
-    (site: Omit<Site, 'id'>) => {
-      setSites((prev) => {
-        const next = [...prev, { ...site, id: `site-${Date.now()}` }]
-        saveSites(next, orgId)
-        return next
-      })
+    async (site: Omit<Site, 'id'>) => {
+      if (!orgId) return { error: 'No active organisation' }
+      const result = await createSite(orgId, site)
+      if (result.site) {
+        setSites((prev) => [...prev.filter((row) => row.id !== result.site!.id), result.site!])
+        setError(null)
+      } else {
+        setError(result.error)
+      }
+      return { error: result.error }
     },
     [orgId],
   )
 
   const removeSite = useCallback(
-    (id: string) => {
-      setSites((prev) => {
-        const next = prev.filter((site) => site.id !== id)
-        saveSites(next, orgId)
-        return next
-      })
-    },
-    [orgId],
-  )
-
-  const addMember = useCallback(
-    (member: Omit<TeamMember, 'id'>) => {
-      setTeam((prev) => {
-        const next = [...prev, { ...member, id: `user-${Date.now()}` }]
-        saveTeam(next, orgId)
-        return next
-      })
-    },
-    [orgId],
-  )
-
-  const removeMember = useCallback(
-    (id: string) => {
-      setTeam((prev) => {
-        const next = prev.filter((member) => member.id !== id)
-        saveTeam(next, orgId)
-        return next
-      })
+    async (id: string) => {
+      if (!orgId) return { error: 'No active organisation' }
+      const result = await deleteSite(orgId, id)
+      if (!result.error) {
+        setSites((prev) => prev.filter((site) => site.id !== id))
+        setError(null)
+      } else {
+        setError(result.error)
+      }
+      return result
     },
     [orgId],
   )
 
   const updateProfile = useCallback(
-    (next: OrgProfile) => {
+    async (next: OrgProfile) => {
+      if (!orgId) return { error: 'No active organisation' }
       setProfile(next)
-      saveProfile(next, orgId)
-    },
-    [orgId],
-  )
-
-  const addOrder = useCallback(
-    (order: Omit<CreditOrder, 'id' | 'created_at'>) => {
-      setOrders((prev) => {
-        const next = [
-          {
-            ...order,
-            id: `order-${Date.now()}`,
-            created_at: new Date().toISOString(),
-          },
-          ...prev,
-        ]
-        saveOrders(next, orgId)
-        return next
-      })
+      const result = await saveOrgSettings(orgId, next)
+      if (result.error) setError(result.error)
+      else setError(null)
+      return result
     },
     [orgId],
   )
@@ -119,17 +103,14 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       sites,
-      team,
       profile,
-      orders,
+      loading,
+      error,
       addSite,
       removeSite,
-      addMember,
-      removeMember,
       updateProfile,
-      addOrder,
     }),
-    [sites, team, profile, orders, addSite, removeSite, addMember, removeMember, updateProfile, addOrder],
+    [sites, profile, loading, error, addSite, removeSite, updateProfile],
   )
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>

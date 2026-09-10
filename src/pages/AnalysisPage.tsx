@@ -18,6 +18,7 @@ import { ChevronRight, Download, FileDown } from 'lucide-react'
 import { CATEGORIES, getCategory } from '../lib/categories'
 import { downloadInventoryCsv, downloadText, printAnalysisReport } from '../lib/export'
 import { summarizeInventory } from '../lib/ghg'
+import { entryActivityMonth } from '../lib/entry-date'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
 import { useOrg } from '../providers/OrgProvider'
@@ -33,11 +34,8 @@ const SOURCE_PALETTE = ['#02234e', '#6cbe2c', '#14396d', '#55a01f', '#4b6ea8', '
 
 export default function AnalysisPage() {
   const { entries } = useEntries()
-  const { sites } = useOrg()
+  const { sites, profile, updateProfile } = useOrg()
   const { organization } = useAuth()
-  const revenueKey = organization?.id
-    ? `carbon-logic-revenue:${organization.id}`
-    : 'carbon-logic-revenue'
   const [mode, setMode] = useState<'scope' | 'source'>('scope')
   const [openScopes, setOpenScopes] = useState<Record<string, boolean>>({
     'Scope 1': true,
@@ -51,30 +49,24 @@ export default function AnalysisPage() {
   const [tag, setTag] = useState('all')
   const [reporting, setReporting] = useState('All')
 
-  // Revenue for intensity metrics (persisted to localStorage)
-  const [revenue, setRevenue] = useState(() => {
-    const saved = localStorage.getItem(revenueKey) ?? localStorage.getItem('carbon-logic-revenue')
-    return saved ? Number(saved) : 0
-  })
-  const [revenueDraft, setRevenueDraft] = useState(String(revenue || ''))
+  const [revenue, setRevenue] = useState(profile.annualRevenue || 0)
+  const [revenueDraft, setRevenueDraft] = useState(String(profile.annualRevenue || ''))
 
   useEffect(() => {
-    const saved = localStorage.getItem(revenueKey) ?? localStorage.getItem('carbon-logic-revenue')
-    const next = saved ? Number(saved) : 0
-    setRevenue(next)
-    setRevenueDraft(String(next || ''))
-  }, [revenueKey])
+    setRevenue(profile.annualRevenue || 0)
+    setRevenueDraft(String(profile.annualRevenue || ''))
+  }, [profile.annualRevenue])
 
   function saveRevenue() {
     const value = Number(revenueDraft)
     if (Number.isFinite(value) && value > 0) {
       setRevenue(value)
-      localStorage.setItem(revenueKey, String(value))
+      void updateProfile({ ...profile, annualRevenue: value })
     }
   }
 
   const months = useMemo(() => {
-    const set = new Set(entries.map((entry) => entry.created_at.slice(0, 7)).filter(Boolean))
+    const set = new Set(entries.map((entry) => entryActivityMonth(entry)).filter(Boolean))
     return [...set].sort().reverse()
   }, [entries])
 
@@ -86,7 +78,7 @@ export default function AnalysisPage() {
 
   const filtered = useMemo(() => {
     return entries.filter((entry) => {
-      if (month !== 'all' && entry.created_at.slice(0, 7) !== month) return false
+      if (month !== 'all' && entryActivityMonth(entry) !== month) return false
       if (site !== 'all' && entry.site !== site) return false
       if (categoryId !== 'all' && entry.category !== categoryId) return false
       if (tag !== 'all' && !entry.tags.includes(tag)) return false
@@ -133,7 +125,7 @@ export default function AnalysisPage() {
   const monthlyTrend = useMemo(() => {
     const map = new Map<string, { scope1: number; scope2: number; scope3: number }>()
     for (const entry of filtered) {
-      const m = entry.created_at.slice(0, 7)
+      const m = entryActivityMonth(entry)
       if (!m) continue
       const row = map.get(m) ?? { scope1: 0, scope2: 0, scope3: 0 }
       if (entry.scope === 'Scope 1') row.scope1 += entry.emissions_tco2e

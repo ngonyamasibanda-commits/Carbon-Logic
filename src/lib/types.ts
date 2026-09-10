@@ -98,6 +98,8 @@ export type EmissionEntry = {
   tags: string[]
   customFields: CustomField[]
   files: AttachedFile[]
+  /** Date the activity occurred (reporting period). Falls back to created_at. */
+  activity_date?: string
   /** Set when the row is stored for an organisation; omitted on unsynced local drafts. */
   organization_id?: string
 }
@@ -109,6 +111,7 @@ export type AdditionalState = {
   tags: string[]
   customFields: CustomField[]
   files: AttachedFile[]
+  activity_date: string
 }
 
 export const emptyAdditional = (): AdditionalState => ({
@@ -118,4 +121,5 @@ export const emptyAdditional = (): AdditionalState => ({
   tags: [],
   customFields: [],
   files: [],
+  activity_date: new Date().toISOString().slice(0, 10),
 })

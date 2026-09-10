@@ -103,7 +103,7 @@ export default function Header() {
               <div className="px-4 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
                 Organisation
               </div>
-              {canCreateOrganizations ? (
+              {memberships.length > 1 ? (
                 memberships.map((membership) => (
                   <button
                     key={membership.id}

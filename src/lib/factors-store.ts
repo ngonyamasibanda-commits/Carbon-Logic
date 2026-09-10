@@ -1,5 +1,6 @@
 import { FACTOR_CATALOG } from './factor-catalog'
 import { parseCsv } from './csv'
+import { readJson, writeJson } from './browser-storage'
 import { throwIfUnsafeToFallback } from './security-errors'
 import { supabase } from './supabase'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from './types'
@@ -61,32 +62,28 @@ function fromSupabaseRow(row: Record<string, unknown>): EmissionFactor | null {
   })
 }
 
-function readLocal(): EmissionFactor[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_KEY)
-    if (!raw) return []
-    const rows = JSON.parse(raw) as EmissionFactor[]
-    return rows.map((row) => normalize(row))
-  } catch {
-    return []
-  }
+function localKey(organizationId?: string) {
+  return organizationId ? `${LOCAL_KEY}:${organizationId}` : LOCAL_KEY
 }
 
-function writeLocal(factors: EmissionFactor[]) {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(factors))
+function deletedKey(organizationId?: string) {
+  return organizationId ? `${DELETED_KEY}:${organizationId}` : DELETED_KEY
 }
 
-function readDeleted(): string[] {
-  try {
-    const raw = localStorage.getItem(DELETED_KEY)
-    return raw ? (JSON.parse(raw) as string[]) : []
-  } catch {
-    return []
-  }
+function readLocal(organizationId?: string): EmissionFactor[] {
+  return readJson<EmissionFactor[]>(localKey(organizationId), []).map((row) => normalize(row))
 }
 
-function writeDeleted(keys: string[]) {
-  localStorage.setItem(DELETED_KEY, JSON.stringify([...new Set(keys)]))
+function writeLocal(factors: EmissionFactor[], organizationId?: string) {
+  writeJson(localKey(organizationId), factors)
+}
+
+function readDeleted(organizationId?: string): string[] {
+  return readJson<string[]>(deletedKey(organizationId), [])
+}
+
+function writeDeleted(keys: string[], organizationId?: string) {
+  writeJson(deletedKey(organizationId), [...new Set(keys)])
 }
 
 function preferStored(catalog: EmissionFactor | undefined, stored: EmissionFactor): boolean {
@@ -103,17 +100,18 @@ export function mergeFactorMaps(
   catalog: EmissionFactor[],
   remote: EmissionFactor[],
   local: EmissionFactor[],
+  deleted: string[] = [],
 ): Map<string, EmissionFactor> {
   const map = new Map<string, EmissionFactor>()
   for (const factor of catalog) map.set(factor.key, factor)
   for (const factor of [...remote, ...local]) {
     if (preferStored(map.get(factor.key), factor)) map.set(factor.key, factor)
   }
-  for (const key of readDeleted()) map.delete(key)
+  for (const key of deleted) map.delete(key)
   return map
 }
 
-export async function loadFactorLibrary(): Promise<Map<string, EmissionFactor>> {
+export async function loadFactorLibrary(organizationId?: string): Promise<Map<string, EmissionFactor>> {
   let remote: EmissionFactor[] = []
   try {
     const result = await Promise.race([
@@ -130,30 +128,46 @@ export async function loadFactorLibrary(): Promise<Map<string, EmissionFactor>> 
   } catch {
     remote = []
   }
-  return mergeFactorMaps(FACTOR_CATALOG, remote, readLocal())
+  return mergeFactorMaps(FACTOR_CATALOG, remote, readLocal(organizationId), readDeleted(organizationId))
+}
+
+function isOrgOverride(factor: EmissionFactor, catalog: Map<string, EmissionFactor>) {
+  const published = catalog.get(factor.key)
+  if (!published) return true
+  return (
+    published.conversionValue !== factor.conversionValue ||
+    published.unit !== factor.unit ||
+    published.source !== factor.source
+  )
 }
 
 export async function persistFactors(
   factors: EmissionFactor[],
   organizationId?: string,
 ): Promise<void> {
-  writeLocal(factors)
+  const catalog = new Map(FACTOR_CATALOG.map((factor) => [factor.key, factor]))
+  const overrides = factors.filter((factor) => isOrgOverride(factor, catalog))
+  writeLocal(overrides, organizationId)
   const kept = new Set(factors.map((factor) => factor.key))
-  writeDeleted([
-    ...readDeleted().filter((key) => !kept.has(key)),
-    ...FACTOR_CATALOG.map((factor) => factor.key).filter((key) => !kept.has(key)),
-  ])
+  writeDeleted(
+    [
+      ...readDeleted(organizationId).filter((key) => !kept.has(key)),
+      ...FACTOR_CATALOG.map((factor) => factor.key).filter((key) => !kept.has(key)),
+    ],
+    organizationId,
+  )
   // Factors with no organisation are the shared published catalogue, which is
   // read-only from the app. Only an organisation's own overrides get written back.
   if (!organizationId) return
 
-  const payload = factors.map((factor) => ({
+  const payload = overrides.map((factor) => ({
     activity_type: factor.key,
     co2e_factor: factor.conversionValue,
     unit: factor.unit,
     source: factor.sourceFamily ? `${factor.sourceFamily} — ${factor.source}` : factor.source,
     organization_id: organizationId,
   }))
+  if (payload.length === 0) return
   const { error } = await supabase
     .from('emission_factors')
     .upsert(payload, { onConflict: 'activity_type,organization_id' })

@@ -1,4 +1,5 @@
 import { isLocalOrganizationId } from './auth'
+import { readJson, writeJson } from './browser-storage'
 import { applyMeta, deleteEntryMeta, setEntryMeta } from './entry-meta'
 import {
   CloudSaveError,
@@ -31,12 +32,18 @@ function extrasFrom(row: Partial<EmissionEntry>) {
     site: row.site ?? '',
     tags: row.tags ?? [],
     customFields: row.customFields ?? [],
-    files: row.files ?? [],
+    files: [] as EmissionEntry['files'],
+    activity_date: row.activity_date,
   }
+}
+
+function lightEntry(entry: EmissionEntry): EmissionEntry {
+  return { ...entry, files: [] }
 }
 
 function fromRow(row: Record<string, unknown>): EmissionEntry {
   const organizationId = row.organization_id ?? row.organizationId
+  const activityDate = row.activity_date ? String(row.activity_date).slice(0, 10) : undefined
   return applyMeta({
     id: String(row.id),
     category: String(row.category ?? ''),
@@ -54,6 +61,7 @@ function fromRow(row: Record<string, unknown>): EmissionEntry {
       ? (row.custom_fields as EmissionEntry['customFields'])
       : [],
     files: [],
+    activity_date: activityDate,
     organization_id: organizationId ? String(organizationId) : undefined,
   })
 }
@@ -63,17 +71,8 @@ function asEntry(row: unknown): EmissionEntry | null {
   return fromRow(row as Record<string, unknown>)
 }
 
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
-  }
-}
-
 function hydrate(rows: EmissionEntry[]): EmissionEntry[] {
-  return rows.map((row) => applyMeta({ ...extrasFrom(row), ...row }))
+  return rows.map((row) => applyMeta({ ...extrasFrom(row), ...row, files: [] }))
 }
 
 function readOrgLocal(organizationId: string): EmissionEntry[] {
@@ -91,14 +90,19 @@ function uniqueById(rows: EmissionEntry[]): EmissionEntry[] {
 }
 
 function persistOrg(tenant: Tenant, entries: EmissionEntry[]) {
-  const tagged = entries.map((row) => ({
-    ...row,
-    organization_id: row.organization_id ?? tenant.organizationId,
-  }))
-  localStorage.setItem(orgKey(tenant.organizationId), JSON.stringify(tagged))
+  const tagged = entries.map((row) =>
+    lightEntry({
+      ...row,
+      organization_id: row.organization_id ?? tenant.organizationId,
+    }),
+  )
+  const unsynced = tagged.filter(isUnsynced)
+  if (!writeJson(orgKey(tenant.organizationId), tagged)) {
+    writeJson(orgKey(tenant.organizationId), unsynced)
+  }
   const backup = readUserBackup(tenant.userId)
-  backup[tenant.organizationId] = tagged
-  localStorage.setItem(userKey(tenant.userId), JSON.stringify(backup))
+  backup[tenant.organizationId] = unsynced
+  writeJson(userKey(tenant.userId), backup)
 }
 
 function readMergedLocal(tenant: Tenant): EmissionEntry[] {
@@ -213,10 +217,21 @@ function basePayload(input: Omit<EmissionEntry, 'id' | 'created_at'>) {
   }
 }
 
+function extrasPayload(input: Omit<EmissionEntry, 'id' | 'created_at'>) {
+  return {
+    site: input.site ?? '',
+    tags: input.tags ?? [],
+    custom_fields: input.customFields ?? [],
+    activity_date: input.activity_date || null,
+  }
+}
+
 function insertAttempts(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>): Record<string, unknown>[] {
   const base = basePayload(input)
+  const extras = extrasPayload(input)
   if (isLocalOrganizationId(tenant.organizationId)) {
     return [
+      { ...base, ...extras, user_id: tenant.userId, owner_id: tenant.userId },
       { ...base, user_id: tenant.userId, owner_id: tenant.userId },
       { ...base, user_id: tenant.userId },
     ]
@@ -226,15 +241,18 @@ function insertAttempts(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'creat
   return [
     {
       ...base,
+      ...extras,
       organization_id: tenant.organizationId,
       owner_id: tenant.userId,
       user_id: tenant.userId,
     },
     {
       ...base,
+      ...extras,
       organization_id: tenant.organizationId,
       owner_id: tenant.userId,
     },
+    { ...base, organization_id: tenant.organizationId, owner_id: tenant.userId },
     { ...base, organization_id: tenant.organizationId },
   ]
 }
@@ -253,6 +271,10 @@ async function insertViaRpc(
     p_unit: input.unit,
     p_comment: input.comment,
     p_link: input.link,
+    p_site: input.site ?? '',
+    p_tags: input.tags ?? [],
+    p_custom_fields: input.customFields ?? [],
+    p_activity_date: input.activity_date || null,
   })
   if (error) {
     if (isMissingRpc(error)) return null
@@ -433,6 +455,7 @@ export async function saveEntry(
   const localEntry: EmissionEntry = {
     ...input,
     ...extras,
+    files: [],
     id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     created_at: new Date().toISOString(),
     organization_id: isLocalOrganizationId(tenant.organizationId) ? undefined : tenant.organizationId,

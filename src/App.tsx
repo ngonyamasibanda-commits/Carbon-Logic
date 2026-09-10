@@ -75,7 +75,7 @@ export default function App() {
             <Route
               path="/people"
               element={
-                <RequireRole permission="members:manage">
+                <RequireRole permission="members:read">
                   <PeoplePage />
                 </RequireRole>
               }

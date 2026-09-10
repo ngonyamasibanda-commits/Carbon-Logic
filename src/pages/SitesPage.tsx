@@ -5,17 +5,26 @@ import { useOrg } from '../providers/OrgProvider'
 import type { Site } from '../lib/org'
 
 export default function SitesPage() {
-  const { sites, addSite, removeSite } = useOrg()
+  const { sites, addSite, removeSite, loading, error } = useOrg()
   const [siteForm, setSiteForm] = useState({ name: '', type: 'construction_site', region: 'United Kingdom' })
+  const [busy, setBusy] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
 
-  function onAddSite(event: FormEvent) {
+  async function onAddSite(event: FormEvent) {
     event.preventDefault()
     if (!siteForm.name.trim()) return
-    addSite({
+    setBusy(true)
+    setFormError(null)
+    const result = await addSite({
       name: siteForm.name.trim(),
       type: siteForm.type as Site['type'],
       region: siteForm.region,
     })
+    setBusy(false)
+    if (result.error) {
+      setFormError(result.error)
+      return
+    }
     setSiteForm({ name: '', type: 'construction_site', region: 'United Kingdom' })
   }
 
@@ -25,13 +34,21 @@ export default function SitesPage() {
         <h1 className="text-3xl font-bold text-ink">Facilities</h1>
         <p className="mt-2 text-sm text-muted">
           Construction sites, mines, processing plants, depots, warehouses, and offices. Facilities
-          appear on the dashboard chart, in every data-entry form, and in Analysis filters.
+          are stored on this organisation, so every colleague sees the same list on the dashboard,
+          data-entry forms, and Analysis filters.
         </p>
       </div>
 
+      {error ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>
+      ) : null}
+      {formError ? (
+        <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{formError}</p>
+      ) : null}
+
       <section className="rounded-xl border border-line bg-white p-5">
         <h2 className="text-lg font-semibold">Sites</h2>
-        <form onSubmit={onAddSite} className="mt-3 grid gap-2 sm:grid-cols-4">
+        <form onSubmit={(event) => void onAddSite(event)} className="mt-3 grid gap-2 sm:grid-cols-4">
           <input
             value={siteForm.name}
             onChange={(event) => setSiteForm({ ...siteForm, name: event.target.value })}
@@ -57,8 +74,12 @@ export default function SitesPage() {
             placeholder="Region"
             className="rounded-md border border-line px-3 py-2 text-sm"
           />
-          <button type="submit" className="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white">
-            Add site
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {busy ? 'Saving…' : 'Add site'}
           </button>
         </form>
         <table className="mt-4 w-full text-sm">
@@ -71,18 +92,37 @@ export default function SitesPage() {
             </tr>
           </thead>
           <tbody>
-            {sites.map((site) => (
-              <tr key={site.id} className="border-b border-line">
-                <td className="py-2">{site.name}</td>
-                <td>{site.type.replaceAll('_', ' ')}</td>
-                <td>{site.region}</td>
-                <td>
-                  <button type="button" className="text-red-600" onClick={() => removeSite(site.id)}>
-                    Remove
-                  </button>
+            {loading && sites.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-4 text-muted">
+                  Loading facilities…
                 </td>
               </tr>
-            ))}
+            ) : sites.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-4 text-muted">
+                  No facilities yet. Add the sites this company reports against so staff can tag
+                  every activity.
+                </td>
+              </tr>
+            ) : (
+              sites.map((site) => (
+                <tr key={site.id} className="border-b border-line">
+                  <td className="py-2">{site.name}</td>
+                  <td>{site.type.replaceAll('_', ' ')}</td>
+                  <td>{site.region}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="text-red-600"
+                      onClick={() => void removeSite(site.id)}
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </section>
@@ -90,8 +130,8 @@ export default function SitesPage() {
       <section className="rounded-xl border border-line bg-white p-5">
         <h2 className="text-lg font-semibold">Team</h2>
         <p className="mt-2 text-sm text-muted">
-          People and their roles now live under People &amp; Access, where they are backed by real
-          accounts and enforced by the database rather than stored in this browser.
+          People and their roles live under People &amp; Access. Invites are stored in the database,
+          so adding staff does not use this browser’s storage.
         </p>
         <Link
           to="/people"
@@ -101,7 +141,6 @@ export default function SitesPage() {
           Manage people and access
         </Link>
       </section>
-
     </div>
   )
 }

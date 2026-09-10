@@ -1,12 +1,23 @@
 import { downloadInventoryCsv, printInventoryReport } from '../lib/export'
 import { summarizeInventory } from '../lib/ghg'
+import { entryActivityYear } from '../lib/entry-date'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
+import { useMemo, useState } from 'react'
 
 export default function CombinedResultsPage() {
   const { entries } = useEntries()
   const { organization } = useAuth()
-  const summary = summarizeInventory(entries)
+  const years = useMemo(() => {
+    const set = new Set(entries.map((entry) => entryActivityYear(entry)))
+    return [...set].sort((a, b) => b - a)
+  }, [entries])
+  const [year, setYear] = useState<'all' | number>('all')
+  const visible = useMemo(
+    () => (year === 'all' ? entries : entries.filter((entry) => entryActivityYear(entry) === year)),
+    [entries, year],
+  )
+  const summary = summarizeInventory(visible)
   const orgName = organization?.name ?? 'This organisation'
 
   return (
@@ -22,20 +33,40 @@ export default function CombinedResultsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4 text-sm">
         <div>
           Reported footprint: <strong>{summary.total.toFixed(2)} tCO₂e</strong> from {summary.entryCount}{' '}
-          {summary.entryCount === 1 ? 'activity' : 'activities'}.
+          {summary.entryCount === 1 ? 'activity' : 'activities'}
+          {year === 'all' ? '' : ` in ${year}`}.
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {years.length > 0 ? (
+            <label className="flex items-center gap-2 text-sm">
+              Reporting year
+              <select
+                value={year}
+                onChange={(event) =>
+                  setYear(event.target.value === 'all' ? 'all' : Number(event.target.value))
+                }
+                className="rounded-md border border-line px-2 py-1"
+              >
+                <option value="all">All years</option>
+                {years.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <button
             type="button"
             className="text-brand hover:underline"
-            onClick={() => downloadInventoryCsv('ghg-inventory.csv', entries)}
+            onClick={() => downloadInventoryCsv('ghg-inventory.csv', visible)}
           >
             Export inventory CSV
           </button>
           <button
             type="button"
             className="text-brand hover:underline"
-            onClick={() => printInventoryReport(entries, { organizationName: orgName })}
+            onClick={() => printInventoryReport(visible, { organizationName: orgName })}
           >
             Download inventory PDF
           </button>

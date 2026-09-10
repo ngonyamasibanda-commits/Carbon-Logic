@@ -8,8 +8,16 @@ get you from here to a working login.
 
 ### 1. Run the migration
 
-Open the Supabase SQL editor and run `supabase/migrations/0001_auth_and_tenancy.sql`.
-It is idempotent, so re-running it is safe.
+Open the Supabase SQL editor and run these in order:
+
+1. `supabase/migrations/0001_auth_and_tenancy.sql`
+2. `supabase/migrations/0002_quotas_and_hardening.sql`
+3. `supabase/migrations/0003_ip_rate_limits.sql`
+4. `supabase/migrations/0004_platform_owner_access.sql`
+5. `supabase/migrations/0005_org_scoped_entries.sql`
+6. `supabase/migrations/0006_saas_cloud_workspace.sql`
+
+They are idempotent, so re-running is safe. If the live database was created before this SaaS work, you can paste `supabase/fix_saas_workspace.sql` on its own — it is the same as migration 0006.
 
 If inviting people fails with *Could not find the function
 public.invite_member(p_email, p_org, p_role) in the schema cache*, paste
@@ -63,8 +71,15 @@ have selected**, not every organisation in the app.
 - **Someone already invited** signs up with the same email. They skip the empty
   workspace screen and land in that organisation.
 
-Data never crosses organisations. Switching in the header only changes which
-workspace you are looking at.
+Data never crosses organisations. Switching in the header changes which
+workspace you are looking at. Anyone who belongs to more than one organisation
+can switch; Carbon Logic owners can switch across every company.
+
+Facilities, baselines, science-based targets, and logged activities (including
+site, tags, and activity date) are stored in the organisation database. They are
+not kept as files in the browser, so adding staff or logging a year of invoices
+does not fill device storage. Evidence should be a SharePoint or Drive link, not
+an uploaded file.
 
 ## Supabase dashboard settings worth changing
 
@@ -183,4 +198,4 @@ npm run verify:migration
 Runs the migration against a real Postgres (PGlite, compiled to WASM) layered on a
 replica of the pre-migration schema, then exercises the rules as ordinary users: tenant
 isolation, role enforcement, privilege escalation attempts, and the legacy data
-handover. 35 checks.
+handover. 91 checks.
