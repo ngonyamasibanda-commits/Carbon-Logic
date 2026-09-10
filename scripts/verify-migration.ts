@@ -113,6 +113,20 @@ async function main() {
   await db.exec(migration)
   check('migration is idempotent (second run is clean)', true)
 
+  const saasWorkspace = readFileSync(join(root, 'supabase/migrations/0006_saas_cloud_workspace.sql'), 'utf8')
+  await expectFailure(
+    'SaaS workspace SQL refuses to run before quota tables exist',
+    async () => {
+      try {
+        await db.exec(saasWorkspace)
+      } catch (error) {
+        await db.exec('rollback').catch(() => undefined)
+        throw error
+      }
+    },
+    /org_quotas/,
+  )
+
   await db.exec(`
     grant usage on schema public to authenticated;
     grant select, insert, update, delete on all tables in schema public to authenticated;
@@ -146,11 +160,36 @@ async function main() {
   await db.exec(readFileSync(join(root, 'supabase/fix_entry_save.sql'), 'utf8'))
   check('entry-save repair script applies cleanly', true)
 
-  const saasWorkspace = readFileSync(join(root, 'supabase/migrations/0006_saas_cloud_workspace.sql'), 'utf8')
   await db.exec(saasWorkspace)
   check('SaaS cloud workspace migration applies cleanly', true)
   await db.exec(saasWorkspace)
   check('SaaS cloud workspace migration is idempotent (second run is clean)', true)
+
+  const liveFix = readFileSync(join(root, 'supabase/fix_live_database.sql'), 'utf8')
+  const liveFixMarker = '-- >>> BEGIN MIGRATIONS\n'
+  const markerAt = liveFix.indexOf(liveFixMarker)
+  const rebuiltLiveFix =
+    liveFix.slice(0, markerAt + liveFixMarker.length) +
+    [
+      '0002_quotas_and_hardening.sql',
+      '0003_ip_rate_limits.sql',
+      '0004_platform_owner_access.sql',
+      '0005_org_scoped_entries.sql',
+      '0006_saas_cloud_workspace.sql',
+    ]
+      .map((name) => readFileSync(join(root, 'supabase/migrations', name), 'utf8').replace(/\s+$/, ''))
+      .join('\n\n') +
+    '\n'
+  check(
+    'fix_live_database.sql is migrations 0002–0006 concatenated',
+    markerAt >= 0 && liveFix === rebuiltLiveFix,
+  )
+  check(
+    'fix_saas_workspace.sql matches migration 0006',
+    readFileSync(join(root, 'supabase/fix_saas_workspace.sql'), 'utf8') === saasWorkspace,
+  )
+  await db.exec(liveFix)
+  check('live-database catch-up script is idempotent on an already-migrated database', true)
 
   console.log('\nProvisioning users\n')
   const users = await db.query<{ id: string; email: string }>(`
@@ -583,6 +622,46 @@ async function main() {
     where conname = 'memberships_user_id_profiles_fkey'
   `)
   check('memberships reference profiles so People & Access can list colleagues', profileFk === 1)
+
+  await db.exec('alter table public.memberships drop constraint memberships_user_id_profiles_fkey')
+  await db.query('delete from public.profiles where id = $1', [id['editor@acme.test']])
+  await db.exec(saasWorkspace)
+  const restoredProfile = await countOf('select count(*) from public.profiles where id = $1', [
+    id['editor@acme.test'],
+  ])
+  const restoredFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  check(
+    're-running the SaaS migration backfills missing profiles before adding the FK',
+    restoredProfile === 1 && restoredFk === 1,
+    `profile=${restoredProfile} fk=${restoredFk}`,
+  )
+
+  await db.exec('alter table public.memberships drop constraint memberships_user_id_profiles_fkey')
+  await db.query('delete from public.profiles where id = $1', [id['viewer@acme.test']])
+  await db.exec(readFileSync(join(root, 'supabase/fix_memberships_profiles.sql'), 'utf8'))
+  const repairedProfile = await countOf('select count(*) from public.profiles where id = $1', [
+    id['viewer@acme.test'],
+  ])
+  const repairedFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  const profilesForced = await db.query<{ relforcerowsecurity: boolean; relrowsecurity: boolean }>(`
+    select relforcerowsecurity, relrowsecurity
+    from pg_class
+    where oid = 'public.profiles'::regclass
+  `)
+  check(
+    'fix_memberships_profiles.sql backfills the missing profile, adds the FK, and leaves FORCE RLS on',
+    repairedProfile === 1 &&
+      repairedFk === 1 &&
+      profilesForced.rows[0]?.relrowsecurity === true &&
+      profilesForced.rows[0]?.relforcerowsecurity === true,
+    `profile=${repairedProfile} fk=${repairedFk} rls=${JSON.stringify(profilesForced.rows[0])}`,
+  )
 
   await asUser(id['editor@acme.test'], async () => {
     const logged = await db.query<{ log_emission_entry: Record<string, unknown> }>(

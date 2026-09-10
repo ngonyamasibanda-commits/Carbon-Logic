@@ -17,7 +17,13 @@ Open the Supabase SQL editor and run these in order:
 5. `supabase/migrations/0005_org_scoped_entries.sql`
 6. `supabase/migrations/0006_saas_cloud_workspace.sql`
 
-They are idempotent, so re-running is safe. If the live database was created before this SaaS work, you can paste `supabase/fix_saas_workspace.sql` on its own — it is the same as migration 0006.
+They are idempotent, so re-running is safe.
+
+If the live database already has organisations / memberships (0001) but you have not run the later files, do **not** paste `0006` or `fix_saas_workspace.sql` on their own. Those files raise write limits on `org_quotas`, which is created in 0002. Paste `supabase/fix_live_database.sql` once instead — it is 0002 through 0006.
+
+If a run stops with `memberships_user_id_profiles_fkey` / `Key (user_id)=(...) is not present in table "profiles"`, paste `supabase/fix_memberships_profiles.sql` first, then `fix_live_database.sql`. A membership exists for an auth user who never got a `profiles` row; the SQL editor is not a superuser, so FORCE RLS otherwise blocks the backfill.
+
+If a run stops with `relation "public.org_quotas" does not exist`, 0002 was never applied. Paste `supabase/fix_live_database.sql`.
 
 If inviting people fails with *Could not find the function
 public.invite_member(p_email, p_org, p_role) in the schema cache*, paste
@@ -198,4 +204,4 @@ npm run verify:migration
 Runs the migration against a real Postgres (PGlite, compiled to WASM) layered on a
 replica of the pre-migration schema, then exercises the rules as ordinary users: tenant
 isolation, role enforcement, privilege escalation attempts, and the legacy data
-handover. 91 checks.
+handover. 92 checks.
