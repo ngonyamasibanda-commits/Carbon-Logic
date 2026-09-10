@@ -4,7 +4,7 @@
  *
  *   npm run verify:entries
  */
-import { cacheOrgEntries, mergeOrgInventory, peekLocalEntries, rowsForOrganization } from '../src/lib/entries'
+import { cacheOrgEntries, mergeOrgInventory, parseRpcRow, peekLocalEntries, rowsForOrganization } from '../src/lib/entries'
 import type { EmissionEntry } from '../src/lib/types'
 
 class MemoryStorage {
@@ -120,6 +120,37 @@ function main() {
   check(
     'a browser-only row is treated as unsynced',
     localDraft.id.startsWith('local-') && saved.id === '42',
+  )
+
+  const rpcObject = parseRpcRow({
+    id: 88,
+    category: 'fuels',
+    scope: 'Scope 1',
+    emissions_tco2e: 1.25,
+    details: 'from rpc',
+    amount: 10,
+    unit: 'L',
+    comment: '',
+    link: '',
+    created_at: '2026-01-01T00:00:00.000Z',
+    organization_id: 'org-a',
+  })
+  check('an organisation RPC row is accepted as an object', rpcObject?.id === '88')
+
+  const rpcString = parseRpcRow(
+    JSON.stringify({
+      id: 89,
+      category: 'fuels',
+      scope: 'Scope 1',
+      emissions_tco2e: 2,
+      details: 'json string',
+      created_at: '2026-01-01T00:00:00.000Z',
+      organization_id: 'org-a',
+    }),
+  )
+  check(
+    'a jsonb RPC result returned as a JSON string is still saved',
+    rpcString?.id === '89' && rpcString.details === 'json string',
   )
 
   console.log(`\n${passed} passed, ${failed} failed\n`)

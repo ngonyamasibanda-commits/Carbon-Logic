@@ -49,7 +49,14 @@ export default function ResultsTable({ entries, onDelete }: Props) {
                     <td className="px-4 py-3">{formatDate(entryActivityDate(entry))}</td>
                     <td className="px-4 py-3">{entry.scope}</td>
                     <td className="px-4 py-3">{category?.name ?? entry.category}</td>
-                    <td className="px-4 py-3 font-semibold tabular-nums">{formatTco2e(entry.emissions_tco2e)}</td>
+                    <td className="px-4 py-3 font-semibold tabular-nums">
+                      {formatTco2e(entry.emissions_tco2e)}
+                      {entry.id.startsWith('local-') || entry.id.startsWith('pending-') ? (
+                        <div className="mt-1 text-[11px] font-normal text-amber-800">
+                          Saving to organisation…
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="px-4 py-3 text-xs">
                       <div>{entry.site || '—'}</div>
                       <div className="mt-1 text-violet-700">{entry.tags.join(', ') || ''}</div>
