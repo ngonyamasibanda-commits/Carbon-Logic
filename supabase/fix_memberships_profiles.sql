@@ -3,8 +3,9 @@
 -- If the SaaS workspace SQL stopped with:
 --   insert or update on table "memberships" violates foreign key constraint
 --   "memberships_user_id_profiles_fkey"
--- paste this file into the Supabase SQL editor and run it, then re-run
--- supabase/fix_saas_workspace.sql (idempotent).
+-- paste this file into the Supabase SQL editor and run it, then paste
+-- supabase/fix_live_database.sql (0002 through 0006). Do not re-run
+-- fix_saas_workspace.sql on its own unless public.org_quotas already exists.
 --
 -- Why a separate script: hosted SQL editor is the table owner, not a
 -- superuser, and profiles/memberships use FORCE ROW LEVEL SECURITY. A

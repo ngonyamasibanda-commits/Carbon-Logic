@@ -6,6 +6,20 @@
 
 begin;
 
+do $$
+begin
+  if to_regclass('public.org_quotas') is null
+     or to_regclass('public.usage_windows') is null then
+    raise exception
+      'Quota tables are missing (public.org_quotas). This file is only migration 0006. Paste supabase/fix_live_database.sql to apply 0002–0006, or run 0002_quotas_and_hardening.sql first.';
+  end if;
+  if to_regclass('public.ip_usage_windows') is null then
+    raise exception
+      'public.ip_usage_windows is missing. Run supabase/migrations/0003_ip_rate_limits.sql or supabase/fix_live_database.sql before this file.';
+  end if;
+end
+$$;
+
 -- ---------------------------------------------------------------------------
 -- 1. Inventory columns that used to live only in localStorage
 -- ---------------------------------------------------------------------------
