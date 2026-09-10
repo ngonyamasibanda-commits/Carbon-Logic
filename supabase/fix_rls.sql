@@ -51,6 +51,7 @@ begin
     from pg_policies
     where schemaname = 'public'
       and tablename in ('emission_entries', 'emission_factors')
+      and policyname <> 'postgres dashboard manages emission entries'
       and (
         'anon' = any (roles)
         or qual = 'true'
@@ -132,6 +133,14 @@ drop policy if exists "editors delete entries" on public.emission_entries;
 create policy "editors delete entries" on public.emission_entries
   for delete to authenticated
   using (public.has_org_role(organization_id, 'editor'));
+
+drop policy if exists "postgres dashboard manages emission entries" on public.emission_entries;
+create policy "postgres dashboard manages emission entries"
+  on public.emission_entries
+  for all
+  to postgres
+  using (current_user = 'postgres')
+  with check (current_user = 'postgres');
 
 drop policy if exists "read shared and own factors" on public.emission_factors;
 create policy "read shared and own factors" on public.emission_factors

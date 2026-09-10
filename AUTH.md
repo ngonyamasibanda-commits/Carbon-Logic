@@ -26,10 +26,17 @@ If a run stops with `memberships_user_id_profiles_fkey` / `Key (user_id)=(...) i
 If a run stops with `relation "public.org_quotas" does not exist`, 0002 was never applied. Paste `supabase/fix_live_database.sql`.
 
 If logging an activity fails with *Could not save this activity to your organisation*,
+or activities show in the app but Table Editor for `emission_entries` is empty,
 paste `supabase/fix_entry_save.sql`. The live app calls `log_emission_entry` with
 site / tags / activity date; a database that never got migration 0006 does not have
-that function signature, so the save was being discarded. This repair adds the
-columns, recreates the function, and reloads PostgREST's schema cache.
+that function signature, so the save was being discarded. The Table Editor uses the
+`postgres` role, and FORCE RLS hides every row from that role unless it has its own
+policy — so the table can look empty even when the organisation already has data.
+A leftover live table whose first columns are `activity_type` / `activity_amount`
+also rejects inserts that only write `category` / `amount`. This repair adds the
+app columns, fills those leftovers, recreates the function, lets the dashboard see
+rows, and reloads PostgREST's schema cache. Then hard-refresh the app so browser-only
+drafts are pushed.
 
 If inviting people fails with *Could not find the function
 public.invite_member(p_email, p_org, p_role) in the schema cache*, paste

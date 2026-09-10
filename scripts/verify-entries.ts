@@ -153,6 +153,20 @@ function main() {
     rpcString?.id === '89' && rpcString.details === 'json string',
   )
 
+  const legacyRow = parseRpcRow({
+    id: 90,
+    activity_type: 'electricity',
+    activity_amount: 40,
+    emissions_tco2e: 8,
+    details: 'legacy columns',
+    created_at: '2026-01-01T00:00:00.000Z',
+    organization_id: 'org-a',
+  })
+  check(
+    'leftover activity_type / activity_amount columns are read as category / amount',
+    legacyRow?.category === 'electricity' && legacyRow.amount === 40,
+  )
+
   console.log(`\n${passed} passed, ${failed} failed\n`)
   if (failed > 0) process.exit(1)
 }

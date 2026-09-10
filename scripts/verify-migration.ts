@@ -188,6 +188,16 @@ async function main() {
     'fix_saas_workspace.sql matches migration 0006',
     readFileSync(join(root, 'supabase/fix_saas_workspace.sql'), 'utf8') === saasWorkspace,
   )
+  const emissionWrite = readFileSync(join(root, 'supabase/emission_entry_write.inc.sql'), 'utf8')
+  check(
+    'organisation-scoped entries SQL includes the live emission write helper',
+    orgEntries.includes(emissionWrite),
+  )
+  check('SaaS workspace SQL includes the live emission write helper', saasWorkspace.includes(emissionWrite))
+  check(
+    'entry-save repair includes the live emission write helper',
+    readFileSync(join(root, 'supabase/fix_entry_save.sql'), 'utf8').includes(emissionWrite),
+  )
   await db.exec(liveFix)
   check('live-database catch-up script is idempotent on an already-migrated database', true)
 
@@ -675,6 +685,58 @@ async function main() {
       `got ${JSON.stringify(row)}`,
     )
   })
+
+  const dashboardPolicy = await countOf(`
+    select count(*) from pg_policies
+    where schemaname = 'public'
+      and tablename = 'emission_entries'
+      and policyname = 'postgres dashboard manages emission entries'
+  `)
+  check(
+    'Table Editor postgres role has a policy to see emission entries under FORCE RLS',
+    dashboardPolicy === 1,
+  )
+
+  await db.exec(`
+    alter table public.emission_entries add column if not exists activity_type text;
+    alter table public.emission_entries add column if not exists activity_amount numeric;
+    update public.emission_entries
+    set activity_type = coalesce(nullif(activity_type, ''), category, 'unknown')
+    where activity_type is null or activity_type = '';
+    update public.emission_entries
+    set activity_amount = coalesce(activity_amount, 0)
+    where activity_amount is null;
+    alter table public.emission_entries alter column activity_type set not null;
+    alter table public.emission_entries alter column activity_type drop default;
+    alter table public.emission_entries alter column activity_amount set not null;
+    alter table public.emission_entries alter column activity_amount drop default;
+  `)
+  await asUser(id['editor@acme.test'], async () => {
+    await db.query(
+      `select public.log_emission_entry($1, 'fuels', 'Scope 1', 0.5, 'legacy columns', 12.5, 'L')`,
+      [acme],
+    )
+  })
+  const leftover = await db.query<{
+    activity_type: string
+    activity_amount: string | number
+    category: string
+    amount: string | number | null
+  }>(`
+    select activity_type, activity_amount, category, amount
+    from public.emission_entries
+    where details = 'legacy columns'
+    order by created_at desc
+    limit 1
+  `)
+  check(
+    'logging fills leftover activity_type / activity_amount columns',
+    leftover.rows[0]?.activity_type === 'fuels' &&
+      leftover.rows[0]?.category === 'fuels' &&
+      Number(leftover.rows[0]?.activity_amount) === 12.5 &&
+      Number(leftover.rows[0]?.amount) === 12.5,
+    `got ${JSON.stringify(leftover.rows[0])}`,
+  )
 
   console.log('\nFactors, audit log and profiles\n')
 
