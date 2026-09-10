@@ -584,6 +584,46 @@ async function main() {
   `)
   check('memberships reference profiles so People & Access can list colleagues', profileFk === 1)
 
+  await db.exec('alter table public.memberships drop constraint memberships_user_id_profiles_fkey')
+  await db.query('delete from public.profiles where id = $1', [id['editor@acme.test']])
+  await db.exec(saasWorkspace)
+  const restoredProfile = await countOf('select count(*) from public.profiles where id = $1', [
+    id['editor@acme.test'],
+  ])
+  const restoredFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  check(
+    're-running the SaaS migration backfills missing profiles before adding the FK',
+    restoredProfile === 1 && restoredFk === 1,
+    `profile=${restoredProfile} fk=${restoredFk}`,
+  )
+
+  await db.exec('alter table public.memberships drop constraint memberships_user_id_profiles_fkey')
+  await db.query('delete from public.profiles where id = $1', [id['viewer@acme.test']])
+  await db.exec(readFileSync(join(root, 'supabase/fix_memberships_profiles.sql'), 'utf8'))
+  const repairedProfile = await countOf('select count(*) from public.profiles where id = $1', [
+    id['viewer@acme.test'],
+  ])
+  const repairedFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  const profilesForced = await db.query<{ relforcerowsecurity: boolean; relrowsecurity: boolean }>(`
+    select relforcerowsecurity, relrowsecurity
+    from pg_class
+    where oid = 'public.profiles'::regclass
+  `)
+  check(
+    'fix_memberships_profiles.sql backfills the missing profile, adds the FK, and leaves FORCE RLS on',
+    repairedProfile === 1 &&
+      repairedFk === 1 &&
+      profilesForced.rows[0]?.relrowsecurity === true &&
+      profilesForced.rows[0]?.relforcerowsecurity === true,
+    `profile=${repairedProfile} fk=${repairedFk} rls=${JSON.stringify(profilesForced.rows[0])}`,
+  )
+
   await asUser(id['editor@acme.test'], async () => {
     const logged = await db.query<{ log_emission_entry: Record<string, unknown> }>(
       `select public.log_emission_entry($1, 'site_fuel', 'Scope 1', 2.2, 'diesel', 100, 'L', '', '', 'Pit A', array['ytd'], '[]'::jsonb, '2025-03-01')`,

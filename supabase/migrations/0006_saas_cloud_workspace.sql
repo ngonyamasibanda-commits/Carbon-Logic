@@ -120,7 +120,37 @@ on conflict (organization_id) do nothing;
 
 -- ---------------------------------------------------------------------------
 -- 4. Memberships → profiles so People & Access can embed colleague rows
+--
+-- Live databases often have memberships for people whose profile row was
+-- never created (sign-up before the trigger, a failed insert, or a restored
+-- dump). Adding the FK first raises 23503.
+--
+-- Hosted Supabase's SQL editor runs as the table owner, not a superuser.
+-- These tables use FORCE ROW LEVEL SECURITY, so a plain INSERT/DELETE is
+-- either rejected or matches zero rows. Turn RLS off for this transaction,
+-- backfill, add the constraint, then put FORCE RLS back. If anything fails,
+-- the outer transaction rolls back and RLS stays on.
 -- ---------------------------------------------------------------------------
+
+alter table public.profiles no force row level security;
+alter table public.memberships no force row level security;
+alter table public.profiles disable row level security;
+alter table public.memberships disable row level security;
+
+insert into public.profiles (id, email, full_name)
+select
+  u.id,
+  coalesce(nullif(u.email, ''), u.id::text || '@unknown.local'),
+  coalesce(
+    u.raw_user_meta_data ->> 'full_name',
+    split_part(coalesce(u.email, 'user'), '@', 1)
+  )
+from auth.users u
+where not exists (select 1 from public.profiles p where p.id = u.id)
+on conflict (id) do nothing;
+
+delete from public.memberships m
+where not exists (select 1 from public.profiles p where p.id = m.user_id);
 
 do $$
 begin
@@ -135,6 +165,11 @@ begin
   end if;
 end
 $$;
+
+alter table public.profiles enable row level security;
+alter table public.profiles force row level security;
+alter table public.memberships enable row level security;
+alter table public.memberships force row level security;
 
 -- ---------------------------------------------------------------------------
 -- 5. SaaS write limits — a company logging a year of invoices, or inviting
