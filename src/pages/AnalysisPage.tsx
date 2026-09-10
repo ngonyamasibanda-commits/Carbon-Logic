@@ -21,6 +21,7 @@ import { summarizeInventory } from '../lib/ghg'
 import { entryActivityMonth } from '../lib/entry-date'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
+import { formatNumber, formatPercent, formatTco2e, roundDisplay } from '../lib/format'
 import { useOrg } from '../providers/OrgProvider'
 
 const SCOPE_COLORS: Record<string, string> = {
@@ -106,7 +107,7 @@ export default function AnalysisPage() {
     }
     return [...totals.entries()].map(([name, value]) => ({
       name,
-      value: Number(value.toFixed(4)),
+      value: roundDisplay(value),
     }))
   }, [filtered])
 
@@ -117,7 +118,7 @@ export default function AnalysisPage() {
       totals.set(name, (totals.get(name) ?? 0) + entry.emissions_tco2e)
     }
     return [...totals.entries()]
-      .map(([name, value]) => ({ name, value: Number(value.toFixed(4)) }))
+      .map(([name, value]) => ({ name, value: roundDisplay(value) }))
       .sort((a, b) => b.value - a.value)
   }, [filtered])
 
@@ -137,10 +138,10 @@ export default function AnalysisPage() {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, data]) => ({
         month,
-        'Scope 1': Number(data.scope1.toFixed(3)),
-        'Scope 2': Number(data.scope2.toFixed(3)),
-        'Scope 3': Number(data.scope3.toFixed(3)),
-        Total: Number((data.scope1 + data.scope2 + data.scope3).toFixed(3)),
+        'Scope 1': roundDisplay(data.scope1),
+        'Scope 2': roundDisplay(data.scope2),
+        'Scope 3': roundDisplay(data.scope3),
+        Total: roundDisplay(data.scope1 + data.scope2 + data.scope3),
       }))
   }, [filtered])
 
@@ -220,10 +221,10 @@ export default function AnalysisPage() {
 
       {/* ── Scope summary KPIs ───────────────────────────────────────── */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Scope 1" value={scope1.toFixed(2)} unit="tCO₂e" color="#02234e" />
-        <KpiCard label="Scope 2" value={scope2.toFixed(2)} unit="tCO₂e" color="#14396d" />
-        <KpiCard label="Scope 3" value={scope3.toFixed(2)} unit="tCO₂e" color="#6cbe2c" />
-        <KpiCard label="Total" value={total.toFixed(2)} unit="tCO₂e" color="#0f1e33" />
+        <KpiCard label="Scope 1" value={formatTco2e(scope1)} unit="tCO₂e" color="#02234e" />
+        <KpiCard label="Scope 2" value={formatTco2e(scope2)} unit="tCO₂e" color="#14396d" />
+        <KpiCard label="Scope 3" value={formatTco2e(scope3)} unit="tCO₂e" color="#6cbe2c" />
+        <KpiCard label="Total" value={formatTco2e(total)} unit="tCO₂e" color="#0f1e33" />
       </section>
 
       {/* ── Pie / source chart ───────────────────────────────────────── */}
@@ -275,7 +276,7 @@ export default function AnalysisPage() {
                     />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => `${Number(value ?? 0).toFixed(2)} tCO₂e`} />
+                <Tooltip formatter={(value) => formatTco2e(Number(value ?? 0), true)} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -293,7 +294,7 @@ export default function AnalysisPage() {
                 <CartesianGrid stroke="#e2e8f0" vertical={false} />
                 <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 11 }} />
                 <YAxis tick={{ fill: '#64748b', fontSize: 11 }} />
-                <Tooltip formatter={(value) => `${Number(value ?? 0).toFixed(3)} tCO₂e`} />
+                <Tooltip formatter={(value) => formatTco2e(Number(value ?? 0), true)} />
                 <Legend />
                 <Line type="monotone" dataKey="Scope 1" stroke="#02234e" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="Scope 2" stroke="#14396d" strokeWidth={2} dot={false} />
@@ -330,7 +331,7 @@ export default function AnalysisPage() {
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <IntensityCard
             label="tCO₂e per £M revenue"
-            value={revenue > 0 ? (total / (revenue / 1_000_000)).toFixed(2) : '—'}
+            value={revenue > 0 ? formatNumber(total / (revenue / 1_000_000)) : '—'}
             hint="SECR mandatory intensity ratio"
           />
           <IntensityCard
@@ -340,7 +341,7 @@ export default function AnalysisPage() {
           />
           <IntensityCard
             label="Scope 1 + 2 / Total"
-            value={total > 0 ? `${(((scope1 + scope2) / total) * 100).toFixed(1)}%` : '—'}
+            value={total > 0 ? formatPercent(((scope1 + scope2) / total) * 100) : '—'}
             hint="Proportion under direct control"
           />
         </div>
@@ -387,9 +388,9 @@ export default function AnalysisPage() {
                         {scope}
                       </button>
                     </td>
-                    <td className="py-2">{scopeValue.toFixed(2)}</td>
+                    <td className="py-2 tabular-nums">{formatTco2e(scopeValue)}</td>
                     <td className="py-2 text-muted">
-                      {total > 0 ? `${((scopeValue / total) * 100).toFixed(1)}%` : '—'}
+                      {total > 0 ? formatPercent((scopeValue / total) * 100) : '—'}
                     </td>
                   </tr>
                   {openScopes[scope]
@@ -398,9 +399,9 @@ export default function AnalysisPage() {
                         .map((row) => (
                           <tr key={`${scope}-${row.name}`} className="border-b border-line bg-page/70">
                             <td className="py-2 pl-8 text-muted">{row.name}</td>
-                            <td className="py-2">{row.value.toFixed(2)}</td>
+                            <td className="py-2 tabular-nums">{formatTco2e(row.value)}</td>
                             <td className="py-2 text-muted">
-                              {total > 0 ? `${((row.value / total) * 100).toFixed(1)}%` : '—'}
+                              {total > 0 ? formatPercent((row.value / total) * 100) : '—'}
                             </td>
                           </tr>
                         ))
@@ -410,7 +411,7 @@ export default function AnalysisPage() {
             })}
             <tr className="font-semibold">
               <td className="py-2">Total</td>
-              <td className="py-2">{total.toFixed(2)}</td>
+              <td className="py-2 tabular-nums">{formatTco2e(total)}</td>
               <td className="py-2">100%</td>
             </tr>
           </tbody>
@@ -453,8 +454,8 @@ export default function AnalysisPage() {
                       {row.name}
                       <div className="text-xs text-muted">{row.plain}</div>
                     </td>
-                    <td className="py-2 font-medium">{row.status === 'reported' ? row.tco2e.toFixed(2) : '—'}</td>
-                    <td className="py-2 text-muted">{row.status === 'reported' ? `${row.percent.toFixed(1)}%` : '—'}</td>
+                    <td className="py-2 font-medium tabular-nums">{row.status === 'reported' ? formatTco2e(row.tco2e) : '—'}</td>
+                    <td className="py-2 text-muted">{row.status === 'reported' ? formatPercent(row.percent) : '—'}</td>
                     <td className="py-2 text-xs">{row.status === 'reported' ? 'Reported' : 'Not yet logged'}</td>
                   </tr>
                 ))}
@@ -473,7 +474,7 @@ export default function AnalysisPage() {
                 <CartesianGrid stroke="#e2e8f0" horizontal={false} />
                 <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} />
                 <YAxis type="category" dataKey="name" tick={{ fill: '#475569', fontSize: 11 }} width={110} />
-                <Tooltip formatter={(value) => `${Number(value ?? 0).toFixed(3)} tCO₂e`} />
+                <Tooltip formatter={(value) => formatTco2e(Number(value ?? 0), true)} />
                 <Bar dataKey="value" fill="#02234e" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -486,8 +487,8 @@ export default function AnalysisPage() {
 
 function KpiCard({ label, value, unit, color }: { label: string; value: string; unit: string; color: string }) {
   return (
-    <div className="rounded-xl border border-line bg-white px-5 py-4">
-      <div className="text-2xl font-semibold" style={{ color }}>{value}</div>
+    <div className="min-w-0 rounded-xl border border-line bg-white px-5 py-4">
+      <div className="truncate text-2xl font-semibold tabular-nums" style={{ color }} title={value}>{value}</div>
       <div className="mt-1 text-xs text-muted">{unit}</div>
       <div className="mt-2 text-sm font-medium text-ink">{label}</div>
     </div>
@@ -496,8 +497,8 @@ function KpiCard({ label, value, unit, color }: { label: string; value: string; 
 
 function IntensityCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-lg border border-line bg-page px-4 py-3">
-      <div className="text-xl font-semibold text-brand">{value}</div>
+    <div className="min-w-0 rounded-lg border border-line bg-page px-4 py-3">
+      <div className="truncate text-xl font-semibold tabular-nums text-brand" title={value}>{value}</div>
       <div className="mt-1 text-sm font-medium">{label}</div>
       <div className="mt-0.5 text-xs text-muted">{hint}</div>
     </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { buildTemplate, parseCsv } from '../../lib/csv'
 import { calculateTco2e, lookupFactor } from '../../lib/calculate'
+import { formatNumber, formatTco2e } from '../../lib/format'
 import { downloadText } from '../../lib/export'
 import type { CategoryConfig, EmissionEntry } from '../../lib/types'
 import { emptyAdditional } from '../../lib/types'
@@ -83,7 +84,7 @@ export default function BulkUpload({ category, onClose }: Props) {
         emissions_tco2e: totalTco2e,
         details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
-        } | ${activityAmount.toLocaleString()} ${factor.unit} × ${factor.conversionValue} kg CO₂e/${factor.unit} ÷ 1000 = ${totalTco2e.toFixed(4)} tCO₂e | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
+        } | ${formatNumber(activityAmount)} ${factor.unit} × ${formatNumber(factor.conversionValue)} kg CO₂e/${factor.unit} ÷ 1000 = ${formatTco2e(totalTco2e, true)} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
         amount: activityAmount,
         unit: category.resolveUnit(values),
         ...extras,

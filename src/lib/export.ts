@@ -2,6 +2,7 @@ import { getCategory } from './categories'
 import { entryActivityDate } from './entry-date'
 import { summarizeInventory, type InventorySummary } from './ghg'
 import { escapeHtml } from './safe'
+import { formatCsvNumber, formatNumber, formatPercent, formatTco2e } from './format'
 import type { EmissionEntry } from './types'
 
 function csvEscape(value: string) {
@@ -29,7 +30,7 @@ export function entriesToCsv(entries: EmissionEntry[]) {
       getCategory(entry.category)?.name ?? entry.category,
       entry.scope,
       entry.site,
-      entry.emissions_tco2e.toFixed(4),
+      formatCsvNumber(entry.emissions_tco2e),
       entry.amount ?? '',
       entry.unit,
       entry.details,
@@ -48,8 +49,8 @@ export function inventoryToCsv(summary: InventorySummary) {
       row.scope,
       row.code,
       row.name,
-      row.tco2e.toFixed(4),
-      row.percent.toFixed(1),
+      formatCsvNumber(row.tco2e),
+      Number.isFinite(row.percent) ? Number(row.percent.toFixed(1)).toString() : '',
       row.status === 'reported' ? 'Reported' : 'Not yet logged',
       row.plain,
     ].map((value) => csvEscape(String(value))),
@@ -120,20 +121,20 @@ function kpi(label: string, value: string) {
 function inventoryTable(summary: InventorySummary) {
   const body = summary.rows
     .map((row) => {
-      const status = row.status === 'reported' ? `${row.tco2e.toFixed(2)} tCO₂e` : 'Not yet logged'
+      const status = row.status === 'reported' ? formatTco2e(row.tco2e, true) : 'Not yet logged'
       return `<tr>
         <td>${escapeHtml(row.scope)}</td>
         <td>${escapeHtml(row.code)}</td>
         <td>${escapeHtml(row.name)}<div class="plain">${escapeHtml(row.plain)}</div></td>
         <td>${row.status === 'reported' ? status : '—'}</td>
-        <td>${row.status === 'reported' ? `${row.percent.toFixed(1)}%` : '—'}</td>
+        <td>${row.status === 'reported' ? formatPercent(row.percent) : '—'}</td>
       </tr>`
     })
     .join('')
   return `<table>
     <thead><tr><th>Scope</th><th>GHG Protocol</th><th>Category</th><th>tCO₂e</th><th>% of total</th></tr></thead>
     <tbody>${body}
-      <tr class="section"><td colspan="3">Total reported</td><td>${summary.total.toFixed(2)} tCO₂e</td><td>100%</td></tr>
+      <tr class="section"><td colspan="3">Total reported</td><td>${formatTco2e(summary.total, true)}</td><td>100%</td></tr>
     </tbody>
   </table>`
 }
@@ -147,10 +148,10 @@ export function printInventoryReport(entries: EmissionEntry[], context: ReportCo
     <h1>${escapeHtml(org)}</h1>
     <p class="muted">Combined results for reporting · ${escapeHtml(generated)} · ${summary.entryCount} logged ${summary.entryCount === 1 ? 'activity' : 'activities'}</p>
     <div class="hero">
-      ${kpi('Total reported', `${summary.total.toFixed(2)} tCO₂e`)}
-      ${kpi('Scope 1 (owned fuel & leaks)', `${summary.scope1.toFixed(2)} tCO₂e`)}
-      ${kpi('Scope 2 (bought energy)', `${summary.scope2.toFixed(2)} tCO₂e`)}
-      ${kpi('Scope 3 (value chain)', `${summary.scope3.toFixed(2)} tCO₂e`)}
+      ${kpi('Total reported', formatTco2e(summary.total, true))}
+      ${kpi('Scope 1 (owned fuel & leaks)', formatTco2e(summary.scope1, true))}
+      ${kpi('Scope 2 (bought energy)', formatTco2e(summary.scope2, true))}
+      ${kpi('Scope 3 (value chain)', formatTco2e(summary.scope3, true))}
     </div>
     <h2>How to read this report</h2>
     <p>Figures are tonnes of carbon dioxide equivalent (tCO₂e). Scope 1 is fuel and leaks you own. Scope 2 is electricity and heat you buy. Scope 3 is everything else in your value chain, labelled with the GHG Protocol’s 15 categories so this table can sit in a SECR, PPN 06/21, or customer questionnaire without translation.</p>
@@ -165,7 +166,7 @@ export function printInventoryReport(entries: EmissionEntry[], context: ReportCo
       ${summary.bySite
         .map(
           (site) =>
-            `<tr><td>${escapeHtml(site.name)}</td><td>${site.tco2e.toFixed(2)}</td><td>${site.percent.toFixed(1)}%</td></tr>`,
+            `<tr><td>${escapeHtml(site.name)}</td><td>${formatTco2e(site.tco2e)}</td><td>${formatPercent(site.percent)}</td></tr>`,
         )
         .join('')}
     </tbody></table>`
@@ -182,12 +183,12 @@ export function printAnalysisReport(entries: EmissionEntry[], context: ReportCon
   const generated = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   const intensity =
     context.revenue && context.revenue > 0
-      ? `${(summary.total / (context.revenue / 1_000_000)).toFixed(2)} tCO₂e per £ million turnover`
+      ? `${formatNumber(summary.total / (context.revenue / 1_000_000))} tCO₂e per £ million turnover`
       : 'Add annual revenue in Analysis to calculate the SECR intensity ratio (tCO₂e per £ million).'
   const actions: string[] = []
   if (summary.hotspots[0]) {
     actions.push(
-      `Tackle ${summary.hotspots[0].name.toLowerCase()} first — it is ${summary.hotspots[0].percent.toFixed(0)}% of the reported total.`,
+      `Tackle ${summary.hotspots[0].name.toLowerCase()} first — it is ${formatPercent(summary.hotspots[0].percent, 0)} of the reported total.`,
     )
   }
   if (summary.gaps[0]) {
@@ -205,7 +206,7 @@ export function printAnalysisReport(entries: EmissionEntry[], context: ReportCon
   const hotspotRows = summary.hotspots
     .map(
       (row, index) =>
-        `<tr><td>${index + 1}</td><td>${escapeHtml(row.code)} · ${escapeHtml(row.name)}</td><td>${row.tco2e.toFixed(2)}</td><td>${row.percent.toFixed(1)}%</td></tr>`,
+        `<tr><td>${index + 1}</td><td>${escapeHtml(row.code)} · ${escapeHtml(row.name)}</td><td>${formatTco2e(row.tco2e)}</td><td>${formatPercent(row.percent)}</td></tr>`,
     )
     .join('')
 
@@ -216,9 +217,9 @@ export function printAnalysisReport(entries: EmissionEntry[], context: ReportCon
     <h1>${escapeHtml(org)}</h1>
     <p class="muted">Analysis report · ${escapeHtml(generated)} · for leadership, not a line-by-line ledger</p>
     <div class="hero">
-      ${kpi('Reported footprint', `${summary.total.toFixed(2)} tCO₂e`)}
-      ${kpi('Under direct control (S1+S2)', `${(summary.scope1 + summary.scope2).toFixed(2)} tCO₂e`)}
-      ${kpi('Value chain (Scope 3)', `${summary.scope3.toFixed(2)} tCO₂e`)}
+      ${kpi('Reported footprint', formatTco2e(summary.total, true))}
+      ${kpi('Under direct control (S1+S2)', formatTco2e(summary.scope1 + summary.scope2, true))}
+      ${kpi('Value chain (Scope 3)', formatTco2e(summary.scope3, true))}
       ${kpi('Scope 3 categories with data', `${coverage} of 15`)}
     </div>
     <h2>Headline findings</h2>

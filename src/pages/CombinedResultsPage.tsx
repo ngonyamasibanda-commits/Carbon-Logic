@@ -3,6 +3,7 @@ import { summarizeInventory } from '../lib/ghg'
 import { entryActivityYear } from '../lib/entry-date'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
+import { formatPercent, formatTco2e } from '../lib/format'
 import { useMemo, useState } from 'react'
 
 export default function CombinedResultsPage() {
@@ -32,7 +33,7 @@ export default function CombinedResultsPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-white p-4 text-sm">
         <div>
-          Reported footprint: <strong>{summary.total.toFixed(2)} tCO₂e</strong> from {summary.entryCount}{' '}
+          Reported footprint: <strong>{formatTco2e(summary.total, true)}</strong> from {summary.entryCount}{' '}
           {summary.entryCount === 1 ? 'activity' : 'activities'}
           {year === 'all' ? '' : ` in ${year}`}.
         </div>
@@ -117,8 +118,8 @@ export default function CombinedResultsPage() {
               {summary.bySite.map((site) => (
                 <tr key={site.name} className="border-b border-line">
                   <td className="py-2">{site.name}</td>
-                  <td className="py-2 font-medium">{site.tco2e.toFixed(2)}</td>
-                  <td className="py-2 text-muted">{site.percent.toFixed(1)}%</td>
+                  <td className="py-2 font-medium tabular-nums">{formatTco2e(site.tco2e)}</td>
+                  <td className="py-2 text-muted">{formatPercent(site.percent)}</td>
                 </tr>
               ))}
             </tbody>
@@ -142,11 +143,11 @@ function SummaryCard({
   total: number
   color: string
 }) {
-  const share = total > 0 ? `${((value / total) * 100).toFixed(0)}%` : '—'
+  const share = total > 0 ? formatPercent((value / total) * 100, 0) : '—'
   return (
-    <div className="rounded-xl border border-line bg-white px-5 py-4">
-      <div className="text-2xl font-semibold" style={{ color }}>
-        {value.toFixed(2)}
+    <div className="min-w-0 rounded-xl border border-line bg-white px-5 py-4">
+      <div className="truncate text-2xl font-semibold tabular-nums" style={{ color }} title={formatTco2e(value)}>
+        {formatTco2e(value)}
       </div>
       <div className="mt-1 text-xs text-muted">tCO₂e · {share} of total</div>
       <div className="mt-2 text-sm font-medium text-ink">{label}</div>
@@ -187,8 +188,8 @@ function InventoryBlock({
                   <div className="text-xs text-muted">{row.name}</div>
                 </td>
                 <td className="max-w-sm py-2 text-muted">{row.plain}</td>
-                <td className="py-2 font-medium">{row.status === 'reported' ? row.tco2e.toFixed(2) : '—'}</td>
-                <td className="py-2 text-muted">{row.status === 'reported' ? `${row.percent.toFixed(1)}%` : '—'}</td>
+                <td className="py-2 font-medium tabular-nums">{row.status === 'reported' ? formatTco2e(row.tco2e) : '—'}</td>
+                <td className="py-2 text-muted">{row.status === 'reported' ? formatPercent(row.percent) : '—'}</td>
                 <td className="py-2">
                   <span
                     className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${

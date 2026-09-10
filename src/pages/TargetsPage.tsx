@@ -23,13 +23,14 @@ import {
 import { loadSbtiConfig, loadSbtiConfigCloud, saveSbtiConfig } from '../lib/targets-store'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
+import { formatNumber, formatPercent, formatTco2e } from '../lib/format'
 
 const NAVY = '#02234e'
 const GREEN = '#6cbe2c'
 const SLATE = '#94a3b8'
 
-const pct = (value: number) => `${(value * 100).toFixed(1)}%`
-const t = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+const pct = (value: number) => formatPercent(value * 100)
+const t = (value: number) => formatNumber(value)
 
 export default function TargetsPage() {
   const { entries } = useEntries()
@@ -91,9 +92,9 @@ export default function TargetsPage() {
       ['Target year', String(effectiveConfig.targetYear)],
       ['Submission year', String(effectiveConfig.submissionYear)],
       ['Net-zero year', String(effectiveConfig.netZeroYear)],
-      ['Base year scope 1 (tCO2e)', (effectiveConfig.baseScope1 ?? 0).toFixed(3)],
-      ['Base year scope 2 (tCO2e)', (effectiveConfig.baseScope2 ?? 0).toFixed(3)],
-      ['Base year scope 3 (tCO2e)', (effectiveConfig.baseScope3 ?? 0).toFixed(3)],
+      ['Base year scope 1 (tCO2e)', formatTco2e(effectiveConfig.baseScope1 ?? 0)],
+      ['Base year scope 2 (tCO2e)', formatTco2e(effectiveConfig.baseScope2 ?? 0)],
+      ['Base year scope 3 (tCO2e)', formatTco2e(effectiveConfig.baseScope3 ?? 0)],
       ['Most recent inventory year', String(effectiveConfig.mostRecentYear)],
       ['Scope 3 share of inventory', pct(result.scope3Share)],
       ['Scope 3 target required', result.scope3TargetRequired ? 'Yes' : 'No'],
@@ -101,12 +102,12 @@ export default function TargetsPage() {
       ['Scope 2 dLARR', pct(result.scope2Rate)],
       ['Scope 1+2 blended dLARR', pct(result.s12.rate)],
       ['Scope 1+2 reduction by target year', pct(result.s12.adjustedAmbition)],
-      ['Scope 1+2 target emissions (tCO2e)', result.s12.targetEmissions.toFixed(3)],
+      ['Scope 1+2 target emissions (tCO2e)', formatTco2e(result.s12.targetEmissions)],
       ['Scope 3 pathway', result.s3.ambitionLabel],
       ['Scope 3 dLARR', pct(result.s3.rate)],
       ['Scope 3 reduction by target year', pct(result.s3.adjustedAmbition)],
-      ['Scope 3 target emissions (tCO2e)', result.s3.targetEmissions.toFixed(3)],
-      ['Net-zero residual (tCO2e)', result.netZeroEmissions.toFixed(3)],
+      ['Scope 3 target emissions (tCO2e)', formatTco2e(result.s3.targetEmissions)],
+      ['Net-zero residual (tCO2e)', formatTco2e(result.netZeroEmissions)],
       ...result.checks.map((check) => [`${check.criterion} — ${check.label}`, check.status.toUpperCase()]),
       ...result.targetLanguage.map((line, index) => [`Target language ${index + 1}`, line]),
     ]

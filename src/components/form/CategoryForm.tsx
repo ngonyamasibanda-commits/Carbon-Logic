@@ -3,6 +3,7 @@ import { CloudUpload, Grid2x2, Play } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { adjacentCategory } from '../../lib/categories'
 import { calculateTco2e, lookupFactor } from '../../lib/calculate'
+import { formatNumber, formatTco2e } from '../../lib/format'
 import { CATEGORY_ICONS } from '../../lib/icons'
 import { useEntries } from '../../lib/entries-context'
 import { useAuth } from '../../lib/auth-context'
@@ -104,7 +105,7 @@ export default function CategoryForm({ category }: Props) {
         emissions_tco2e: totalTco2e,
         details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
-        } | ${activityAmount.toLocaleString()} ${factor.unit} × ${factor.conversionValue} kg CO₂e/${factor.unit} ÷ 1000 = ${totalTco2e.toFixed(4)} tCO₂e | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
+        } | ${formatNumber(activityAmount)} ${factor.unit} × ${formatNumber(factor.conversionValue)} kg CO₂e/${factor.unit} ÷ 1000 = ${formatTco2e(totalTco2e, true)} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
         amount: activityAmount,
         unit: category.resolveUnit(values),
         link: additional.link,
@@ -115,7 +116,7 @@ export default function CategoryForm({ category }: Props) {
         files: [],
         activity_date: additional.activity_date,
       })
-      setMessage(`Added ${totalTco2e.toFixed(4)} tCO2e to your footprint.`)
+      setMessage(`Added ${formatTco2e(totalTco2e, true)} to your footprint.`)
       setValues(defaultValues)
       setAdditional(emptyAdditional())
     } catch (err) {
