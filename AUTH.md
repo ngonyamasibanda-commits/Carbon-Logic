@@ -17,7 +17,7 @@ Open the Supabase SQL editor and run these in order:
 5. `supabase/migrations/0005_org_scoped_entries.sql`
 6. `supabase/migrations/0006_saas_cloud_workspace.sql`
 
-They are idempotent, so re-running is safe. If the live database was created before this SaaS work, you can paste `supabase/fix_saas_workspace.sql` on its own — it is the same as migration 0006.
+They are idempotent, so re-running is safe. If the live database was created before this SaaS work, you can paste `supabase/fix_saas_workspace.sql` on its own — it is the same as migration 0006. It creates a profile for every existing auth user before it adds the memberships↔profiles foreign key, so a member who never got a profile row will not abort the run.
 
 If inviting people fails with *Could not find the function
 public.invite_member(p_email, p_org, p_role) in the schema cache*, paste
@@ -198,4 +198,4 @@ npm run verify:migration
 Runs the migration against a real Postgres (PGlite, compiled to WASM) layered on a
 replica of the pre-migration schema, then exercises the rules as ordinary users: tenant
 isolation, role enforcement, privilege escalation attempts, and the legacy data
-handover. 91 checks.
+handover. 92 checks.

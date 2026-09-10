@@ -120,7 +120,27 @@ on conflict (organization_id) do nothing;
 
 -- ---------------------------------------------------------------------------
 -- 4. Memberships → profiles so People & Access can embed colleague rows
+--
+-- Live databases often have memberships for people whose profile row was
+-- never created (sign-up before the trigger, a failed insert, or a restored
+-- dump). Adding the FK first raises 23503. Backfill, then drop true orphans,
+-- then add the constraint.
 -- ---------------------------------------------------------------------------
+
+insert into public.profiles (id, email, full_name)
+select
+  u.id,
+  coalesce(u.email, u.id::text || '@unknown.local'),
+  coalesce(
+    u.raw_user_meta_data ->> 'full_name',
+    split_part(coalesce(u.email, 'user'), '@', 1)
+  )
+from auth.users u
+where not exists (select 1 from public.profiles p where p.id = u.id)
+on conflict (id) do nothing;
+
+delete from public.memberships m
+where not exists (select 1 from public.profiles p where p.id = m.user_id);
 
 do $$
 begin

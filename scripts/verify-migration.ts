@@ -584,6 +584,22 @@ async function main() {
   `)
   check('memberships reference profiles so People & Access can list colleagues', profileFk === 1)
 
+  await db.exec('alter table public.memberships drop constraint memberships_user_id_profiles_fkey')
+  await db.query('delete from public.profiles where id = $1', [id['editor@acme.test']])
+  await db.exec(saasWorkspace)
+  const restoredProfile = await countOf('select count(*) from public.profiles where id = $1', [
+    id['editor@acme.test'],
+  ])
+  const restoredFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  check(
+    're-running the SaaS migration backfills missing profiles before adding the FK',
+    restoredProfile === 1 && restoredFk === 1,
+    `profile=${restoredProfile} fk=${restoredFk}`,
+  )
+
   await asUser(id['editor@acme.test'], async () => {
     const logged = await db.query<{ log_emission_entry: Record<string, unknown> }>(
       `select public.log_emission_entry($1, 'site_fuel', 'Scope 1', 2.2, 'diesel', 100, 'L', '', '', 'Pit A', array['ytd'], '[]'::jsonb, '2025-03-01')`,
