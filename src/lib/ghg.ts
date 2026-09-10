@@ -1,4 +1,5 @@
 import { getCategory } from './categories'
+import { formatPercent, formatTco2e } from './format'
 import type { EmissionEntry } from './types'
 
 export type GhgScope3Number = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15
@@ -364,16 +365,16 @@ function buildInsights(input: {
   const s12share = input.total > 0 ? (s12 / input.total) * 100 : 0
 
   insights.push(
-    `This organisation’s reported footprint is ${input.total.toFixed(2)} tCO₂e from ${input.entryCount} logged ${input.entryCount === 1 ? 'activity' : 'activities'}.`,
+    `This organisation’s reported footprint is ${formatTco2e(input.total, true)} from ${input.entryCount} logged ${input.entryCount === 1 ? 'activity' : 'activities'}.`,
   )
 
   if (s3share >= 60) {
     insights.push(
-      `Scope 3 is ${s3share.toFixed(0)}% of the total. That is common in construction, mining, and logistics: most emissions sit in materials, freight, and waste rather than in fuel and electricity you buy yourself.`,
+      `Scope 3 is ${formatPercent(s3share, 0)} of the total. That is common in construction, mining, and logistics: most emissions sit in materials, freight, and waste rather than in fuel and electricity you buy yourself.`,
     )
   } else if (s12share >= 50) {
     insights.push(
-      `Scope 1 and 2 are ${s12share.toFixed(0)}% of the total — emissions you control more directly through fuel, plant, and electricity. Efficiency, fuel switching, and grid contracts will move this number.`,
+      `Scope 1 and 2 are ${formatPercent(s12share, 0)} of the total — emissions you control more directly through fuel, plant, and electricity. Efficiency, fuel switching, and grid contracts will move this number.`,
     )
   } else {
     insights.push(
@@ -384,7 +385,7 @@ function buildInsights(input: {
   if (input.hotspots[0]) {
     const top = input.hotspots[0]
     insights.push(
-      `The largest source is ${top.code} ${top.name.toLowerCase()} at ${top.tco2e.toFixed(2)} tCO₂e (${top.percent.toFixed(0)}% of the total). ${top.plain}`,
+      `The largest source is ${top.code} ${top.name.toLowerCase()} at ${formatTco2e(top.tco2e, true)} (${formatPercent(top.percent, 0)} of the total). ${top.plain}`,
     )
   }
 
@@ -403,7 +404,7 @@ function buildInsights(input: {
 }
 
 function pct(part: number, total: number) {
-  return total > 0 ? `${((part / total) * 100).toFixed(0)}%` : '0%'
+  return total > 0 ? formatPercent((part / total) * 100, 0) : '0%'
 }
 
 export function inputCategoryLabel(entry: EmissionEntry) {

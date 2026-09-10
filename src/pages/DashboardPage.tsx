@@ -15,6 +15,7 @@ import { useEntries } from '../lib/entries-context'
 import { entryActivityYear } from '../lib/entry-date'
 import { useOrg } from '../providers/OrgProvider'
 import { useAuth } from '../lib/auth-context'
+import { formatNumber, formatPercent, formatTco2e, roundDisplay } from '../lib/format'
 
 function greeting() {
   const hour = new Date().getHours()
@@ -62,7 +63,7 @@ export default function DashboardPage() {
     }
     return Object.entries(totals).map(([name, emissions]) => ({
       name,
-      emissions: Number(emissions.toFixed(3)),
+      emissions: roundDisplay(emissions),
     }))
   }, [yearEntries])
 
@@ -75,7 +76,7 @@ export default function DashboardPage() {
     }
     return [...totals.entries()].map(([name, emissions]) => ({
       name,
-      emissions: Number(emissions.toFixed(3)),
+      emissions: roundDisplay(emissions),
     }))
   }, [yearEntries, sites])
 
@@ -105,11 +106,11 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Current YTD Emissions" value={ytdTotal.toFixed(3)} />
-        <MetricCard label="Scope 3 YTD tCO2e" value={scope3.toFixed(3)} />
+        <MetricCard label="Current YTD Emissions" value={formatTco2e(ytdTotal)} />
+        <MetricCard label="Scope 3 YTD tCO2e" value={formatTco2e(scope3)} />
         <MetricCard
-          label={baseline ? `Reduction vs ${baseline.toLocaleString()} tCO₂e baseline` : 'Set a baseline below ↓'}
-          value={baseline ? `${(reduction * 100).toFixed(1)}%` : '—'}
+          label={baseline ? `Reduction vs ${formatTco2e(baseline)} tCO₂e baseline` : 'Set a baseline below ↓'}
+          value={baseline ? formatPercent(reduction * 100) : '—'}
         />
       </section>
 
@@ -120,9 +121,15 @@ export default function DashboardPage() {
               <CartesianGrid stroke="#e2e8f0" vertical={false} />
               <XAxis dataKey="name" tick={{ fill: '#475569', fontSize: 12 }} />
               <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
-              <Tooltip formatter={(value) => `${Number(value ?? 0).toFixed(3)} tCO2e`} />
+              <Tooltip formatter={(value) => formatTco2e(Number(value ?? 0), true)} />
               <Bar dataKey="emissions" fill={NAVY} radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="emissions" position="top" fill="#0f1e33" fontSize={12} />
+                <LabelList
+                  dataKey="emissions"
+                  position="top"
+                  fill="#0f1e33"
+                  fontSize={12}
+                  formatter={(value) => formatNumber(Number(value ?? 0))}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -140,9 +147,15 @@ export default function DashboardPage() {
                 }
               />
               <YAxis tick={{ fill: '#64748b', fontSize: 12 }} />
-              <Tooltip formatter={(value) => `${Number(value ?? 0).toFixed(3)} tCO2e`} />
+              <Tooltip formatter={(value) => formatTco2e(Number(value ?? 0), true)} />
               <Bar dataKey="emissions" fill={GREEN} radius={[4, 4, 0, 0]}>
-                <LabelList dataKey="emissions" position="top" fill="#0f1e33" fontSize={12} />
+                <LabelList
+                  dataKey="emissions"
+                  position="top"
+                  fill="#0f1e33"
+                  fontSize={12}
+                  formatter={(value) => formatNumber(Number(value ?? 0))}
+                />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -181,7 +194,7 @@ export default function DashboardPage() {
           ) : null}
           {baseline > 0 ? (
             <span className="text-xs text-muted">
-              Current baseline: {baseline.toLocaleString()} tCO₂e
+              Current baseline: {formatTco2e(baseline, true)}
             </span>
           ) : null}
         </form>
@@ -203,8 +216,13 @@ export default function DashboardPage() {
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-white px-6 py-7">
-      <div className="text-4xl font-semibold tracking-tight text-brand">{value}</div>
+    <div className="min-w-0 rounded-2xl border border-line bg-white px-6 py-7">
+      <div
+        className="truncate text-3xl font-semibold tabular-nums tracking-tight text-brand sm:text-4xl"
+        title={value}
+      >
+        {value}
+      </div>
       <div className="mt-3 flex items-center gap-2 text-sm text-muted">
         <span className="h-2 w-2 rounded-full bg-accent" />
         {label}
