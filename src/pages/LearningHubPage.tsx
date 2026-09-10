@@ -17,11 +17,11 @@ const ARTICLES = [
   },
   {
     title: 'Embodied carbon in construction materials (PAS 2080)',
-    body: 'Concrete, steel, timber, asphalt, cement, glass, aluminium, and insulation carry embodied carbon from extraction and manufacturing (life-cycle stages A1–A3). PAS 2080 provides a framework for managing infrastructure carbon, and EN 15978 covers building-level whole-life carbon assessment. Prefer EPD (Environmental Product Declaration) values or the ICE Database for material factors.',
+    body: 'Concrete, steel, timber, asphalt, cement, glass, aluminium, and insulation carry embodied carbon from extraction and manufacturing (life-cycle stages A1–A3). PAS 2080 provides a framework for managing infrastructure carbon, and EN 15978 covers building-level whole-life carbon assessment. Prefer EPD (Environmental Product Declaration) values, then DESNZ 2026 material-use factors, then ICE v4.1 where DESNZ has no equivalent.',
   },
   {
     title: 'Well-to-tank (WTT) emissions',
-    body: 'WTT factors account for emissions from extracting, refining, and transporting fuel before it reaches your site. WTT is Scope 3 and is mandatory for complete GHG reporting. This tool includes DEFRA WTT factors for diesel, petrol, LPG, gas oil, and natural gas.',
+    body: 'WTT factors account for emissions from extracting, refining, and transporting fuel before it reaches your site. WTT is Scope 3 and is mandatory for complete GHG reporting. This tool includes DESNZ/DEFRA 2026 WTT factors for diesel, petrol, LPG, gas oil, natural gas, and UK electricity generation.',
   },
   {
     title: 'UK reporting: SECR and ESOS',

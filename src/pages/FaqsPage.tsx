@@ -10,7 +10,7 @@ export default function FaqsPage() {
     },
     {
       q: 'Where do emission factors come from?',
-      a: 'Fuel and energy factors come from DEFRA/DESNZ UK GHG Conversion Factors 2025. Embodied carbon in materials uses the ICE Database v3.0 (University of Bath). Mine methane uses IPCC AR5 GWP 28. Explosives combustion uses NGER Method 1 factors. All factors show their source, source family, and verification date. You can add your own factors from EPDs or other sources.',
+      a: 'Fuel, energy, freight, waste, water, travel, and most construction-material factors come from the DEFRA/DESNZ UK GHG Conversion Factors 2026 (published 11 June 2026, flat file revised 31 July 2026). Where DESNZ has no equivalent, embodied carbon uses ICE Database v4.1 (October 2025). Spend-based factors use Defra SIC-19 multipliers to 2023 (published 30 June 2026). Mine methane uses IPCC AR5 GWP 28. Explosives combustion uses the Australian NPI explosives detonation mass-balance factors. All factors show their source, source family, and verification date. You can add your own factors from EPDs or other sources.',
     },
     {
       q: 'Can I log data by project site?',
@@ -46,7 +46,7 @@ export default function FaqsPage() {
     },
     {
       q: 'Can I use spend-based factors for Scope 3?',
-      a: 'Yes — the Purchased Goods & Services category uses DEFRA\'s EEIO (environmentally extended input–output) factors based on £ thousands of spend. However, activity-based methods (e.g. actual material weights, fuel volumes, tkm) are always more accurate and should be preferred when data is available.',
+      a: 'Yes — Purchased Goods & Services uses Defra’s spend-based SIC-19 multipliers (kg CO₂e per £, shown in the catalogue as kg CO₂e per £1,000). Activity-based methods (material weights, fuel volumes, tkm) are always more accurate and should be preferred when data is available.',
     },
   ]
 

@@ -167,7 +167,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Log ANFO, emulsion, or other explosives used in blasting at mines and quarries. Combustion CO₂ from the blast is Scope 1. Prefer a manufacturer or NGER factor when you have one.',
+      'Log ANFO, emulsion, or other explosives used in blasting at mines and quarries. Combustion CO₂ from the blast is Scope 1. Prefer a manufacturer or site-specific factor when you have one; the catalogue uses the Australian NPI explosives detonation mass-balance defaults.',
     fields: [
       {
         key: 'type',
