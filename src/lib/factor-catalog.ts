@@ -1,6 +1,7 @@
 import type { EmissionFactor, FactorMethod, Scope, SourceFamily } from './types'
 import { buildCedaFactors } from './ceda'
 import { buildEpaFactors } from './epa-catalog'
+import { buildDesnzDetailFactors } from './desnz-detail'
 
 export const FACTOR_YEAR = '2026'
 export const FACTOR_VERIFIED_AT = '2026-09-11'
@@ -29,6 +30,8 @@ type FactorExtras = {
   method?: FactorMethod
   wttKey?: string
   tdKey?: string
+  evKey?: string
+  evTdKey?: string
 }
 
 function factor(
@@ -124,7 +127,18 @@ export function hotelFactorKey(country: string) {
   return row?.[1] ?? 'hotel_uk_night'
 }
 
-export const FACTOR_CATALOG: EmissionFactor[] = [
+function firstByKey(rows: EmissionFactor[]): EmissionFactor[] {
+  const seen = new Set<string>()
+  const out: EmissionFactor[] = []
+  for (const row of rows) {
+    if (seen.has(row.key)) continue
+    seen.add(row.key)
+    out.push(row)
+  }
+  return out
+}
+
+export const FACTOR_CATALOG: EmissionFactor[] = firstByKey([
   factor(
     'electricity_grid_kwh',
     'UK grid electricity (generated)',
@@ -974,8 +988,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     GOV_URL,
   ),
 
+  ...buildDesnzDetailFactors({ year: YEAR, verifiedAt: VERIFIED }),
   ...buildCedaFactors({ year: YEAR, verifiedAt: VERIFIED }),
   ...buildEpaFactors({ year: YEAR, verifiedAt: VERIFIED }),
-]
+])
 
 export const PLACEHOLDER_FACTORS = FACTOR_CATALOG

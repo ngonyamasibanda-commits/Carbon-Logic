@@ -118,18 +118,34 @@ export function activityForCategory(
     if (category.id === 'road_freight' || category.id === 'rail_freight' || category.id === 'sea_freight' || category.id === 'air_freight' || category.id === 'subcontractor') {
       const tonnes = fieldAmount(values, 'weight')
       const km = fieldAmount(values, 'distance')
-      steps.push({
-        label: 'Tonne-kilometres (cargo tonnes × km)',
-        value: `${formatNumber(tonnes)} t × ${formatNumber(km)} km = ${formatNumber(derived)} tkm`,
-      })
+      const vehicleKm = factor.unit === 'km' || (values.metric || '').toLowerCase().includes('vehicle')
+      if (vehicleKm) {
+        steps.push({
+          label: 'Vehicle-kilometres',
+          value: `${formatNumber(km)} km`,
+        })
+      } else {
+        steps.push({
+          label: 'Tonne-kilometres (cargo tonnes × km)',
+          value: `${formatNumber(tonnes)} t × ${formatNumber(km)} km = ${formatNumber(derived)} tkm`,
+        })
+      }
     } else if (category.id === 'employee_commuting') {
-      const dist = fieldAmount(values, 'distance')
       const people = num(values, 'employees')
       const days = num(values, 'days')
-      steps.push({
-        label: 'Return commuting (one-way × people × days × 2)',
-        value: `${formatNumber(dist)} km × ${formatNumber(people)} × ${formatNumber(days)} × 2 = ${formatNumber(derived)} ${factor.unit}`,
-      })
+      if ((values.mode || '').startsWith('Homeworking')) {
+        const hours = num(values, 'hours')
+        steps.push({
+          label: 'Homeworking hours (people × days × hours per day)',
+          value: `${formatNumber(people)} × ${formatNumber(days)} × ${formatNumber(hours)} = ${formatNumber(derived)} h`,
+        })
+      } else {
+        const dist = fieldAmount(values, 'distance')
+        steps.push({
+          label: 'Return commuting (one-way × people × days × 2)',
+          value: `${formatNumber(dist)} km × ${formatNumber(people)} × ${formatNumber(days)} × 2 = ${formatNumber(derived)} ${factor.unit}`,
+        })
+      }
     } else if (category.id === 'crew_transport') {
       const dist = fieldAmount(values, 'distance')
       const trips = num(values, 'trips')

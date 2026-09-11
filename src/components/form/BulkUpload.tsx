@@ -82,7 +82,7 @@ export default function BulkUpload({ category, onClose }: Props) {
 
       const entry: Omit<EmissionEntry, 'id' | 'created_at'> = {
         category: category.id,
-        scope: category.scope,
+        scope: category.resolveScope?.(values) ?? category.scope,
         emissions_tco2e: working.tco2e,
         details: `${category.resolveDetails(values, working.activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''

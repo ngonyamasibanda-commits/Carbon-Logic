@@ -103,7 +103,7 @@ export default function CategoryForm({ category }: Props) {
     }))
     // only when fuel/source selection changes the unit set
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.fuel, values.source, category.id])
+  }, [values.fuel, values.source, values.method, values.fuel_basis, values.metric, category.id])
 
   function setField(key: string, value: string) {
     setValues((prevValues) => ({ ...prevValues, [key]: value }))
@@ -200,7 +200,7 @@ export default function CategoryForm({ category }: Props) {
       }
       await addEntry({
         category: category.id,
-        scope: category.scope,
+        scope: category.resolveScope?.(values) ?? category.scope,
         emissions_tco2e: emissions,
         details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
@@ -258,6 +258,50 @@ export default function CategoryForm({ category }: Props) {
             activity_date: additional.activity_date,
           })
           extras.push(`WTT ${formatTco2e(extra.tco2e, true)}`)
+        }
+      }
+      if (values.include_ev === '1' && factor.evKey) {
+        const ev = lookupFactor(factors, factor.evKey)
+        if (ev) {
+          const extra = computeWorking(ev, activityAmount)
+          await addEntry({
+            category: category.id,
+            scope: ev.scope,
+            emissions_tco2e: extra.tco2e,
+            details: `UK electricity for EVs (Scope 2) for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${ev.name}`,
+            amount: activityAmount,
+            unit: ev.unit,
+            link: additional.link,
+            comment: additional.comment,
+            site: additional.site,
+            tags: additional.tags,
+            customFields: additional.customFields,
+            files: [],
+            activity_date: additional.activity_date,
+          })
+          extras.push(`EV electricity ${formatTco2e(extra.tco2e, true)}`)
+        }
+      }
+      if (values.include_ev_td === '1' && factor.evTdKey) {
+        const evTd = lookupFactor(factors, factor.evTdKey)
+        if (evTd) {
+          const extra = computeWorking(evTd, activityAmount)
+          await addEntry({
+            category: category.id,
+            scope: evTd.scope,
+            emissions_tco2e: extra.tco2e,
+            details: `UK electricity T&D for EVs for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${evTd.name}`,
+            amount: activityAmount,
+            unit: evTd.unit,
+            link: additional.link,
+            comment: additional.comment,
+            site: additional.site,
+            tags: additional.tags,
+            customFields: additional.customFields,
+            files: [],
+            activity_date: additional.activity_date,
+          })
+          extras.push(`EV T&D ${formatTco2e(extra.tco2e, true)}`)
         }
       }
       if (values.include_treatment === '1' && category.chainExtras?.includes('treatment')) {
@@ -355,13 +399,30 @@ export default function CategoryForm({ category }: Props) {
               </div>
             ) : null}
             {category.fields.map((field) => {
+              if (field.visibleWhen) {
+                const checks = Array.isArray(field.visibleWhen) ? field.visibleWhen : [field.visibleWhen]
+                const visible = checks.every((rule) => {
+                  const got = values[rule.field] || ''
+                  return Array.isArray(rule.equals) ? rule.equals.includes(got) : got === rule.equals
+                })
+                if (!visible) return null
+              }
               if (field.key === 'hotel_country' && values.type !== 'Hotel') return null
               if (field.key === 'passengers' && values.type === 'Hotel') return null
+              if (field.key === 'passengers' && ((values.type || '').startsWith('Car') || (values.type || '').startsWith('Motorbike') || (values.type || '').includes('vehicle-km'))) return null
+              if (field.key === 'rf' && category.id === 'business_travel' && !/flight/i.test(values.type || '')) return null
+              if (field.key === 'distance' && category.id === 'employee_commuting' && (values.mode || '').startsWith('Homeworking')) return null
+              if (field.key === 'fuel_basis' && category.id === 'energy_wtt' && (values.source || '').toLowerCase().includes('electricity')) return null
               if (field.key === 'ceda_sector' && !(values.spend_source || '').includes('CEDA')) return null
               if (field.key === 'spend_currency' && !(values.spend_source || '').includes('CEDA')) return null
               if (field.key === 'type' && category.id === 'purchased_goods' && (values.spend_source || '').includes('CEDA')) {
                 return null
               }
+              const selectOptions =
+                field.optionsFrom?.(values) ??
+                field.options ??
+                field.optionGroups?.flatMap((group) => group.options) ??
+                []
               return (
               <label key={field.key} className="block text-sm font-semibold text-ink">
                 {field.label}
@@ -373,14 +434,29 @@ export default function CategoryForm({ category }: Props) {
                     required={!field.optional && field.key !== 'rf'}
                   >
                     <option value="">Select an option</option>
-                    {field.options?.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                        {category.id === 'bulk_materials' && isEpdRequiredOption(option)
-                          ? ' — EPD required'
-                          : ''}
-                      </option>
-                    ))}
+                    {field.optionGroups?.length && !field.optionsFrom ? (
+                      field.optionGroups.map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.options.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                              {category.id === 'bulk_materials' && isEpdRequiredOption(option)
+                                ? ' — EPD required'
+                                : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))
+                    ) : (
+                      selectOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                          {category.id === 'bulk_materials' && isEpdRequiredOption(option)
+                            ? ' — EPD required'
+                            : ''}
+                        </option>
+                      ))
+                    )}
                   </select>
                 ) : field.unitOptions?.length ? (
                   // Number field with inline unit selector
@@ -488,7 +564,7 @@ export default function CategoryForm({ category }: Props) {
                 the matching T&D factor ÷ 1,000). EPA eGRID notes T&D is Category 3, not Scope 2.
               </label>
             ) : null}
-            {category.chainExtras?.includes('wtt') ? (
+            {category.chainExtras?.includes('wtt') || liveFactor?.wttKey ? (
               <label className="flex items-start gap-2 text-sm font-normal text-ink">
                 <input
                   type="checkbox"
@@ -497,6 +573,29 @@ export default function CategoryForm({ category }: Props) {
                   onChange={(event) => setField('include_wtt', event.target.checked ? '1' : '0')}
                 />
                 Also add well-to-tank (fuel/electricity supply chain) as a separate Scope 3 line.
+              </label>
+            ) : null}
+            {liveFactor?.evKey ? (
+              <label className="flex items-start gap-2 text-sm font-normal text-ink">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={values.include_ev === '1'}
+                  onChange={(event) => setField('include_ev', event.target.checked ? '1' : '0')}
+                />
+                Also add UK electricity for EVs as a separate Scope 2 line (DESNZ Method 2 for
+                PHEV/BEV distance). Skip this if the same kWh is already in Site Electricity.
+              </label>
+            ) : null}
+            {liveFactor?.evTdKey ? (
+              <label className="flex items-start gap-2 text-sm font-normal text-ink">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={values.include_ev_td === '1'}
+                  onChange={(event) => setField('include_ev_td', event.target.checked ? '1' : '0')}
+                />
+                Also add UK electricity T&amp;D for EVs as a separate Scope 3 line.
               </label>
             ) : null}
             {category.chainExtras?.includes('treatment') ? (

@@ -282,6 +282,70 @@ if (gasEpa) {
   check('1 kg R-410A on EPA AR6 is GWP 2256 → 2.256 tCO₂e', Math.abs(working.tco2e - 2.256) < 1e-9)
 }
 
+const fleet = getCategory('fleet')
+if (fleet && freight) {
+  const rigidKmKey = fleet.resolveFactorKey({
+    method: 'Distance (Method 2 — vehicle km)',
+    vehicle: 'HGV',
+    hgv_class: 'Rigid (>3.5 - 7.5 tonnes)',
+    hgv_body: 'Non-refrigerated (all diesel)',
+    laden: 'Average laden',
+  })
+  check(
+    'fleet Method 2 rigid >3.5-7.5 average laden resolves the DESNZ vehicle-km row',
+    rigidKmKey === 'hgv_nr_rigid_gt3_5_7_5_tonnes_average_laden_km',
+    rigidKmKey,
+  )
+  const kmWorking = workingFromForm(
+    fleet,
+    {
+      method: 'Distance (Method 2 — vehicle km)',
+      vehicle: 'HGV',
+      hgv_class: 'Rigid (>3.5 - 7.5 tonnes)',
+      hgv_body: 'Non-refrigerated (all diesel)',
+      laden: 'Average laden',
+      amount: '1',
+      unit: 'km',
+      unit_factor: '1',
+    },
+    factor('hgv_nr_rigid_gt3_5_7_5_tonnes_average_laden_km'),
+  )
+  check(
+    '1 km rigid >3.5-7.5 average laden is 0.49944 kg → 0.00049944 tCO₂e',
+    Math.abs(kmWorking.tco2e - 0.00049944) < 1e-12,
+    String(kmWorking.tco2e),
+  )
+  check(
+    'legacy mode HGV rigid still resolves freight_road_rigid_tkm',
+    freight.resolveFactorKey({ mode: 'HGV rigid' }) === 'freight_road_rigid_tkm',
+    freight.resolveFactorKey({ mode: 'HGV rigid' }),
+  )
+  const vehicleKm = workingFromForm(
+    freight,
+    {
+      family: 'HGV',
+      hgv_class: 'Rigid (>3.5 - 7.5 tonnes)',
+      hgv_body: 'Non-refrigerated (all diesel)',
+      laden: 'Average laden',
+      metric: 'Vehicle kilometres (mass unknown)',
+      distance: '1',
+      distance_unit: 'km',
+      distance_unit_factor: '1',
+    },
+    factor('hgv_nr_rigid_gt3_5_7_5_tonnes_average_laden_km'),
+  )
+  check(
+    'road freight vehicle-km does not label tonne-kilometres',
+    vehicleKm.steps.some((step) => /vehicle-kilometre/i.test(step.label)) &&
+      !vehicleKm.steps.some((step) => /tonne-kilometre/i.test(step.label)),
+    vehicleKm.steps.map((step) => step.label).join('; '),
+  )
+  check(
+    '1 tkm average rigid still 0.19947',
+    Math.abs(factor('freight_road_rigid_tkm').conversionValue - 0.19947) < 1e-12,
+  )
+}
+
 if (failed) {
   console.log(`\n${failed} failed, ${passed} passed`)
   process.exit(1)
