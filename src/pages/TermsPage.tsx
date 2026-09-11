@@ -119,8 +119,8 @@ export default function TermsPage() {
             <p>
               Emission estimates are generated using activity data you supply and conversion factors
               drawn from published sources (including, where applicable, UK DESNZ/DEFRA GHG conversion
-              factors, ICE Database values, and other third-party datasets) and/or factors you upload
-              or configure yourself.
+              factors, supplier Environmental Product Declarations, and other third-party datasets)
+              and/or factors you upload or configure yourself.
             </p>
             <p>
               We take reasonable care in curating default factors and documenting sources, but we do

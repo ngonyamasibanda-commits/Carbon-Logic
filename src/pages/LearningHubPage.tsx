@@ -17,7 +17,7 @@ const ARTICLES = [
   },
   {
     title: 'Embodied carbon in construction materials (PAS 2080)',
-    body: 'Concrete, steel, timber, asphalt, cement, glass, aluminium, and insulation carry embodied carbon from extraction and manufacturing (life-cycle stages A1–A3). PAS 2080 provides a framework for managing infrastructure carbon, and EN 15978 covers building-level whole-life carbon assessment. Prefer EPD (Environmental Product Declaration) values, then DESNZ 2026 material-use factors, then ICE v4.1 where DESNZ has no equivalent.',
+    body: 'Concrete, steel, timber, asphalt, cement, glass, aluminium, and insulation carry embodied carbon from extraction and manufacturing (life-cycle stages A1–A3). PAS 2080 provides a framework for managing infrastructure carbon, and EN 15978 covers building-level whole-life carbon assessment. Use DESNZ 2026 material-use factors where published. For steel, rebar, cement, aluminium, copper, and lime, paste a supplier EPD (EN 15804 A1–A3) — the app does not vendor ICE.',
   },
   {
     title: 'Well-to-tank (WTT) emissions',
@@ -37,11 +37,11 @@ const ARTICLES = [
   },
   {
     title: 'Tips for construction companies',
-    body: '(1) Track diesel and gas oil per machine using fuel cards or tank dips. (2) Get monthly electricity invoices for each site compound. (3) Require ready-mix concrete suppliers to provide EPDs. (4) Weigh skip loads and record disposal routes. (5) Add all subcontractor haulage under Scope 3. (6) Benchmark tCO₂e per £M contract value across projects.',
+    body: '(1) Track diesel and gas oil per machine using fuel cards or tank dips. (2) Get monthly electricity invoices for each site compound. (3) Require ready-mix, steel, and cement suppliers to provide EPDs; paste A1–A3 GWP on Bulk Materials for steel, rebar, cement, and aluminium. (4) Weigh skip loads and record disposal routes. (5) Add all subcontractor haulage under Scope 3. (6) Benchmark tCO₂e per £M contract value across projects.',
   },
   {
     title: 'Tips for mining companies',
-    body: '(1) Log diesel for haul trucks, drills, and LHDs under Heavy Machinery, not Fleet Vehicles. (2) Record blasting agents under Explosives & blasting. (3) Convert ventilation air to methane before logging Mine methane & ventilation. (4) Assign electricity to the mine and the processing plant as separate facilities. (5) Put lime and grinding media in Bulk Materials; put ore and concentrate movements in freight. (6) Record waste rock and tailings under Site Waste with the disposal route.',
+    body: '(1) Log diesel for haul trucks, drills, and LHDs under Heavy Machinery, not Fleet Vehicles. (2) Record blasting agents under Explosives & blasting. (3) Convert ventilation air to methane before logging Mine methane & ventilation. (4) Assign electricity to the mine and the processing plant as separate facilities. (5) Put lime and grinding media in Bulk Materials using supplier EPDs; put ore and concentrate movements in freight. (6) Record waste rock and tailings under Site Waste with the disposal route.',
   },
   {
     title: 'Tips for logistics companies',

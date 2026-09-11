@@ -1,12 +1,18 @@
 /**
  * Published catalogue values must match DESNZ/DEFRA 2026, Defra spend
- * multipliers to 2023, and the remaining ICE v4.1 / NPI / IPCC rows.
+ * multipliers to 2023, and NPI / IPCC rows. ICE material rows are not shipped.
  *
  *   npm run verify:factors
  */
 import { FACTOR_CATALOG, FACTOR_VERIFIED_AT, FACTOR_YEAR } from '../src/lib/factor-catalog'
 import { calculateTco2e } from '../src/lib/calculate'
-import { mergeFactorMaps } from '../src/lib/factors-store'
+import { mergeFactorMaps, parseFactorSpreadsheet } from '../src/lib/factors-store'
+import {
+  EPD_REQUIRED_MATERIALS,
+  conversionToPerTonne,
+  epdTemplateCsv,
+  isEpdRequiredKey,
+} from '../src/lib/epd-materials'
 
 let passed = 0
 let failed = 0
@@ -117,12 +123,6 @@ expectValue('hotel_uk_night', 10.4)
 expectValue('hotel_overseas_night', 40.28648648648648)
 expectValue('purchased_goods_gbp', 855.9280439858236)
 expectValue('capital_goods_gbp', 698.7898127964011)
-expectValue('material_steel_t', 1550)
-expectValue('material_rebar_t', 1990)
-expectValue('material_cement_t', 910)
-expectValue('material_aluminium_t', 13100)
-expectValue('material_copper_t', 3830)
-expectValue('material_lime_t', 760)
 expectValue('explosives_anfo_kg', 0.22)
 expectValue('explosives_emulsion_kg', 0.14)
 expectValue('mine_ch4_t', 28000)
@@ -177,6 +177,72 @@ const stale = FACTOR_CATALOG.filter(
     row.sourceUrl.includes('conversion-factors-2025'),
 )
 check('no leftover 2025 / ICE v3.0 citations', stale.length === 0, stale.map((row) => row.key).join(', '))
+
+for (const row of EPD_REQUIRED_MATERIALS) {
+  check(
+    `${row.key} is not vendored in the published catalogue`,
+    !FACTOR_CATALOG.some((factor) => factor.key === row.key),
+  )
+}
+check(
+  'catalogue has no ICE source family rows',
+  FACTOR_CATALOG.every((factor) => factor.sourceFamily !== 'ICE'),
+)
+
+const iceSteel = {
+  key: 'material_steel_t',
+  name: 'Structural steel',
+  category: 'Bulk materials',
+  scope: 'Scope 3' as const,
+  conversionValue: 1550,
+  unit: 't',
+  sourceFamily: 'ICE' as const,
+  source: 'ICE Database v4.1, Circular Ecology',
+  sourceUrl: '',
+  region: 'United Kingdom',
+  validFrom: '2026-01-01',
+  lastVerifiedAt: '2026-09-10',
+  isPlaceholder: false,
+}
+const epdSteel = {
+  ...iceSteel,
+  conversionValue: 1400,
+  sourceFamily: 'EPD' as const,
+  source: 'EPD-STEEL-2026 EN 15804',
+  lastVerifiedAt: '2026-09-11',
+}
+const droppedIce = mergeFactorMaps(FACTOR_CATALOG, [iceSteel], [])
+const keptEpd = mergeFactorMaps(FACTOR_CATALOG, [epdSteel], [])
+check(
+  'a cached ICE steel row is dropped',
+  !droppedIce.has('material_steel_t'),
+)
+check(
+  'a tenant EPD steel row is kept',
+  keptEpd.get('material_steel_t')?.conversionValue === 1400,
+  String(keptEpd.get('material_steel_t')?.conversionValue),
+)
+check('1.55 kg CO₂e/kg becomes 1550 kg/t', conversionToPerTonne(1.55, 'kg') === 1550)
+check('910 kg CO₂e/t stays 910', conversionToPerTonne(910, 't') === 910)
+
+const imported = parseFactorSpreadsheet(
+  [
+    'key,name,gwp_a1_a3,declared_unit,conversion_value,unit,source_family,source,source_url',
+    'material_steel_t,Structural steel,1.55,kg CO2e/kg,,t,EPD,EPD-STEEL-2026,',
+  ].join('\n'),
+)
+const importedSteel = imported.find((row) => row.key === 'material_steel_t')
+check(
+  'EPD spreadsheet import converts per-kg GWP to per tonne',
+  importedSteel?.conversionValue === 1550 && importedSteel.unit === 't',
+  String(importedSteel?.conversionValue),
+)
+check(
+  'EPD template lists every required material key',
+  EPD_REQUIRED_MATERIALS.every((row) => epdTemplateCsv().includes(row.key)),
+)
+check('steel is treated as EPD-required', isEpdRequiredKey('material_steel_t'))
+check('concrete is not EPD-required', !isEpdRequiredKey('material_concrete_t'))
 
 const catalogGrid = FACTOR_CATALOG.find((row) => row.key === 'electricity_grid_kwh')
 if (catalogGrid) {

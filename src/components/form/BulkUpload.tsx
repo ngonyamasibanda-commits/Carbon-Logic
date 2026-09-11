@@ -62,7 +62,13 @@ export default function BulkUpload({ category, onClose }: Props) {
 
       if (!Number.isFinite(activityAmount) || activityAmount <= 0 || !factor) {
         skipped += 1
-        failures.push(`Row ${index + 2}: factor needed or invalid amount`)
+        failures.push(
+          `Row ${index + 2}: ${
+            !Number.isFinite(activityAmount) || activityAmount <= 0
+              ? 'invalid amount'
+              : 'factor needed — add an EPD on Emission factors, or include a conversion column'
+          }`,
+        )
         continue
       }
 
@@ -111,7 +117,9 @@ export default function BulkUpload({ category, onClose }: Props) {
           <div>
             <h2 className="text-lg font-semibold">Bulk Upload — {category.name}</h2>
             <p className="mt-1 text-sm text-muted">
-              Import a CSV. Invalid rows are skipped so the rest still save.
+              Import a CSV. Invalid rows are skipped so the rest still save. Steel, rebar, cement,
+              aluminium, copper, lime, and grinding media need an EPD factor in the library first,
+              or a conversion column on the row.
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close">

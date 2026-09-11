@@ -3,6 +3,14 @@ import { CloudUpload, Grid2x2, Play } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { adjacentCategory } from '../../lib/categories'
 import { calculateTco2e, lookupFactor } from '../../lib/calculate'
+import {
+  conversionToPerTonne,
+  epdMaterialForKey,
+  factorFromEpd,
+  isEpdRequiredKey,
+  isEpdRequiredOption,
+  EPD_DECLARED_UNITS,
+} from '../../lib/epd-materials'
 import { formatNumber, formatTco2e } from '../../lib/format'
 import { CATEGORY_ICONS } from '../../lib/icons'
 import { useEntries } from '../../lib/entries-context'
@@ -12,15 +20,17 @@ import AdditionalData from './AdditionalData'
 import BulkUpload from './BulkUpload'
 import ResultsTable from './ResultsTable'
 import Tutorial from './Tutorial'
+import Callout from '../ui/Callout'
 
 type Props = {
   category: CategoryConfig
 }
 
 export default function CategoryForm({ category }: Props) {
-  const { entries, factors, addEntry, removeEntry } = useEntries()
+  const { entries, factors, addEntry, removeEntry, saveFactors } = useEntries()
   const { can } = useAuth()
   const canWrite = can('entries:write')
+  const canWriteFactors = can('factors:write')
   const navigate = useNavigate()
   const { prev, next } = adjacentCategory(category.id)
   const Icon = CATEGORY_ICONS[category.id]
@@ -86,12 +96,29 @@ export default function CategoryForm({ category }: Props) {
     }
 
     const factorKey = category.resolveFactorKey(values)
-    const customConversion = Number(values.conversion)
-    const factor = lookupFactor(factors, factorKey, customConversion)
+    const needsEpd = isEpdRequiredKey(factorKey) && isEpdRequiredOption(values.material || '')
+    const epdGwp = Number(values.epd_gwp)
+    const epdPerTonne = needsEpd && !factors.get(factorKey)
+      ? conversionToPerTonne(epdGwp, values.epd_declared || 'kg')
+      : undefined
+    const customConversion = Number(values.conversion) || epdPerTonne || undefined
+    let factor = lookupFactor(factors, factorKey, customConversion)
+
+    if (needsEpd && !factors.get(factorKey) && epdPerTonne) {
+      factor = factorFromEpd({
+        key: factorKey,
+        name: epdMaterialForKey(factorKey)?.name,
+        conversionValue: epdPerTonne,
+        source: values.epd_source || 'Environmental Product Declaration (EN 15804 A1–A3)',
+        sourceUrl: values.epd_url,
+      })
+    }
 
     if (!factor) {
       setError(
-        `Factor needed for ${factorKey}. Add it to emission_factors (value, unit, source) before this activity can be calculated.`,
+        needsEpd
+          ? 'This material needs an EPD or user factor. Enter the A1–A3 GWP below, or import an EPD spreadsheet on Emission factors.'
+          : `Factor needed for ${factorKey}. Add it to emission_factors (value, unit, source) before this activity can be calculated.`,
       )
       return
     }
@@ -99,6 +126,17 @@ export default function CategoryForm({ category }: Props) {
     const totalTco2e = calculateTco2e(activityAmount, factor.conversionValue)
     setSubmitting(true)
     try {
+      if (
+        needsEpd &&
+        !factors.get(factorKey) &&
+        canWriteFactors &&
+        values.epd_save !== '0' &&
+        factor.sourceFamily === 'EPD'
+      ) {
+        const next = new Map(factors)
+        next.set(factor.key, factor)
+        await saveFactors([...next.values()])
+      }
       await addEntry({
         category: category.id,
         scope: category.scope,
@@ -167,6 +205,19 @@ export default function CategoryForm({ category }: Props) {
           <form id={`${category.id}-form`} onSubmit={handleSubmit} className="space-y-4">
             <h2 className="text-lg font-semibold text-ink">Instructions</h2>
             <p className="text-sm leading-6 text-muted">{category.instructions}</p>
+            {category.id === 'bulk_materials' ? (
+              <div className="space-y-2">
+                <Callout tone="info">
+                  Concrete, timber, asphalt, aggregates, bricks, insulation, plasterboard, glass, and
+                  PVC use DESNZ 2026 published factors. Steel, rebar, cement, aluminium, copper, lime,
+                  and grinding media do not — paste an EPD A1–A3 GWP, or import EPDs on{' '}
+                  <Link to="/factors" className="font-semibold underline">
+                    Emission factors
+                  </Link>
+                  .
+                </Callout>
+              </div>
+            ) : null}
             {category.fields.map((field) => (
               <label key={field.key} className="block text-sm font-semibold text-ink">
                 {field.label}
@@ -181,6 +232,9 @@ export default function CategoryForm({ category }: Props) {
                     {field.options?.map((option) => (
                       <option key={option} value={option}>
                         {option}
+                        {category.id === 'bulk_materials' && isEpdRequiredOption(option)
+                          ? ' — EPD required'
+                          : ''}
                       </option>
                     ))}
                   </select>
@@ -235,6 +289,15 @@ export default function CategoryForm({ category }: Props) {
                 ) : null}
               </label>
             ))}
+            {isEpdRequiredOption(values.material || '') ? (
+              <EpdFields
+                factorKey={category.resolveFactorKey(values)}
+                existing={factors.get(category.resolveFactorKey(values))}
+                values={values}
+                setField={setField}
+                canWriteFactors={canWriteFactors}
+              />
+            ) : null}
             {/* Category-level unit selector (for single-amount categories) */}
             {category.unitOptions?.length ? (
               <label className="block text-sm font-semibold text-ink">
@@ -334,6 +397,109 @@ export default function CategoryForm({ category }: Props) {
       ) : null}
 
       <ResultsTable entries={categoryEntries} onDelete={(id) => void removeEntry(id)} />
+    </div>
+  )
+}
+
+function EpdFields({
+  factorKey,
+  existing,
+  values,
+  setField,
+  canWriteFactors,
+}: {
+  factorKey: string
+  existing: import('../../lib/types').EmissionFactor | undefined
+  values: Record<string, string>
+  setField: (key: string, value: string) => void
+  canWriteFactors: boolean
+}) {
+  const spec = epdMaterialForKey(factorKey)
+  if (existing) {
+    return (
+      <Callout tone="info">
+        Using your organisation factor for {spec?.name ?? existing.name}:{' '}
+        <span className="font-semibold tabular-nums">
+          {formatNumber(existing.conversionValue)} kg CO₂e/t
+        </span>
+        {existing.source ? ` — ${existing.source}` : ''}. To use a different EPD, edit this key on{' '}
+        <Link to="/factors" className="font-semibold underline">
+          Emission factors
+        </Link>
+        .
+      </Callout>
+    )
+  }
+  return (
+    <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50/60 p-3">
+      <Callout tone="tip">
+        Ask the supplier for an EN 15804 EPD. Copy Global Warming Potential (GWP) for modules A1–A3.
+        Most steel, rebar, cement, aluminium, copper, and lime EPDs print this as kg CO₂e per kg —
+        enter that number and we convert it to per tonne.
+      </Callout>
+      <label className="block text-sm font-semibold text-ink">
+        EPD GWP (A1–A3)
+        <div className="mt-1 flex gap-2">
+          <input
+            type="number"
+            min={0}
+            step="any"
+            required
+            value={values.epd_gwp ?? ''}
+            placeholder="e.g. 1.55"
+            onChange={(event) => setField('epd_gwp', event.target.value)}
+            className="min-w-0 flex-1 rounded-md border border-line bg-white px-3 py-2 text-sm font-normal"
+          />
+          <select
+            value={values.epd_declared || 'kg'}
+            onChange={(event) => setField('epd_declared', event.target.value)}
+            className="w-56 shrink-0 rounded-md border border-line bg-white px-2 py-2 text-sm font-normal"
+          >
+            {EPD_DECLARED_UNITS.map((unit) => (
+              <option key={unit.value} value={unit.value}>
+                {unit.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </label>
+      <label className="block text-sm font-semibold text-ink">
+        EPD name or number
+        <input
+          type="text"
+          required
+          value={values.epd_source ?? ''}
+          placeholder="e.g. EPD-XYZ-2026, EN 15804"
+          onChange={(event) => setField('epd_source', event.target.value)}
+          className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-normal"
+        />
+      </label>
+      <label className="block text-sm font-semibold text-ink">
+        EPD URL (optional)
+        <input
+          type="url"
+          value={values.epd_url ?? ''}
+          placeholder="https://"
+          onChange={(event) => setField('epd_url', event.target.value)}
+          className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-normal"
+        />
+      </label>
+      {canWriteFactors ? (
+        <label className="flex items-center gap-2 text-sm font-normal text-ink">
+          <input
+            type="checkbox"
+            checked={values.epd_save !== '0'}
+            onChange={(event) => setField('epd_save', event.target.checked ? '1' : '0')}
+          />
+          Save this EPD to the organisation factor library so the next load of this material
+          does not need the GWP again.
+        </label>
+      ) : (
+        <p className="text-xs text-muted">
+          This entry will use the EPD GWP you typed. Ask an admin to import it on Emission factors
+          if the whole organisation should reuse it.
+        </p>
+      )}
     </div>
   )
 }

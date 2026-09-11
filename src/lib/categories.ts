@@ -524,7 +524,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Embodied carbon of concrete, steel, timber, asphalt, aggregates, lime, and other bulk materials (EN 15978 A1–A3 cradle-to-gate). Mining reagents such as lime sit here; ore haulage belongs under freight.',
+      'Embodied carbon of concrete, steel, timber, asphalt, aggregates, lime, and other bulk materials (EN 15978 A1–A3 cradle-to-gate). Mining reagents such as lime sit here; ore haulage belongs under freight. Steel, rebar, cement, aluminium, copper, lime, and grinding media need a supplier EPD — there is no published DESNZ factor for those keys.',
     fields: [
       {
         key: 'material',
