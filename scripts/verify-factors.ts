@@ -13,6 +13,8 @@ import {
   epdTemplateCsv,
   isEpdRequiredKey,
 } from '../src/lib/epd-materials'
+import { CEDA_ATTRIBUTION, CEDA_FX_GBP_PER_USD_2025, cedaSectorByKey } from '../src/lib/ceda'
+import { EPA_US_EGRID_AVG_KG_PER_KWH, EPA_US_TD_KG_PER_KWH } from '../src/lib/epa-catalog'
 
 let passed = 0
 let failed = 0
@@ -89,6 +91,7 @@ expectValue('freight_air_tkm', 1.27835)
 expectValue('freight_air_tkm_no_rf', 0.75539)
 expectValue('waste_landfill_kg', 1.27043)
 expectValue('waste_recycling_kg', 1.01398)
+expectValue('waste_combustion_kg', 4.65358)
 expectValue('water_m3', 0.1913)
 expectValue('wastewater_m3', 0.17088)
 expectValue('crew_van_km', 0.16591)
@@ -176,6 +179,48 @@ if (soil) {
 if (usaHotel) {
   check('US hotel uses the published 16.1 kg/night row, not an overseas mean', usaHotel.conversionValue === 16.1)
 }
+
+const cedaHighways = byKey('ceda_gbr_2332c0_usd')
+if (cedaHighways) {
+  check('CEDA highways unit is USD, not pounds', cedaHighways.unit === '$')
+  check('CEDA highways family is EIO', cedaHighways.sourceFamily === 'EIO')
+  check(
+    'CEDA attribution is in the source citation',
+    cedaHighways.source.includes(CEDA_ATTRIBUTION),
+    cedaHighways.source.slice(0, 80),
+  )
+  check('CEDA FX is the 2025 workbook GBP per USD rate', cedaHighways.fxGbpPerUsd === CEDA_FX_GBP_PER_USD_2025)
+  const sector = cedaSectorByKey('ceda_gbr_2332c0_usd')
+  check(
+    'CEDA highways kg/$ matches GHG_t_Raw GBR',
+    sector != null && Math.abs(cedaHighways.conversionValue - sector.kgPerUsd) < 1e-12,
+    String(cedaHighways.conversionValue),
+  )
+}
+check(
+  'Defra spend stays on £ and is not replaced by CEDA',
+  spend?.unit === '£' && spend.conversionValue === 0.8559280439858236,
+)
+
+const usGrid = byKey('electricity_us_egrid_kwh')
+const ukGrid = byKey('electricity_grid_kwh')
+if (usGrid && ukGrid) {
+  check('US eGRID does not overwrite the UK DESNZ electricity key', ukGrid.conversionValue === 0.13096)
+  check(
+    'US eGRID average matches EPA Hub 2026 Table 6 converted with AR6 GWPs',
+    Math.abs(usGrid.conversionValue - EPA_US_EGRID_AVG_KG_PER_KWH) < 1e-12,
+    String(usGrid.conversionValue),
+  )
+  check('US eGRID region is United States', usGrid.region === 'United States')
+  check('US T&D uses 4.4% gross loss, not the UK T&D row', byKey('electricity_us_td_kwh')?.conversionValue === EPA_US_TD_KG_PER_KWH)
+}
+expectValue('r410a_kg', 1924)
+expectValue('r410a_epa_kg', 2256)
+expectValue('r134a_epa_kg', 1530)
+expectValue('r404a_epa_kg', 4728)
+expectValue('mine_ch4_kg', 28)
+expectValue('mine_ch4_epa_fossil_kg', 29.8)
+expectValue('diesel_us_gallon', 10.21)
 
 const stale = FACTOR_CATALOG.filter(
   (row) =>

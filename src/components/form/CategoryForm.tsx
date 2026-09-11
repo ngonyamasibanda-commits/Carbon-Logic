@@ -161,8 +161,7 @@ export default function CategoryForm({ category }: Props) {
     let detailsExtra = ''
     let customFields = additional.customFields
     if (category.id === 'site_electricity') {
-      const grid = lookupFactor(factors, 'electricity_grid_kwh')
-      const locationKg = factor.key === 'electricity_renewable_kwh' ? 0 : (grid?.conversionValue ?? factor.conversionValue)
+      const locationKg = factor.key === 'electricity_renewable_kwh' ? 0 : factor.conversionValue
       const instrument = instrumentFromForm(values.source || '', values.market_instrument || '')
       const dual = dualFromActivity({
         kwh: activityAmount,
@@ -261,6 +260,28 @@ export default function CategoryForm({ category }: Props) {
           extras.push(`WTT ${formatTco2e(extra.tco2e, true)}`)
         }
       }
+      if (values.include_treatment === '1' && category.chainExtras?.includes('treatment')) {
+        const treatment = lookupFactor(factors, 'wastewater_m3')
+        if (treatment) {
+          const extra = computeWorking(treatment, activityAmount)
+          await addEntry({
+            category: 'wastewater',
+            scope: treatment.scope,
+            emissions_tco2e: extra.tco2e,
+            details: `Water treatment chain for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${treatment.name}`,
+            amount: activityAmount,
+            unit: treatment.unit,
+            link: additional.link,
+            comment: additional.comment,
+            site: additional.site,
+            tags: additional.tags,
+            customFields: additional.customFields,
+            files: [],
+            activity_date: additional.activity_date,
+          })
+          extras.push(`treatment ${formatTco2e(extra.tco2e, true)}`)
+        }
+      }
       setMessage(
         `Added ${formatTco2e(emissions, true)} to your footprint${extras.length ? `; also ${extras.join(', ')}` : ''}.`,
       )
@@ -336,6 +357,11 @@ export default function CategoryForm({ category }: Props) {
             {category.fields.map((field) => {
               if (field.key === 'hotel_country' && values.type !== 'Hotel') return null
               if (field.key === 'passengers' && values.type === 'Hotel') return null
+              if (field.key === 'ceda_sector' && !(values.spend_source || '').includes('CEDA')) return null
+              if (field.key === 'spend_currency' && !(values.spend_source || '').includes('CEDA')) return null
+              if (field.key === 'type' && category.id === 'purchased_goods' && (values.spend_source || '').includes('CEDA')) {
+                return null
+              }
               return (
               <label key={field.key} className="block text-sm font-semibold text-ink">
                 {field.label}
@@ -344,7 +370,7 @@ export default function CategoryForm({ category }: Props) {
                     value={values[field.key] ?? ''}
                     onChange={(event) => setField(field.key, event.target.value)}
                     className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
-                    required={field.key !== 'rf'}
+                    required={!field.optional && field.key !== 'rf'}
                   >
                     <option value="">Select an option</option>
                     {field.options?.map((option) => (
@@ -399,7 +425,7 @@ export default function CategoryForm({ category }: Props) {
                     placeholder={field.placeholder}
                     onChange={(event) => setField(field.key, event.target.value)}
                     className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
-                    required={field.key !== 'passengers'}
+                    required={!field.optional && field.key !== 'passengers'}
                   />
                 )}
                 {field.hint ? (
@@ -458,7 +484,8 @@ export default function CategoryForm({ category }: Props) {
                   checked={values.include_td === '1'}
                   onChange={(event) => setField('include_td', event.target.checked ? '1' : '0')}
                 />
-                Also add UK transmission and distribution losses as a separate Scope 3 line (same kWh × T&D factor ÷ 1,000).
+                Also add transmission and distribution losses as a separate Scope 3 line (same kWh ×
+                the matching T&D factor ÷ 1,000). EPA eGRID notes T&D is Category 3, not Scope 2.
               </label>
             ) : null}
             {category.chainExtras?.includes('wtt') ? (
@@ -472,6 +499,18 @@ export default function CategoryForm({ category }: Props) {
                 Also add well-to-tank (fuel/electricity supply chain) as a separate Scope 3 line.
               </label>
             ) : null}
+            {category.chainExtras?.includes('treatment') ? (
+              <label className="flex items-start gap-2 text-sm font-normal text-ink">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={values.include_treatment === '1'}
+                  onChange={(event) => setField('include_treatment', event.target.checked ? '1' : '0')}
+                />
+                Also add wastewater treatment as a separate Scope 3 line (same m³ × DESNZ water
+                treatment 0.17088 ÷ 1,000). DESNZ water supply alone is not the full water picture.
+              </label>
+            ) : null}
             {liveWorking && !liveWorking.error && liveWorking.activityAmount > 0 ? (
               <div className="rounded-md border border-brand/30 bg-brand-soft/40 p-3 text-sm">
                 <p className="font-semibold text-ink">Calculation working</p>
@@ -483,6 +522,12 @@ export default function CategoryForm({ category }: Props) {
                   ))}
                 </ol>
                 <p className="mt-2 font-medium text-brand">{liveWorking.formula}</p>
+                {liveFactor && /CEDA by Watershed/i.test(liveFactor.source) ? (
+                  <p className="mt-2 text-xs text-muted">
+                    Spend-based EEIO factors: CEDA by Watershed (CEDA 2025, CC BY-SA 4.0). Not an
+                    A1–A3 material EPD.
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </form>
@@ -580,8 +625,11 @@ function Scope2MarketFields({
   return (
     <div className="space-y-3 rounded-md border border-brand/30 bg-brand-soft/40 p-3">
       <Callout tone="info">
-        Location-based Scope 2 always uses the DESNZ 2026 UK grid factor. Market-based Scope 2 uses
-        the instrument below, as required for SECR dual reporting.
+        Location-based Scope 2 uses the grid generation factor for the source you selected (UK
+        DESNZ or US eGRID). Market-based Scope 2 follows the GHG Protocol hierarchy: supplier-
+        specific factor if you have a bill or PPA; otherwise a retired REGO, GoO, or REC (0 kg/kWh
+        for matched consumption); otherwise residual mix; location-based if no residual mix is set.
+        SECR requires both figures.
       </Callout>
       <label className="block text-sm font-semibold text-ink">
         Market-based instrument
@@ -596,7 +644,9 @@ function Scope2MarketFields({
           <option value="Supplier-specific factor (bill / PPA)">
             Supplier-specific factor (bill / PPA)
           </option>
-          <option value="REGO or 100% renewable tariff">REGO or 100% renewable tariff</option>
+          <option value="REGO / GoO / REC or 100% renewable tariff">
+            REGO / GoO / REC or 100% renewable tariff
+          </option>
         </select>
       </label>
       {instrument.toLowerCase().includes('supplier') ? (

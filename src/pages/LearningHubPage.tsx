@@ -5,7 +5,7 @@ const ARTICLES = [
   },
   {
     title: 'Scope 2 — Purchased energy',
-    body: 'Site electricity and purchased heat/steam are Scope 2. Location-based reporting uses the DESNZ UK grid factor. Market-based reporting uses the instrument on each activity: supplier-specific factor, REGO / 100% renewable tariff, or residual mix. SECR requires both. On-site renewable generation is zero under both approaches for that kWh.',
+    body: 'Site electricity and purchased heat/steam are Scope 2. Location-based reporting uses the DESNZ UK grid factor, or the US eGRID 2024 average if you select that source. Market-based reporting uses the GHG Protocol hierarchy: supplier-specific factor, retired REGO/GoO/REC, residual mix, then location. SECR requires both. On-site renewable generation is zero under both approaches for that kWh. T&D is a separate Scope 3 line.',
   },
   {
     title: 'Scope 3 — Upstream & downstream value chain',
@@ -33,7 +33,7 @@ const ARTICLES = [
   },
   {
     title: 'How the calculation works',
-    body: 'Each activity has extra conversion steps first (tkm, pkm, GWP, unit conversion). The last DESNZ step is tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000. The data-input form shows the working before you save.',
+    body: 'Each activity has extra conversion steps first (tkm, pkm, GWP, unit conversion, CEDA spend FX and price-year). The last DESNZ step is tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000. The data-input form shows the working before you save. CEDA spend rows are attributed as CEDA by Watershed.',
   },
   {
     title: 'Tips for construction companies',

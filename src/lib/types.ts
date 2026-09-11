@@ -23,6 +23,8 @@ export type FormField = {
   options?: string[]
   hint?: string
   placeholder?: string
+  /** Skip HTML required when the field is supporting data (water-positive volumes, optional GWP set). */
+  optional?: boolean
   /** If set, a unit selector appears beside this number field. The chosen unit value is stored in `key + '_unit'`. */
   unitOptions?: UnitOption[]
 }
@@ -54,15 +56,16 @@ export type CategoryConfig = {
   resolveUnit: (values: Record<string, string>) => string
   resolveDetails: (values: Record<string, string>, amount: number) => string
   resolveActivityAmount?: (values: Record<string, string>, amount: number) => number
-  /** Optional extra DESNZ lines to offer (WTT / T&D) without mixing scopes on one row. */
-  chainExtras?: Array<'wtt' | 'td'>
+  /** Optional extra lines to offer (WTT / T&D / wastewater) without mixing scopes on one row. */
+  chainExtras?: Array<'wtt' | 'td' | 'treatment'>
 }
 
 /**
  * How a published factor is applied. DESNZ/EPA inventory factors are kg CO₂e
- * per activity unit; refrigerant and methane rows are GWPs (kg CO₂e per kg gas).
+ * per activity unit; refrigerant and methane rows are GWPs; CEDA EEIO rows
+ * convert spend into 2023 producer-price USD first.
  */
-export type FactorMethod = 'kg_per_unit' | 'gwp'
+export type FactorMethod = 'kg_per_unit' | 'gwp' | 'spend'
 
 export type EmissionFactor = {
   key: string
@@ -83,6 +86,15 @@ export type EmissionFactor = {
   wttKey?: string
   /** Matching T&D factor (electricity / heat), when DESNZ publishes one. */
   tdKey?: string
+  /** CEDA / EEIO: published factor currency (Open CEDA GHG_t_Raw is USD). */
+  spendCurrency?: 'GBP' | 'USD'
+  /** Local currency units per 1 USD, from the CEDA exchange-rate sheet. */
+  fxGbpPerUsd?: number
+  /** BEA purchaser–producer ratio from Open CEDA (producer EF × ratio = purchaser EF). */
+  purchaserProducer?: number
+  /** Sector price index for the latest CEDA year (2025; base 2023 = 100). */
+  priceIndex?: number
+  cedaCode?: string
 }
 
 export type CustomField = {

@@ -122,10 +122,11 @@ export default function FactorsPage() {
           <h1 className="text-3xl font-bold text-ink">Emission factors</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
             Conversion values are the published kg CO₂e per activity unit (or GWP for refrigerants
-            and methane). Waste and materials are per tonne, spend is per £, freight is per tkm,
-            flights and taxis are per passenger-km. The last step is always tCO₂e = activity ×
-            factor ÷ 1,000. Each row shows the publisher: DEFRA / DESNZ 2026, EPD or user factors
-            for steel, cement, and similar, or EIO / EPA / IPCC for spend, explosives, and GWP.
+            and methane). Waste and materials are per tonne, UK spend is per £, CEDA spend is per
+            2023 producer-price US dollar, freight is per tkm, flights and taxis are per
+            passenger-km. The last step is always tCO₂e = activity × factor ÷ 1,000. Each row shows
+            the publisher: DEFRA / DESNZ 2026, CEDA by Watershed (EIO), EPA Hub 2026, or an EPD /
+            user factor for steel, cement, and similar.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -164,6 +165,15 @@ export default function FactorsPage() {
           </button>
         </div>
       </div>
+
+      <Callout tone="info">
+        Spend-based Open CEDA rows are CEDA by Watershed (CEDA 2025, CC BY-SA 4.0), in kg CO₂e per
+        2023 producer-price US dollar. Defra SIC-19 rows stay in kg CO₂e per £. US EPA Hub 2026
+        electricity and AR6 GWPs are catalogued separately and do not replace DESNZ 2026 UK
+        activity factors. Steel, cement, aluminium, copper, lime, and rebar still need a supplier
+        EPD — this library does not vendor ICE, and the EC3 country files supplied here are EPD
+        counts, not GWP values.
+      </Callout>
 
       {staleCount > 0 ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

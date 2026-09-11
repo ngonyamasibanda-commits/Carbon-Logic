@@ -99,6 +99,7 @@ check(
 check(
   'form labels map to instruments',
   instrumentFromForm('Purchased electricity', 'REGO or 100% renewable tariff') === 'rego' &&
+    instrumentFromForm('Purchased electricity', 'REGO / GoO / REC or 100% renewable tariff') === 'rego' &&
     instrumentFromForm('On-site renewable electricity', '') === 'onsite-renewable',
 )
 

@@ -1,5 +1,6 @@
 import type { CategoryConfig, EmissionFactor, FactorMethod } from './types'
 import { formatFactor, formatNumber, formatWorkingTco2e } from './format'
+import { CEDA_ATTRIBUTION, cedaProducerUsd2023, isCedaFactor } from './ceda'
 
 export type CalcStep = {
   label: string
@@ -49,6 +50,7 @@ export function methodOf(factor: EmissionFactor): FactorMethod {
   if (factor.method) return factor.method
   if (factor.sourceFamily === 'IPCC') return 'gwp'
   if (/refrigerant|methane|gwp/i.test(`${factor.name} ${factor.source}`)) return 'gwp'
+  if (isCedaFactor(factor) || factor.spendCurrency === 'USD') return 'spend'
   return 'kg_per_unit'
 }
 
@@ -81,7 +83,9 @@ export function computeWorking(factor: EmissionFactor, activityInFactorUnit: num
   const formula =
     method === 'gwp'
       ? `tCO₂e = mass × GWP ÷ 1,000 = ${formatFactor(activityInFactorUnit)} ${factor.unit} × ${formatFactor(factor.conversionValue)} ÷ 1,000 = ${formatWorkingTco2e(tco2e)}`
-      : `tCO₂e = activity × (kg CO₂e / ${factor.unit}) ÷ 1,000 = ${formatFactor(activityInFactorUnit)} × ${formatFactor(factor.conversionValue)} ÷ 1,000 = ${formatWorkingTco2e(tco2e)}`
+      : method === 'spend'
+        ? `tCO₂e = 2023 producer-price USD × (kg CO₂e / $) ÷ 1,000 = ${formatFactor(activityInFactorUnit)} × ${formatFactor(factor.conversionValue)} ÷ 1,000 = ${formatWorkingTco2e(tco2e)}`
+        : `tCO₂e = activity × (kg CO₂e / ${factor.unit}) ÷ 1,000 = ${formatFactor(activityInFactorUnit)} × ${formatFactor(factor.conversionValue)} ÷ 1,000 = ${formatWorkingTco2e(tco2e)}`
   return {
     tco2e,
     kgCo2e: kg,
@@ -161,11 +165,65 @@ export function activityForCategory(
     return { quantity: primary, steps, error: 'Enter a valid activity amount greater than zero.' }
   }
 
+  if (methodOf(factor) === 'spend' || isCedaFactor(factor)) {
+    const currency = values.spend_currency === 'USD' ? 'USD' : 'GBP'
+    const converted = cedaProducerUsd2023({
+      spend: primary,
+      currency,
+      fxGbpPerUsd: factor.fxGbpPerUsd,
+      priceIndex2025: factor.priceIndex,
+      purchaserProducer: factor.purchaserProducer,
+    })
+    steps.push(...converted.steps)
+    steps.push({
+      label: `Attribution`,
+      value: CEDA_ATTRIBUTION,
+    })
+    if (!Number.isFinite(converted.producerUsd2023) || converted.producerUsd2023 <= 0) {
+      return { quantity: converted.producerUsd2023, steps, error: 'Enter a valid activity amount greater than zero.' }
+    }
+    return { quantity: converted.producerUsd2023, steps }
+  }
+
   if (unitFactor !== 1 && Number.isFinite(primaryRaw)) {
     steps.push({
       label: `Convert to ${factor.unit}`,
       value: `${formatNumber(primaryRaw)} × ${formatNumber(unitFactor)} = ${formatNumber(primary)} ${factor.unit}`,
     })
+  }
+
+  if (category.id === 'water') {
+    const reused = num(values, 'reused') * unitFactor
+    const replenished = num(values, 'replenished') * unitFactor
+    const sustainable = num(values, 'sustainable') * unitFactor
+    const returned = reused + replenished + sustainable
+    if (returned > 0 && primary > 0) {
+      const pct = (returned / primary) * 100
+      steps.push({
+        label: 'Water-positive volume (not converted to tCO₂e)',
+        value: `(reused ${formatNumber(reused)} + replenished ${formatNumber(replenished)} + sustainable ${formatNumber(sustainable)}) ÷ withdrawal ${formatNumber(primary)} m³ = ${formatFactor(pct)}%`,
+      })
+    }
+  }
+
+  if (category.id === 'site_electricity') {
+    const instrument = (values.market_instrument || '').toLowerCase()
+    if (instrument.includes('rego') || instrument.includes('goo') || instrument.includes('rec') || instrument.includes('100%')) {
+      steps.push({
+        label: 'Market-based renewable matching',
+        value: 'Retired REGO / GoO / REC covers this kWh, so market-based Scope 2 is 0. Location-based still uses the grid generation factor.',
+      })
+    } else if (instrument.includes('supplier')) {
+      steps.push({
+        label: 'Market-based hierarchy',
+        value: 'Supplier-specific kg CO₂e/kWh from the bill or PPA is used for market-based Scope 2. Location-based stays on the grid factor.',
+      })
+    } else if ((values.source || '').toLowerCase().includes('purchased')) {
+      steps.push({
+        label: 'Market-based hierarchy',
+        value: 'No contractual instrument: residual mix if set, otherwise location-based. Grid T&D stays a separate Scope 3 line.',
+      })
+    }
   }
 
   return { quantity: primary, steps }

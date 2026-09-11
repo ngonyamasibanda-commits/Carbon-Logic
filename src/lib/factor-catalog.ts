@@ -1,4 +1,6 @@
 import type { EmissionFactor, FactorMethod, Scope, SourceFamily } from './types'
+import { buildCedaFactors } from './ceda'
+import { buildEpaFactors } from './epa-catalog'
 
 export const FACTOR_YEAR = '2026'
 export const FACTOR_VERIFIED_AT = '2026-09-11'
@@ -17,11 +19,11 @@ const DEFRA =
 const DESNZ =
   'UK GHG Conversion Factors for Company Reporting 2026 — electricity / heat (DESNZ). kg CO₂e, IPCC AR5. Published 11 June 2026; flat file revised 31 July 2026. For 2026 activity / SECR 2026.'
 const IPCC =
-  'IPCC Fifth Assessment Report (AR5) Working Group I, 100-year GWP without climate-carbon feedbacks. Methane GWP = 28. DESNZ 2026 refrigerants still use AR5, so mine methane stays on AR5 for consistency.'
+  'IPCC Fifth Assessment Report (AR5) Working Group I, 100-year GWP without climate-carbon feedbacks. Methane GWP = 28. DESNZ 2026 refrigerants still use AR5, so mine methane stays on AR5 for consistency. EPA Hub 2026 publishes fossil methane GWP 29.8 as mine_ch4_epa_fossil_kg.'
 const NPI =
   'Australian National Pollutant Inventory Emission Estimation Technique Manual for Explosives Detonation and Firing Ranges v3.1 (August 2016). Mass-balance combustion CO₂. NGER Measurement Determination has no Method 1 look-up table for detonation. Prefer a manufacturer or site-specific factor when available.'
 const EIO =
-  'Defra spend-based emissions multipliers, 1997 to 2023 (published 30 June 2026), SIC-19 current-price GHG multipliers (kg CO₂e per £). Catalogue stores the published kg CO₂e per pound. tCO₂e = £ spent × kg/£ ÷ 1,000. Use only when activity data is unavailable.'
+  'Defra spend-based emissions multipliers, 1997 to 2023 (published 30 June 2026), SIC-19 current-price GHG multipliers (kg CO₂e per £). Catalogue stores the published kg CO₂e per pound. tCO₂e = £ spent × kg/£ ÷ 1,000. Use only when activity data is unavailable. Open CEDA by Watershed (CEDA 2025) is a separate USD EEIO family — do not mix £ and $.'
 
 type FactorExtras = {
   method?: FactorMethod
@@ -385,6 +387,17 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     't',
     'DEFRA',
     `${DEFRA} Waste disposal — construction closed-loop / open-loop recycling. Published as 1.01398 kg CO₂e per tonne.`,
+    GOV_URL,
+  ),
+  factor(
+    'waste_combustion_kg',
+    'Construction waste combusted / energy recovery',
+    'Waste',
+    'Scope 3',
+    4.65358,
+    't',
+    'DEFRA',
+    `${DEFRA} Waste disposal — average construction, combustion. Published as 4.65358 kg CO₂e per tonne. Use for energy recovery; do not use the landfill row (1.27043).`,
     GOV_URL,
   ),
   factor(
@@ -960,6 +973,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     `${DEFRA} Passenger vehicles — average car, petrol.`,
     GOV_URL,
   ),
+
+  ...buildCedaFactors({ year: YEAR, verifiedAt: VERIFIED }),
+  ...buildEpaFactors({ year: YEAR, verifiedAt: VERIFIED }),
 ]
 
 export const PLACEHOLDER_FACTORS = FACTOR_CATALOG
