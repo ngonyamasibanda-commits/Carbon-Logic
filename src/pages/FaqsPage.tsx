@@ -2,7 +2,7 @@ export default function FaqsPage() {
   const items = [
     {
       q: 'How is tCO₂e calculated?',
-      a: 'Every entry uses (Activity Amount × Conversion Value) / 1000. Conversion values are kg CO₂e per unit, loaded from the emission factors database. Combined Results and Analysis show GHG Protocol totals, not the calculation working for each row.',
+      a: 'Each activity has its own conversion steps, then the DESNZ kg-to-tonne step. Freight is tonnes × km (tkm). Flights and taxis are passengers × km (pkm). Commuting is one-way × people × days × 2. Waste and materials use published kg CO₂e per tonne. Spend uses kg CO₂e per £. Refrigerants and methane use GWP. Electricity can add T&D and well-to-tank as separate Scope 3 lines. The last line is always tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000. The form shows the working before you save.',
     },
     {
       q: 'Which activities are in Scope 1, 2, and 3?',
@@ -49,10 +49,6 @@ export default function FaqsPage() {
       a: 'Those materials need a supplier Environmental Product Declaration (EPD). On Bulk Materials, choose the material (marked EPD required), paste the A1–A3 GWP, and name the EPD. Admins can also download the EPD template on Emission factors and import several products at once. Do not guess a generic ICE number — this app does not ship ICE values.',
     },
     {
-      q: 'What does €6,000 per year include?',
-      a: 'The Professional plan is €6,000 per organisation per year, sold on an order form. It covers unlimited colleagues in that organisation, the DESNZ/DEFRA 2026 library, supplier EPDs, dual Scope 2, year-end close, SECR and PPN 06/21 packs, the SBTi modeller, and CSV/PDF exports. It does not include a third-party verification opinion or file hosting for invoices.',
-    },
-    {
       q: 'Can I change activities after year-end?',
       a: 'Yes, until an administrator closes the reporting year on Organisation settings. A closed year rejects new logs, deletes, and bulk uploads. Reopening a year is written to the activity log. That is how the inventory stays defensible for SECR and customer questionnaires.',
     },
@@ -62,7 +58,7 @@ export default function FaqsPage() {
     },
     {
       q: 'Can I use spend-based factors for Scope 3?',
-      a: 'Yes — Purchased Goods & Services uses Defra’s spend-based SIC-19 multipliers (kg CO₂e per £, shown in the catalogue as kg CO₂e per £1,000). Activity-based methods (material weights, fuel volumes, tkm) are always more accurate and should be preferred when data is available.',
+      a: 'Yes — Purchased Goods & Services uses Defra’s spend-based SIC-19 multipliers as kg CO₂e per pound. tCO₂e = £ spent × kg/£ ÷ 1,000. Activity-based methods (material weights, fuel volumes, tkm) are always more accurate and should be preferred when data is available.',
     },
   ]
 

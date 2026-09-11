@@ -344,11 +344,12 @@ export default function TermsPage() {
 
           <Section id="fees" title="14. Fees, refunds, and cooling-off">
             <p>
-              The Professional plan is six thousand euro (€6,000) per organisation per year, billed
-              in advance on a Carbon Logic order form. The fee covers one organisation workspace,
-              unlimited colleagues in that organisation, the published emission-factor library,
-              reporting outputs, and the features described in the order form. It does not include
-              third-party verification, professional assurance, or file hosting.
+              Fees, if any, are those agreed in writing between Carbon Logic and the customer. This
+              application does not process card payments. The fee, where agreed, covers one
+              organisation workspace, unlimited colleagues in that organisation, the published
+              emission-factor library, reporting outputs, and the features described in that
+              agreement. It does not include third-party verification, professional assurance, or
+              file hosting.
             </p>
             <p>
               Except where mandatory consumer law provides otherwise, fees are non-refundable once

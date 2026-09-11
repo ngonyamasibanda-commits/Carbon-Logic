@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { buildTemplate, parseCsv } from '../../lib/csv'
-import { calculateTco2e, lookupFactor } from '../../lib/calculate'
-import { formatNumber, formatTco2e } from '../../lib/format'
+import { lookupFactor } from '../../lib/calculate'
+import { workingFromForm } from '../../lib/emissions'
 import { downloadText } from '../../lib/export'
 import type { CategoryConfig, EmissionEntry } from '../../lib/types'
 import { emptyAdditional } from '../../lib/types'
@@ -50,23 +50,20 @@ export default function BulkUpload({ category, onClose }: Props) {
 
     for (const [index, row] of rows.entries()) {
       const values = { ...row }
-      const amount = Number(values[category.amountField] ?? values.amount)
-      const activityAmount = category.resolveActivityAmount
-        ? category.resolveActivityAmount(values, amount)
-        : amount
       const factor = lookupFactor(
         factors,
         category.resolveFactorKey(values),
         Number(values.conversion),
       )
+      const working = factor ? workingFromForm(category, values, factor) : null
 
-      if (!Number.isFinite(activityAmount) || activityAmount <= 0 || !factor) {
+      if (!working || working.error || working.activityAmount <= 0 || !factor) {
         skipped += 1
         failures.push(
           `Row ${index + 2}: ${
-            !Number.isFinite(activityAmount) || activityAmount <= 0
-              ? 'invalid amount'
-              : 'factor needed — add an EPD on Emission factors, or include a conversion column'
+            !factor
+              ? 'factor needed — add an EPD on Emission factors, or include a conversion column'
+              : working?.error || 'invalid amount'
           }`,
         )
         continue
@@ -83,15 +80,14 @@ export default function BulkUpload({ category, onClose }: Props) {
       extras.activity_date = (values.activity_date || extras.activity_date).slice(0, 10)
       extras.files = []
 
-      const totalTco2e = calculateTco2e(activityAmount, factor.conversionValue)
       const entry: Omit<EmissionEntry, 'id' | 'created_at'> = {
         category: category.id,
         scope: category.scope,
-        emissions_tco2e: totalTco2e,
-        details: `${category.resolveDetails(values, activityAmount)}${
+        emissions_tco2e: working.tco2e,
+        details: `${category.resolveDetails(values, working.activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
-        } | ${formatNumber(activityAmount)} ${factor.unit} × ${formatNumber(factor.conversionValue)} kg CO₂e/${factor.unit} ÷ 1000 = ${formatTco2e(totalTco2e, true)} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
-        amount: activityAmount,
+        } | ${working.formula} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
+        amount: working.activityAmount,
         unit: category.resolveUnit(values),
         ...extras,
       }

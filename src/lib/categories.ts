@@ -1,4 +1,5 @@
 import type { CategoryConfig, UnitOption } from './types'
+import { HOTEL_COUNTRY_OPTIONS, hotelFactorKey } from './factor-catalog'
 
 // ── Shared unit option sets ─────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'kWh',
     unitOptions: ELECTRICITY_UNITS,
+    chainExtras: ['td', 'wtt'],
     resolveFactorKey: (v) =>
       v.source?.includes('renewable')
         ? 'electricity_renewable_kwh'
@@ -101,6 +103,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'L',
     unitOptions: FUEL_VOLUME_UNITS,
+    chainExtras: ['wtt'],
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'LPG') return 'lpg_litre'
@@ -152,6 +155,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'L',
     unitOptions: FUEL_VOLUME_UNITS,
+    chainExtras: ['wtt'],
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'HVO') return 'hvo_litre'
@@ -219,6 +223,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'L',
     unitOptions: FUEL_VOLUME_UNITS,
+    chainExtras: ['wtt'],
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'LPG') return 'lpg_litre'
@@ -330,7 +335,12 @@ export const CATEGORIES: CategoryConfig[] = [
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
-    resolveFactorKey: () => 'freight_road_tkm',
+    resolveFactorKey: (v) => {
+      if (v.mode === 'Van') return 'freight_van_tkm'
+      if (v.mode === 'HGV rigid') return 'freight_road_rigid_tkm'
+      if (v.mode === 'HGV articulated') return 'freight_road_artic_tkm'
+      return 'freight_road_tkm'
+    },
     resolveUnit: () => 'tkm',
     resolveActivityAmount: (v) => {
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
@@ -386,7 +396,11 @@ export const CATEGORIES: CategoryConfig[] = [
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
-    resolveFactorKey: () => 'freight_sea_tkm',
+    resolveFactorKey: (v) => {
+      if (v.mode === 'Bulk carrier') return 'freight_sea_bulk_tkm'
+      if (v.mode === 'RoRo') return 'freight_sea_roro_tkm'
+      return 'freight_sea_tkm'
+    },
     resolveUnit: () => 'tkm',
     resolveActivityAmount: (v) => {
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
@@ -408,10 +422,16 @@ export const CATEGORIES: CategoryConfig[] = [
     fields: [
       { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
+      {
+        key: 'rf',
+        label: 'Radiative forcing',
+        type: 'select',
+        options: ['With RF (DESNZ default)', 'Without RF'],
+      },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
-    resolveFactorKey: () => 'freight_air_tkm',
+    resolveFactorKey: (v) => (v.rf === 'Without RF' ? 'freight_air_tkm_no_rf' : 'freight_air_tkm'),
     resolveUnit: () => 'tkm',
     resolveActivityAmount: (v) => {
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
@@ -453,13 +473,13 @@ export const CATEGORIES: CategoryConfig[] = [
       { key: 'amount', label: 'Amount', type: 'number' },
     ],
     amountField: 'amount',
-    amountLabel: 'kg',
-    unitOptions: MASS_KG_UNITS,
+    amountLabel: 't',
+    unitOptions: MASS_TONNE_UNITS,
     resolveFactorKey: (v) =>
       v.route === 'Recycling' ? 'waste_recycling_kg' : 'waste_landfill_kg',
-    resolveUnit: (v) => v.unit || 'kg',
+    resolveUnit: (v) => v.unit || 't',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} ${v.unit || 'kg'} ${v.waste_type || 'site waste'} — ${v.route || 'disposal'}`,
+      `${amount.toLocaleString()} ${v.unit || 't'} ${v.waste_type || 'site waste'} — ${v.route || 'disposal'}`,
   },
   {
     id: 'water',
@@ -500,6 +520,7 @@ export const CATEGORIES: CategoryConfig[] = [
       },
       { key: 'distance', label: 'One-way distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
       { key: 'trips', label: 'Return trips', type: 'number' },
+      { key: 'passengers', label: 'Passengers per trip', type: 'number', hint: 'Used for bus and rail (passenger-km). Vans use vehicle-km.' },
     ],
     amountField: 'distance',
     amountLabel: 'km',
@@ -511,7 +532,10 @@ export const CATEGORIES: CategoryConfig[] = [
     resolveUnit: (v) => v.distance_unit || 'km',
     resolveActivityAmount: (v) => {
       const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
-      return dist * num(v, 'trips') * 2
+      const trips = num(v, 'trips')
+      const passengers = num(v, 'passengers') || 1
+      if (v.mode === 'Shuttle bus' || v.mode === 'Rail') return dist * trips * 2 * passengers
+      return dist * trips * 2
     },
     resolveDetails: (v) => {
       const du = v.distance_unit || 'km'
@@ -585,6 +609,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'kWh',
     unitOptions: ELECTRICITY_UNITS,
+    chainExtras: ['td'],
     resolveFactorKey: () => 'heat_steam_kwh',
     resolveUnit: (v) => v.unit || 'kWh',
     resolveDetails: (v, amount) =>
@@ -622,7 +647,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Staff flights, hotel stays, and taxi journeys for business purposes (GHG Protocol Scope 3, Category 6).',
+      'Staff flights, hotel stays, and taxi journeys (GHG Protocol Scope 3, Category 6). Flights and taxis are passenger-km: passengers × distance. Hotels are room-nights using the DESNZ country row — there is no invented “overseas average”.',
     fields: [
       {
         key: 'type',
@@ -630,31 +655,43 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: [
           'Domestic flight', 'Short-haul flight', 'Long-haul flight (economy)',
-          'Long-haul flight (business)', 'Hotel (UK)', 'Hotel (overseas)', 'Taxi',
+          'Long-haul flight (business)', 'Hotel', 'Taxi',
         ],
       },
-      { key: 'amount', label: 'Amount', type: 'number', hint: 'Passenger-km for flights, nights for hotels, km for taxis.' },
+      {
+        key: 'hotel_country',
+        label: 'Hotel country',
+        type: 'select',
+        options: HOTEL_COUNTRY_OPTIONS,
+        hint: 'Used when travel type is Hotel. Only countries with a published 2026 factor are listed.',
+      },
+      { key: 'passengers', label: 'Passengers', type: 'number', hint: 'Flights and taxis. Leave blank for hotels.' },
+      { key: 'amount', label: 'Distance or nights', type: 'number', hint: 'Kilometres for flights and taxis (passenger-km = passengers × km). Room-nights for hotels.' },
     ],
     amountField: 'amount',
-    amountLabel: 'pkm / nights / km',
+    amountLabel: 'pkm / nights',
     resolveFactorKey: (v) => {
+      if (v.type === 'Hotel') return hotelFactorKey(v.hotel_country || 'UK')
       const map: Record<string, string> = {
         'Domestic flight': 'flight_domestic_pkm',
         'Short-haul flight': 'flight_shorthaul_pkm',
         'Long-haul flight (economy)': 'flight_longhaul_economy_pkm',
         'Long-haul flight (business)': 'flight_longhaul_business_pkm',
-        'Hotel (UK)': 'hotel_uk_night',
-        'Hotel (overseas)': 'hotel_overseas_night',
-        'Taxi': 'taxi_km',
+        Taxi: 'taxi_pkm',
       }
       return map[v.type] || 'flight_shorthaul_pkm'
     },
-    resolveUnit: (v) => {
-      if (v.type?.includes('Hotel')) return 'nights'
-      if (v.type?.includes('Taxi')) return 'km'
-      return 'pkm'
+    resolveUnit: (v) => (v.type === 'Hotel' ? 'nights' : 'pkm'),
+    resolveActivityAmount: (v, amount) => {
+      if (v.type === 'Hotel') return amount
+      const passengers = num(v, 'passengers') || 1
+      return passengers * amount
     },
-    resolveDetails: (v, amount) => `${amount.toLocaleString()} — ${v.type || 'business travel'}`,
+    resolveDetails: (v, amount) => {
+      if (v.type === 'Hotel') return `${amount.toLocaleString()} room-nights — ${v.hotel_country || 'UK'}`
+      const passengers = num(v, 'passengers') || 1
+      return `${passengers} passengers × ${num(v, 'amount').toLocaleString()} km = ${amount.toLocaleString()} pkm — ${v.type}`
+    },
   },
   {
     id: 'employee_commuting',
@@ -668,7 +705,7 @@ export const CATEGORIES: CategoryConfig[] = [
         key: 'mode',
         label: 'Commute mode',
         type: 'select',
-        options: ['Car', 'Bus', 'Rail', 'Motorbike'],
+        options: ['Car', 'Car (diesel)', 'Car (petrol)', 'Bus', 'Rail', 'Motorbike'],
       },
       { key: 'distance', label: 'One-way distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
       { key: 'employees', label: 'Number of employees', type: 'number' },
@@ -677,6 +714,8 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'distance',
     amountLabel: 'km',
     resolveFactorKey: (v) => {
+      if (v.mode === 'Car (diesel)') return 'car_diesel_km'
+      if (v.mode === 'Car (petrol)') return 'car_petrol_km'
       const map: Record<string, string> = {
         Car: 'commute_car_km',
         Bus: 'commute_bus_pkm',
@@ -730,7 +769,9 @@ export const CATEGORIES: CategoryConfig[] = [
           'LPG (WTT)',
           'Gas oil (WTT)',
           'Natural gas (WTT)',
-          'UK grid electricity T&D',
+          'UK electricity WTT (generation)',
+          'UK electricity T&D losses',
+          'UK electricity WTT (T&D)',
         ],
       },
       { key: 'amount', label: 'Amount', type: 'number' },
@@ -744,7 +785,9 @@ export const CATEGORIES: CategoryConfig[] = [
         'LPG (WTT)': 'wtt_lpg_litre',
         'Gas oil (WTT)': 'wtt_gas_oil_litre',
         'Natural gas (WTT)': 'wtt_natural_gas_kwh',
-        'UK grid electricity T&D': 'wtt_electricity_kwh',
+        'UK electricity WTT (generation)': 'wtt_electricity_kwh',
+        'UK electricity T&D losses': 'electricity_td_kwh',
+        'UK electricity WTT (T&D)': 'wtt_electricity_td_kwh',
       }
       return map[v.source] || 'wtt_diesel_litre'
     },
@@ -758,7 +801,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Spend-based estimate for bought-in goods and services where activity data is unavailable (GHG Protocol Scope 3, Category 1). Use £ thousands. Prefer activity-based methods when possible.',
+      'Spend-based estimate for bought-in goods and services where activity data is unavailable (GHG Protocol Scope 3, Category 1). Enter pounds sterling. The factor is kg CO₂e per £ (Defra SIC-19), so tCO₂e = £ × kg/£ ÷ 1,000. Prefer activity-based methods when possible.',
     fields: [
       {
         key: 'type',
@@ -766,15 +809,15 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['Purchased goods & services', 'Capital goods'],
       },
-      { key: 'amount', label: 'Spend (£ thousands)', type: 'number' },
+      { key: 'amount', label: 'Spend (£)', type: 'number', hint: 'Pounds, not thousands. £10,000 of average goods ≈ 8.56 tCO₂e.' },
     ],
     amountField: 'amount',
-    amountLabel: '£k',
+    amountLabel: '£',
     resolveFactorKey: (v) =>
       v.type === 'Capital goods' ? 'capital_goods_gbp' : 'purchased_goods_gbp',
-    resolveUnit: () => '£k',
+    resolveUnit: () => '£',
     resolveDetails: (v, amount) =>
-      `£${(amount * 1000).toLocaleString()} spend on ${v.type?.toLowerCase() || 'purchased goods'}`,
+      `£${amount.toLocaleString()} spend on ${v.type?.toLowerCase() || 'purchased goods'}`,
   },
   {
     id: 'custom',
@@ -782,7 +825,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Custom',
     group: 'scope3',
     instructions:
-      'Enter an activity amount and conversion value from a verified source. tCO₂e = (activity × conversion value) / 1000.',
+      'Enter an activity amount and a conversion value from a verified source. The last step is always tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000. Build the activity first (tkm, pkm, GWP mass, or converted units).',
     fields: [
       { key: 'label', label: 'Activity name', type: 'text', placeholder: 'e.g. imported cladding or process reagent' },
       { key: 'amount', label: 'Activity amount', type: 'number' },
@@ -814,6 +857,24 @@ export function categoriesForScope(scope: (typeof SCOPE_NAV_ORDER)[number]) {
 
 export function getCategory(id: string) {
   return CATEGORIES.find((c) => c.id === id)
+}
+
+export function unitOptionsFor(category: CategoryConfig, values: Record<string, string>): UnitOption[] | undefined {
+  if (category.id === 'site_fuel' || category.id === 'energy_wtt') {
+    const key = category.resolveFactorKey(values)
+    if (key.includes('kwh')) return ELECTRICITY_UNITS
+    if (key.includes('m3') || key.includes('_m3')) return WATER_VOLUME_UNITS
+    if (
+      key.includes('litre') ||
+      key.includes('diesel') ||
+      key.includes('petrol') ||
+      key.includes('lpg') ||
+      key.includes('gas_oil')
+    ) {
+      return FUEL_VOLUME_UNITS
+    }
+  }
+  return category.unitOptions
 }
 
 export function adjacentCategory(id: string) {

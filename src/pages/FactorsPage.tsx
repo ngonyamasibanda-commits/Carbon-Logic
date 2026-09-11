@@ -121,11 +121,11 @@ export default function FactorsPage() {
         <div>
           <h1 className="text-3xl font-bold text-ink">Emission factors</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            Conversion values are kg CO₂e per activity unit. tCO₂e = (activity × conversion
-            value) / 1000. Each row shows the publisher: DEFRA / DESNZ (UK government
-            conversion factors 2026, formerly BEIS), EPD or user factors for steel, cement,
-            and other materials without a DESNZ row, or EIO / EPA / IPCC for spend-based,
-            explosives, and GWP sources.
+            Conversion values are the published kg CO₂e per activity unit (or GWP for refrigerants
+            and methane). Waste and materials are per tonne, spend is per £, freight is per tkm,
+            flights and taxis are per passenger-km. The last step is always tCO₂e = activity ×
+            factor ÷ 1,000. Each row shows the publisher: DEFRA / DESNZ 2026, EPD or user factors
+            for steel, cement, and similar, or EIO / EPA / IPCC for spend, explosives, and GWP.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

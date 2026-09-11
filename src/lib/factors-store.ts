@@ -40,6 +40,9 @@ function normalize(partial: Partial<EmissionFactor> & { key: string }): Emission
     validFrom: partial.validFrom ?? new Date().toISOString().slice(0, 10),
     lastVerifiedAt: partial.lastVerifiedAt ?? new Date().toISOString().slice(0, 10),
     isPlaceholder: partial.isPlaceholder ?? isPlaceholder(source),
+    method: partial.method,
+    wttKey: partial.wttKey,
+    tdKey: partial.tdKey,
   }
 }
 
@@ -107,7 +110,15 @@ export function mergeFactorMaps(
   for (const factor of catalog) map.set(factor.key, factor)
   for (const factor of [...remote, ...local]) {
     if (!isTenantMaterialOverride(factor)) continue
-    if (preferStored(map.get(factor.key), factor)) map.set(factor.key, factor)
+    if (preferStored(map.get(factor.key), factor)) {
+      const published = map.get(factor.key)
+      map.set(factor.key, {
+        ...factor,
+        method: factor.method ?? published?.method,
+        wttKey: factor.wttKey ?? published?.wttKey,
+        tdKey: factor.tdKey ?? published?.tdKey,
+      })
+    }
   }
   for (const key of deleted) map.delete(key)
   return map

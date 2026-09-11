@@ -1,10 +1,6 @@
-/** Sales-led Professional plan. Price is per organisation, not per seat. */
+/** Inventory capabilities shown on Organisation settings. No public price. */
 export const PROFESSIONAL_PLAN = {
-  name: 'Professional',
-  priceEur: 6000,
-  currency: 'EUR',
-  billing: 'per organisation / year',
-  headline: '€6,000 per organisation per year',
+  name: 'Workspace',
   summary:
     'A shared GHG Protocol inventory for one construction, mining, or logistics organisation: official UK factors, dual Scope 2, year-end close, and SECR / PPN 06/21 report packs.',
   includes: [
@@ -20,14 +16,5 @@ export const PROFESSIONAL_PLAN = {
   notIncluded: [
     'Third-party verification or limited-assurance opinion',
     'File hosting for invoices (use a SharePoint or Drive evidence link)',
-    'Self-serve card checkout — Carbon Logic issues an order form',
   ],
 } as const
-
-export function formatPlanPrice(locale = 'en-GB') {
-  return new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: PROFESSIONAL_PLAN.currency,
-    maximumFractionDigits: 0,
-  }).format(PROFESSIONAL_PLAN.priceEur)
-}

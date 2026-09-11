@@ -13,6 +13,7 @@
     "verify:entries": "tsx scripts/verify-entries.ts",
     "verify:format": "tsx scripts/verify-format.ts",
     "verify:factors": "tsx scripts/verify-factors.ts",
+    "verify:emissions": "tsx scripts/verify-emissions.ts",
     "verify:professional": "tsx scripts/verify-professional.ts"
   },
   "dependencies": {

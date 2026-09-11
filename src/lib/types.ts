@@ -54,7 +54,15 @@ export type CategoryConfig = {
   resolveUnit: (values: Record<string, string>) => string
   resolveDetails: (values: Record<string, string>, amount: number) => string
   resolveActivityAmount?: (values: Record<string, string>, amount: number) => number
+  /** Optional extra DESNZ lines to offer (WTT / T&D) without mixing scopes on one row. */
+  chainExtras?: Array<'wtt' | 'td'>
 }
+
+/**
+ * How a published factor is applied. DESNZ/EPA inventory factors are kg CO₂e
+ * per activity unit; refrigerant and methane rows are GWPs (kg CO₂e per kg gas).
+ */
+export type FactorMethod = 'kg_per_unit' | 'gwp'
 
 export type EmissionFactor = {
   key: string
@@ -70,6 +78,11 @@ export type EmissionFactor = {
   validFrom: string
   lastVerifiedAt: string
   isPlaceholder: boolean
+  method?: FactorMethod
+  /** Matching WTT factor for the same activity unit, when DESNZ publishes one. */
+  wttKey?: string
+  /** Matching T&D factor (electricity / heat), when DESNZ publishes one. */
+  tdKey?: string
 }
 
 export type CustomField = {

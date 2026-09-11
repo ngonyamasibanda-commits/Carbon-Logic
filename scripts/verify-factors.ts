@@ -51,17 +51,17 @@ console.log('\nEmission factor catalogue (2026)\n')
 
 check('reporting year is 2026', FACTOR_YEAR === '2026', FACTOR_YEAR)
 check(
-  'lastVerifiedAt is 2026-09-10 so it replaces cached 2025 rows',
-  FACTOR_VERIFIED_AT === '2026-09-10',
+  'lastVerifiedAt is 2026-09-11 so published rows replace stale caches',
+  FACTOR_VERIFIED_AT === '2026-09-11',
   FACTOR_VERIFIED_AT,
 )
 
 const keys = FACTOR_CATALOG.map((row) => row.key)
 check('keys are unique', new Set(keys).size === keys.length, String(keys.length))
 check(
-  'every row is dated 2026 and verified 2026-09-10',
+  'every row is dated 2026 and verified 2026-09-11',
   FACTOR_CATALOG.every(
-    (row) => row.validFrom.startsWith('2026') && row.lastVerifiedAt === '2026-09-10' && !row.isPlaceholder,
+    (row) => row.validFrom.startsWith('2026') && row.lastVerifiedAt === '2026-09-11' && !row.isPlaceholder,
   ),
 )
 
@@ -85,9 +85,10 @@ expectValue('co2_kg', 1)
 expectValue('freight_road_tkm', 0.10356)
 expectValue('freight_rail_tkm', 0.02583)
 expectValue('freight_sea_tkm', 0.01612)
-expectValue('freight_air_tkm', 0.75539)
-expectValue('waste_landfill_kg', 0.00127043)
-expectValue('waste_recycling_kg', 0.00101398)
+expectValue('freight_air_tkm', 1.27835)
+expectValue('freight_air_tkm_no_rf', 0.75539)
+expectValue('waste_landfill_kg', 1.27043)
+expectValue('waste_recycling_kg', 1.01398)
 expectValue('water_m3', 0.1913)
 expectValue('wastewater_m3', 0.17088)
 expectValue('crew_van_km', 0.16591)
@@ -98,6 +99,15 @@ expectValue('commute_bus_pkm', 0.10151)
 expectValue('commute_rail_pkm', 0.03092)
 expectValue('commute_motorbike_km', 0.11367)
 expectValue('taxi_km', 0.20806)
+expectValue('taxi_pkm', 0.14861)
+expectValue('hotel_uk_night', 10.4)
+expectValue('hotel_usa_night', 16.1)
+expectValue('purchased_goods_gbp', 0.8559280439858236)
+expectValue('capital_goods_gbp', 0.6987898127964011)
+expectValue('freight_van_tkm', 0.63511)
+expectValue('freight_road_rigid_tkm', 0.19947)
+expectValue('freight_sea_bulk_tkm', 0.00353)
+expectValue('wtt_electricity_td_kwh', 0.00359)
 expectValue('material_concrete_t', 118.80307)
 expectValue('material_timber_t', 269.50416)
 expectValue('material_asphalt_t', 39.21249)
@@ -119,10 +129,6 @@ expectValue('flight_domestic_pkm', 0.22928)
 expectValue('flight_shorthaul_pkm', 0.12576)
 expectValue('flight_longhaul_economy_pkm', 0.11704)
 expectValue('flight_longhaul_business_pkm', 0.3394)
-expectValue('hotel_uk_night', 10.4)
-expectValue('hotel_overseas_night', 40.28648648648648)
-expectValue('purchased_goods_gbp', 855.9280439858236)
-expectValue('capital_goods_gbp', 698.7898127964011)
 expectValue('explosives_anfo_kg', 0.22)
 expectValue('explosives_emulsion_kg', 0.14)
 expectValue('mine_ch4_t', 28000)
@@ -132,9 +138,9 @@ expectValue('mine_ch4_m3', 20.08)
 const grid = byKey('electricity_grid_kwh')
 const wttElec = byKey('wtt_electricity_kwh')
 const spend = byKey('purchased_goods_gbp')
-const taxi = byKey('taxi_km')
+const taxi = byKey('taxi_pkm')
 const soil = byKey('material_soil_t')
-const overseas = byKey('hotel_overseas_night')
+const usaHotel = byKey('hotel_usa_night')
 
 if (grid) {
   check('UK electricity cites the 2026 GOV.UK publication', grid.sourceUrl.includes('conversion-factors-2026'))
@@ -155,19 +161,20 @@ if (wttElec) {
 if (spend) {
   check('spend-based family is EIO', spend.sourceFamily === 'EIO')
   check(
-    '£10k purchased goods is about 8.56 tCO₂e, not 0.004',
-    Math.abs(calculateTco2e(10, spend.conversionValue) - 8.559280439858236) < 1e-9,
-    String(calculateTco2e(10, spend.conversionValue)),
+    '£10,000 purchased goods is about 8.56 tCO₂e using kg CO₂e per £',
+    Math.abs(calculateTco2e(10_000, spend.conversionValue) - 8.559280439858236) < 1e-9,
+    String(calculateTco2e(10_000, spend.conversionValue)),
   )
+  check('spend unit is pounds, not thousands', spend.unit === '£')
 }
 if (taxi) {
-  check('taxi uses the per-km official row', taxi.unit === 'km' && taxi.source.includes('vehicle-km'))
+  check('taxi default is passenger.km', taxi.unit === 'pkm' && taxi.conversionValue === 0.14861)
 }
 if (soil) {
   check('soils primary production is withdrawn (0), not invented', soil.conversionValue === 0)
 }
-if (overseas) {
-  check('overseas hotel cites the 37-country mean', overseas.source.includes('37'))
+if (usaHotel) {
+  check('US hotel uses the published 16.1 kg/night row, not an overseas mean', usaHotel.conversionValue === 16.1)
 }
 
 const stale = FACTOR_CATALOG.filter(
@@ -255,7 +262,7 @@ if (catalogGrid) {
   const newerOverride = {
     ...catalogGrid,
     conversionValue: 0.2,
-    lastVerifiedAt: '2026-09-11',
+    lastVerifiedAt: '2026-09-12',
     source: 'Organisation EPD override',
   }
   const replaced = mergeFactorMaps(FACTOR_CATALOG, [staleCache], [])

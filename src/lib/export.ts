@@ -289,7 +289,7 @@ export function printAnalysisReport(entries: EmissionEntry[], context: ReportCon
     <ul>${actions.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
     <h2>How this differs from the Combined Results report</h2>
     <p>Combined Results is the inventory you can attach to a disclosure: every GHG Protocol category, including empty ones. This analysis report is for decisions: what dominates, what is missing that usually matters, and where to act first. Neither report lists individual activity rows — those stay on each data-input form as the audit trail.</p>
-    <p class="footnote">tCO₂e = (activity × conversion value in kg CO₂e) ÷ 1000. Factors: organisation library (typically DESNZ/DEFRA 2026, plus supplier EPDs for steel, cement, aluminium, and similar). This is an estimate to support reporting; it is not a third-party verification statement.</p>
+    <p class="footnote">tCO₂e uses the published DESNZ/DEFRA 2026 method for that activity (tkm, pkm, GWP, or kg CO₂e per unit), then ÷ 1,000 to convert kg to tonnes. Steel, cement, aluminium, and similar use supplier EPDs. This is an estimate to support reporting; it is not a third-party verification statement.</p>
   `
   openPrint(`${org} — emissions analysis`, body)
 }

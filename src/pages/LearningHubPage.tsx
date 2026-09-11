@@ -33,7 +33,7 @@ const ARTICLES = [
   },
   {
     title: 'How the calculation works',
-    body: 'tCO₂e = (Activity Amount × Conversion Value) / 1000. Conversion values are kg CO₂e per unit, stored in the emission factors database. Analysis and results tables show the GHG scope and input category for each entry.',
+    body: 'Each activity has extra conversion steps first (tkm, pkm, GWP, unit conversion). The last DESNZ step is tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000. The data-input form shows the working before you save.',
   },
   {
     title: 'Tips for construction companies',

@@ -16,7 +16,7 @@ const STEPS = [
   },
   {
     title: 'Calculate',
-    body: 'Click Calculate & add to footprint. tCO₂e = (Activity Amount × Conversion Value) / 1000.',
+    body: 'Click Calculate & add to footprint. The form shows each conversion step, then tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000.',
   },
   {
     title: 'Review and export',
