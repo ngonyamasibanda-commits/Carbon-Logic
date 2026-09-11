@@ -118,8 +118,21 @@ export function activityForCategory(
     if (category.id === 'road_freight' || category.id === 'rail_freight' || category.id === 'sea_freight' || category.id === 'air_freight' || category.id === 'subcontractor') {
       const tonnes = fieldAmount(values, 'weight')
       const km = fieldAmount(values, 'distance')
-      const vehicleKm = factor.unit === 'km' || (values.metric || '').toLowerCase().includes('vehicle')
-      if (vehicleKm) {
+      const vehicleKm =
+        factor.unit === 'km' ||
+        factor.unit === 'vehicle-mile' ||
+        (values.metric || '').toLowerCase().includes('vehicle')
+      if (factor.unit === 'short ton-mile') {
+        steps.push({
+          label: 'Short ton-miles (EPA Hub Table 8)',
+          value: `${formatNumber(derived)} short ton-mile`,
+        })
+      } else if (factor.unit === 'vehicle-mile') {
+        steps.push({
+          label: 'Vehicle-miles (EPA Hub Table 8)',
+          value: `${formatNumber(derived)} vehicle-mile`,
+        })
+      } else if (vehicleKm) {
         steps.push({
           label: 'Vehicle-kilometres',
           value: `${formatNumber(km)} km`,
@@ -150,7 +163,12 @@ export function activityForCategory(
       const dist = fieldAmount(values, 'distance')
       const trips = num(values, 'trips')
       const passengers = num(values, 'passengers') || 1
-      if (factor.unit === 'pkm') {
+      if (factor.unit === 'passenger-mile' || factor.unit === 'vehicle-mile') {
+        steps.push({
+          label: `EPA Hub Table 10 (${factor.unit})`,
+          value: `${formatNumber(derived)} ${factor.unit}`,
+        })
+      } else if (factor.unit === 'pkm') {
         steps.push({
           label: 'Passenger-km (one-way × return trips × 2 × passengers)',
           value: `${formatNumber(dist)} km × ${formatNumber(trips)} × 2 × ${formatNumber(passengers)} = ${formatNumber(derived)} pkm`,
@@ -168,6 +186,11 @@ export function activityForCategory(
         steps.push({
           label: 'Passenger-km (passengers × km)',
           value: `${formatNumber(passengers)} × ${formatNumber(km)} km = ${formatNumber(derived)} pkm`,
+        })
+      } else if (factor.unit === 'passenger-mile' || factor.unit === 'vehicle-mile') {
+        steps.push({
+          label: `EPA Hub Table 10 (${factor.unit})`,
+          value: `${formatNumber(derived)} ${factor.unit}`,
         })
       }
     }

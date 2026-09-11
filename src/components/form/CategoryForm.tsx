@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { CloudUpload, Grid2x2, Play } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import { adjacentCategory, unitOptionsFor } from '../../lib/categories'
+import { adjacentCategory, isEpaFamily, unitOptionsFor } from '../../lib/categories'
 import { lookupFactor } from '../../lib/calculate'
 import { workingFromForm, computeWorking } from '../../lib/emissions'
 import {
@@ -105,9 +105,19 @@ export default function CategoryForm({ category }: Props) {
       unit: options[0].value,
       unit_factor: String(options[0].toBase),
     }))
-    // only when fuel/source selection changes the unit set
+    // family / fuel / waste selection can change the published unit set
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.fuel, values.source, values.method, values.fuel_basis, values.metric, category.id])
+  }, [
+    values.fuel,
+    values.source,
+    values.method,
+    values.fuel_basis,
+    values.metric,
+    values.factor_family,
+    values.epa_fuel,
+    values.epa_waste,
+    category.id,
+  ])
 
   function setField(key: string, value: string) {
     setValues((prevValues) => ({ ...prevValues, [key]: value }))
@@ -404,12 +414,16 @@ export default function CategoryForm({ category }: Props) {
             ) : null}
             {category.fields.map((field) => {
               if (field.visibleWhen) {
-                const checks = Array.isArray(field.visibleWhen) ? field.visibleWhen : [field.visibleWhen]
-                const visible = checks.every((rule) => {
-                  const got = values[rule.field] || ''
-                  return Array.isArray(rule.equals) ? rule.equals.includes(got) : got === rule.equals
-                })
-                if (!visible) return null
+                if (typeof field.visibleWhen === 'function') {
+                  if (!field.visibleWhen(values)) return null
+                } else {
+                  const checks = Array.isArray(field.visibleWhen) ? field.visibleWhen : [field.visibleWhen]
+                  const visible = checks.every((rule) => {
+                    const got = values[rule.field] || ''
+                    return Array.isArray(rule.equals) ? rule.equals.includes(got) : got === rule.equals
+                  })
+                  if (!visible) return null
+                }
               }
               if (field.key === 'hotel_country' && values.type !== 'Hotel') return null
               if (field.key === 'passengers' && values.type === 'Hotel') return null
@@ -514,7 +528,7 @@ export default function CategoryForm({ category }: Props) {
               </label>
             )})}
             {category.id === 'site_electricity' &&
-            (values.source || '').toLowerCase().includes('purchased') ? (
+            (isEpaFamily(values) || (values.source || '').toLowerCase().includes('purchased')) ? (
               <Scope2MarketFields
                 values={values}
                 setField={setField}
@@ -556,7 +570,7 @@ export default function CategoryForm({ category }: Props) {
                 </span>
               </label>
             ) : null}
-            {category.chainExtras?.includes('td') ? (
+            {category.chainExtras?.includes('td') && liveFactor?.tdKey ? (
               <label className="flex items-start gap-2 text-sm font-normal text-ink">
                 <input
                   type="checkbox"
@@ -568,7 +582,7 @@ export default function CategoryForm({ category }: Props) {
                 the matching T&D factor ÷ 1,000). EPA eGRID notes T&D is Category 3, not Scope 2.
               </label>
             ) : null}
-            {category.chainExtras?.includes('wtt') || liveFactor?.wttKey ? (
+            {liveFactor?.wttKey ? (
               <label className="flex items-start gap-2 text-sm font-normal text-ink">
                 <input
                   type="checkbox"

@@ -26,6 +26,7 @@ export type FormField = {
   visibleWhen?:
     | { field: string; equals: string | string[] }
     | Array<{ field: string; equals: string | string[] }>
+    | ((values: Record<string, string>) => boolean)
   hint?: string
   placeholder?: string
   /** Skip HTML required when the field is supporting data (water-positive volumes, optional GWP set). */
