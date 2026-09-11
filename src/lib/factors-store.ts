@@ -16,6 +16,7 @@ function isPlaceholder(source: string) {
 
 function inferSourceFamily(source: string, fallback: SourceFamily = 'User'): SourceFamily {
   const upper = source.toUpperCase()
+  if (upper.includes('CEDA')) return 'EIO'
   for (const family of SOURCE_FAMILIES) {
     if (family !== 'User' && (upper.startsWith(family) || upper.includes(`${family} `) || upper.includes(`/${family}`))) {
       return family
@@ -40,6 +41,14 @@ function normalize(partial: Partial<EmissionFactor> & { key: string }): Emission
     validFrom: partial.validFrom ?? new Date().toISOString().slice(0, 10),
     lastVerifiedAt: partial.lastVerifiedAt ?? new Date().toISOString().slice(0, 10),
     isPlaceholder: partial.isPlaceholder ?? isPlaceholder(source),
+    method: partial.method,
+    wttKey: partial.wttKey,
+    tdKey: partial.tdKey,
+    spendCurrency: partial.spendCurrency,
+    fxGbpPerUsd: partial.fxGbpPerUsd,
+    purchaserProducer: partial.purchaserProducer,
+    priceIndex: partial.priceIndex,
+    cedaCode: partial.cedaCode,
   }
 }
 
@@ -107,7 +116,20 @@ export function mergeFactorMaps(
   for (const factor of catalog) map.set(factor.key, factor)
   for (const factor of [...remote, ...local]) {
     if (!isTenantMaterialOverride(factor)) continue
-    if (preferStored(map.get(factor.key), factor)) map.set(factor.key, factor)
+    if (preferStored(map.get(factor.key), factor)) {
+      const published = map.get(factor.key)
+      map.set(factor.key, {
+        ...factor,
+        method: factor.method ?? published?.method,
+        wttKey: factor.wttKey ?? published?.wttKey,
+        tdKey: factor.tdKey ?? published?.tdKey,
+        spendCurrency: factor.spendCurrency ?? published?.spendCurrency,
+        fxGbpPerUsd: factor.fxGbpPerUsd ?? published?.fxGbpPerUsd,
+        purchaserProducer: factor.purchaserProducer ?? published?.purchaserProducer,
+        priceIndex: factor.priceIndex ?? published?.priceIndex,
+        cedaCode: factor.cedaCode ?? published?.cedaCode,
+      })
+    }
   }
   for (const key of deleted) map.delete(key)
   return map

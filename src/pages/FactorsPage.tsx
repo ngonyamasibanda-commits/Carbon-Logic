@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { downloadText } from '../lib/export'
 import { epdTemplateCsv, EPD_REQUIRED_MATERIALS } from '../lib/epd-materials'
-import { formatNumber } from '../lib/format'
+import { formatFactor } from '../lib/format'
 import { factorsToCsv, monthsStale, parseFactorSpreadsheet } from '../lib/factors-store'
 import { safeHttpUrl } from '../lib/safe'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from '../lib/types'
@@ -121,11 +121,12 @@ export default function FactorsPage() {
         <div>
           <h1 className="text-3xl font-bold text-ink">Emission factors</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            Conversion values are kg CO₂e per activity unit. tCO₂e = (activity × conversion
-            value) / 1000. Each row shows the publisher: DEFRA / DESNZ (UK government
-            conversion factors 2026, formerly BEIS), EPD or user factors for steel, cement,
-            and other materials without a DESNZ row, or EIO / EPA / IPCC for spend-based,
-            explosives, and GWP sources.
+            Conversion values are the published kg CO₂e per activity unit (or GWP for refrigerants
+            and methane). Waste and materials are per tonne, UK spend is per £, CEDA spend is per
+            2023 producer-price US dollar, freight is per tkm, flights and taxis are per
+            passenger-km. The last step is always tCO₂e = activity × factor ÷ 1,000. Each row shows
+            the publisher: DEFRA / DESNZ 2026, CEDA by Watershed (EIO), EPA Hub 2026, or an EPD /
+            user factor for steel, cement, and similar.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -164,6 +165,15 @@ export default function FactorsPage() {
           </button>
         </div>
       </div>
+
+      <Callout tone="info">
+        Spend-based Open CEDA rows are CEDA by Watershed (CEDA 2025, CC BY-SA 4.0), in kg CO₂e per
+        2023 producer-price US dollar. Defra SIC-19 rows stay in kg CO₂e per £. US EPA Hub 2026
+        electricity and AR6 GWPs are catalogued separately and do not replace DESNZ 2026 UK
+        activity factors. Steel, cement, aluminium, copper, lime, and rebar still need a supplier
+        EPD — this library does not vendor ICE, and the EC3 country files supplied here are EPD
+        counts, not GWP values.
+      </Callout>
 
       {staleCount > 0 ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -280,7 +290,7 @@ export default function FactorsPage() {
                 <td className="px-3 py-2 font-mono text-xs">{factor.key}</td>
                 <td className="px-3 py-2">{factor.category}</td>
                 <td className="px-3 py-2">{factor.scope}</td>
-                <td className="px-3 py-2 tabular-nums">{formatNumber(factor.conversionValue)}</td>
+                <td className="px-3 py-2 tabular-nums">{formatFactor(factor.conversionValue)}</td>
                 <td className="px-3 py-2">{factor.unit}</td>
                 <td className="px-3 py-2">
                   <span

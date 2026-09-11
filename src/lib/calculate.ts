@@ -1,13 +1,17 @@
 import { loadFactorLibrary } from './factors-store'
 import { factorFromEpd, isEpdRequiredKey } from './epd-materials'
+import { inventoryTco2e } from './emissions'
 import type { EmissionFactor } from './types'
 
+export { inventoryTco2e } from './emissions'
+
 /**
- * Calculated tCO₂e = (Activity Amount × Conversion Value) / 1000
- * Conversion value is kg CO₂e per activity unit.
+ * DESNZ company-reporting step: tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000.
+ * Do not use this as the only step — freight needs tkm, flights need pkm, waste
+ * is per tonne, spend is per £, refrigerants are GWP. See `workingFromForm`.
  */
 export function calculateTco2e(activityAmount: number, conversionValue: number): number {
-  return (activityAmount * conversionValue) / 1000
+  return inventoryTco2e(activityAmount, conversionValue)
 }
 
 export async function loadFactors(organizationId?: string): Promise<Map<string, EmissionFactor>> {

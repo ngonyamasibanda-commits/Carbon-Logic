@@ -1,4 +1,6 @@
 import type { CategoryConfig, UnitOption } from './types'
+import { HOTEL_COUNTRY_OPTIONS, hotelFactorKey } from './factor-catalog'
+import { CEDA_SECTOR_OPTIONS, cedaSectorByName } from './ceda'
 
 // ── Shared unit option sets ─────────────────────────────────────────────────
 
@@ -51,13 +53,17 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 2',
     group: 'input',
     instructions:
-      'Enter purchased or on-site electricity used at construction sites, mines, processing plants, depots, and warehouses. Location-based Scope 2 uses the DESNZ UK grid factor. For purchased electricity, record the market-based instrument (supplier factor, REGO, or residual mix). Link utility bills in Additional Data.',
+      'Enter purchased or on-site electricity used at construction sites, mines, processing plants, depots, and warehouses. Location-based Scope 2 uses the DESNZ UK grid factor unless you select the US eGRID average. For purchased electricity, record the market-based instrument (supplier factor, retired REGO/GoO/REC, or residual mix). Link utility bills in Additional Data.',
     fields: [
       {
         key: 'source',
         label: 'Energy source',
         type: 'select',
-        options: ['Purchased electricity', 'On-site renewable electricity'],
+        options: [
+          'Purchased electricity',
+          'Purchased electricity (US eGRID average)',
+          'On-site renewable electricity',
+        ],
       },
       {
         key: 'amount',
@@ -69,10 +75,12 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'kWh',
     unitOptions: ELECTRICITY_UNITS,
-    resolveFactorKey: (v) =>
-      v.source?.includes('renewable')
-        ? 'electricity_renewable_kwh'
-        : 'electricity_grid_kwh',
+    chainExtras: ['td', 'wtt'],
+    resolveFactorKey: (v) => {
+      if (v.source?.includes('renewable')) return 'electricity_renewable_kwh'
+      if (v.source?.includes('eGRID') || v.source?.includes('US')) return 'electricity_us_egrid_kwh'
+      return 'electricity_grid_kwh'
+    },
     resolveUnit: (v) => v.unit || 'kWh',
     resolveDetails: (v, amount) =>
       `${amount.toLocaleString()} ${v.unit || 'kWh'} of ${v.source || 'electricity'}`,
@@ -101,6 +109,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'L',
     unitOptions: FUEL_VOLUME_UNITS,
+    chainExtras: ['wtt'],
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'LPG') return 'lpg_litre'
@@ -152,6 +161,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'L',
     unitOptions: FUEL_VOLUME_UNITS,
+    chainExtras: ['wtt'],
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'HVO') return 'hvo_litre'
@@ -219,6 +229,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'L',
     unitOptions: FUEL_VOLUME_UNITS,
+    chainExtras: ['wtt'],
     resolveFactorKey: (v) => {
       if (v.fuel === 'Petrol') return 'petrol_litre'
       if (v.fuel === 'LPG') return 'lpg_litre'
@@ -243,6 +254,13 @@ export const CATEGORIES: CategoryConfig[] = [
         options: ['R-134A', 'R-410A', 'R-404A', 'CO2'],
       },
       {
+        key: 'gwp_set',
+        label: 'GWP set',
+        type: 'select',
+        options: ['DESNZ 2026 (IPCC AR5, UK default)', 'EPA Hub 2026 (IPCC AR6)'],
+        hint: 'UK inventory stays on DESNZ AR5. EPA AR6 is only for US-style reporting and does not replace the DESNZ row.',
+      },
+      {
         key: 'amount',
         label: 'Amount',
         type: 'number',
@@ -252,10 +270,11 @@ export const CATEGORIES: CategoryConfig[] = [
     amountLabel: 'kg',
     unitOptions: MASS_KG_UNITS,
     resolveFactorKey: (v) => {
-      if (v.gas === 'R-410A') return 'r410a_kg'
-      if (v.gas === 'R-404A') return 'r404a_kg'
+      const epa = (v.gwp_set || '').includes('EPA')
+      if (v.gas === 'R-410A') return epa ? 'r410a_epa_kg' : 'r410a_kg'
+      if (v.gas === 'R-404A') return epa ? 'r404a_epa_kg' : 'r404a_kg'
       if (v.gas === 'CO2') return 'co2_kg'
-      return 'r134a_kg'
+      return epa ? 'r134a_epa_kg' : 'r134a_kg'
     },
     resolveUnit: (v) => v.unit || 'kg',
     resolveDetails: (v, amount) =>
@@ -287,6 +306,13 @@ export const CATEGORIES: CategoryConfig[] = [
         options: ['Tonnes of CH₄', 'Kilograms of CH₄', 'Cubic metres of CH₄'],
       },
       {
+        key: 'gwp_set',
+        label: 'GWP set',
+        type: 'select',
+        options: ['DESNZ-aligned IPCC AR5 (GWP 28)', 'EPA Hub 2026 fossil methane (GWP 29.8)'],
+        hint: 'Use AR5 GWP 28 for a UK DESNZ-consistent inventory. EPA AR6 29.8 is for fossil / coal-mine methane only and is not mixed into DESNZ refrigerant rows. Cubic metres stay on AR5.',
+      },
+      {
         key: 'amount',
         label: 'Amount',
         type: 'number',
@@ -296,9 +322,10 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 't',
     resolveFactorKey: (v) => {
-      if (v.measure === 'Kilograms of CH₄') return 'mine_ch4_kg'
+      const epa = (v.gwp_set || '').includes('EPA')
+      if (v.measure === 'Kilograms of CH₄') return epa ? 'mine_ch4_epa_fossil_kg' : 'mine_ch4_kg'
       if (v.measure === 'Cubic metres of CH₄') return 'mine_ch4_m3'
-      return 'mine_ch4_t'
+      return epa ? 'mine_ch4_epa_fossil_t' : 'mine_ch4_t'
     },
     resolveUnit: (v) => {
       if (v.measure === 'Kilograms of CH₄') return 'kg'
@@ -330,7 +357,12 @@ export const CATEGORIES: CategoryConfig[] = [
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
-    resolveFactorKey: () => 'freight_road_tkm',
+    resolveFactorKey: (v) => {
+      if (v.mode === 'Van') return 'freight_van_tkm'
+      if (v.mode === 'HGV rigid') return 'freight_road_rigid_tkm'
+      if (v.mode === 'HGV articulated') return 'freight_road_artic_tkm'
+      return 'freight_road_tkm'
+    },
     resolveUnit: () => 'tkm',
     resolveActivityAmount: (v) => {
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
@@ -386,7 +418,11 @@ export const CATEGORIES: CategoryConfig[] = [
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
-    resolveFactorKey: () => 'freight_sea_tkm',
+    resolveFactorKey: (v) => {
+      if (v.mode === 'Bulk carrier') return 'freight_sea_bulk_tkm'
+      if (v.mode === 'RoRo') return 'freight_sea_roro_tkm'
+      return 'freight_sea_tkm'
+    },
     resolveUnit: () => 'tkm',
     resolveActivityAmount: (v) => {
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
@@ -408,10 +444,16 @@ export const CATEGORIES: CategoryConfig[] = [
     fields: [
       { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
+      {
+        key: 'rf',
+        label: 'Radiative forcing',
+        type: 'select',
+        options: ['With RF (DESNZ default)', 'Without RF'],
+      },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
-    resolveFactorKey: () => 'freight_air_tkm',
+    resolveFactorKey: (v) => (v.rf === 'Without RF' ? 'freight_air_tkm_no_rf' : 'freight_air_tkm'),
     resolveUnit: () => 'tkm',
     resolveActivityAmount: (v) => {
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
@@ -430,7 +472,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'input',
     instructions:
-      'Enter construction and demolition waste, waste rock, tailings, and other site arisings by disposal route (landfill, recycling, or recovery).',
+      'Enter construction and demolition waste, waste rock, tailings, and other site arisings by disposal route (landfill, recycling, or combustion / energy recovery). DESNZ construction landfill is 1.27043 kg CO₂e per tonne; recycling is 1.01398; average-construction combustion is 4.65358.',
     fields: [
       {
         key: 'waste_type',
@@ -453,20 +495,24 @@ export const CATEGORIES: CategoryConfig[] = [
       { key: 'amount', label: 'Amount', type: 'number' },
     ],
     amountField: 'amount',
-    amountLabel: 'kg',
-    unitOptions: MASS_KG_UNITS,
-    resolveFactorKey: (v) =>
-      v.route === 'Recycling' ? 'waste_recycling_kg' : 'waste_landfill_kg',
-    resolveUnit: (v) => v.unit || 'kg',
+    amountLabel: 't',
+    unitOptions: MASS_TONNE_UNITS,
+    resolveFactorKey: (v) => {
+      if (v.route === 'Recycling') return 'waste_recycling_kg'
+      if (v.route === 'Energy recovery') return 'waste_combustion_kg'
+      return 'waste_landfill_kg'
+    },
+    resolveUnit: (v) => v.unit || 't',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} ${v.unit || 'kg'} ${v.waste_type || 'site waste'} — ${v.route || 'disposal'}`,
+      `${amount.toLocaleString()} ${v.unit || 't'} ${v.waste_type || 'site waste'} — ${v.route || 'disposal'}`,
   },
   {
     id: 'water',
     name: 'Water',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Site potable and process water supplied to construction compounds, mines, processing plants, and wash-out areas.',
+    instructions:
+      'Site potable and process water supplied to construction compounds, mines, processing plants, and wash-out areas. Carbon uses the DESNZ water-supply factor; add wastewater treatment as a separate Scope 3 line for the full DESNZ water picture. Water-positive % is volume (reused + replenished + sustainable sources) ÷ withdrawal — it is not a carbon factor.',
     fields: [
       {
         key: 'type',
@@ -474,11 +520,33 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['Potable + process water', 'Potable only', 'Process only'],
       },
-      { key: 'amount', label: 'Usage amount', type: 'number' },
+      { key: 'amount', label: 'Withdrawal / usage amount', type: 'number' },
+      {
+        key: 'reused',
+        label: 'Reused / recycled volume (optional)',
+        type: 'number',
+        optional: true,
+        hint: 'Volume sent to reuse without extra treatment. Used only for a water-positive %, not for tCO₂e.',
+      },
+      {
+        key: 'replenished',
+        label: 'Replenished volume (optional)',
+        type: 'number',
+        optional: true,
+        hint: 'Watershed replenishment credited in the same units as withdrawal.',
+      },
+      {
+        key: 'sustainable',
+        label: 'Sustainable sources (optional)',
+        type: 'number',
+        optional: true,
+        hint: 'Rainwater harvesting or recycled supply counted as a sustainable withdrawal.',
+      },
     ],
     amountField: 'amount',
     amountLabel: 'm³',
     unitOptions: WATER_VOLUME_UNITS,
+    chainExtras: ['treatment'],
     resolveFactorKey: () => 'water_m3',
     resolveUnit: (v) => v.unit || 'm³',
     resolveDetails: (v, amount) =>
@@ -500,6 +568,7 @@ export const CATEGORIES: CategoryConfig[] = [
       },
       { key: 'distance', label: 'One-way distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
       { key: 'trips', label: 'Return trips', type: 'number' },
+      { key: 'passengers', label: 'Passengers per trip', type: 'number', hint: 'Used for bus and rail (passenger-km). Vans use vehicle-km.' },
     ],
     amountField: 'distance',
     amountLabel: 'km',
@@ -511,7 +580,10 @@ export const CATEGORIES: CategoryConfig[] = [
     resolveUnit: (v) => v.distance_unit || 'km',
     resolveActivityAmount: (v) => {
       const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
-      return dist * num(v, 'trips') * 2
+      const trips = num(v, 'trips')
+      const passengers = num(v, 'passengers') || 1
+      if (v.mode === 'Shuttle bus' || v.mode === 'Rail') return dist * trips * 2 * passengers
+      return dist * trips * 2
     },
     resolveDetails: (v) => {
       const du = v.distance_unit || 'km'
@@ -572,20 +644,22 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Heat and steam',
     scope: 'Scope 2',
     group: 'scope3',
-    instructions: 'Purchased heat or steam supplied to site compounds, curing, processing plants, or workshops.',
+    instructions: 'Purchased heat or steam supplied to site compounds, curing, processing plants, or workshops. UK sites use DESNZ district heat; US purchased steam can use the EPA Hub 2026 natural-gas steam row.',
     fields: [
       {
         key: 'type',
         label: 'Supply type',
         type: 'select',
-        options: ['District heat', 'Steam', 'On-site heat network'],
+        options: ['District heat', 'Steam', 'On-site heat network', 'US purchased steam (EPA Hub)'],
       },
       { key: 'amount', label: 'Usage', type: 'number' },
     ],
     amountField: 'amount',
     amountLabel: 'kWh',
     unitOptions: ELECTRICITY_UNITS,
-    resolveFactorKey: () => 'heat_steam_kwh',
+    chainExtras: ['td'],
+    resolveFactorKey: (v) =>
+      v.type?.includes('EPA') ? 'heat_steam_us_kwh' : 'heat_steam_kwh',
     resolveUnit: (v) => v.unit || 'kWh',
     resolveDetails: (v, amount) =>
       `${amount.toLocaleString()} ${v.unit || 'kWh'} ${v.type || 'heat'}`,
@@ -622,7 +696,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Staff flights, hotel stays, and taxi journeys for business purposes (GHG Protocol Scope 3, Category 6).',
+      'Staff flights, hotel stays, and taxi journeys (GHG Protocol Scope 3, Category 6). Flights and taxis are passenger-km: passengers × distance. Hotels are room-nights using the DESNZ country row — there is no invented “overseas average”.',
     fields: [
       {
         key: 'type',
@@ -630,31 +704,43 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: [
           'Domestic flight', 'Short-haul flight', 'Long-haul flight (economy)',
-          'Long-haul flight (business)', 'Hotel (UK)', 'Hotel (overseas)', 'Taxi',
+          'Long-haul flight (business)', 'Hotel', 'Taxi',
         ],
       },
-      { key: 'amount', label: 'Amount', type: 'number', hint: 'Passenger-km for flights, nights for hotels, km for taxis.' },
+      {
+        key: 'hotel_country',
+        label: 'Hotel country',
+        type: 'select',
+        options: HOTEL_COUNTRY_OPTIONS,
+        hint: 'Used when travel type is Hotel. Only countries with a published 2026 factor are listed.',
+      },
+      { key: 'passengers', label: 'Passengers', type: 'number', hint: 'Flights and taxis. Leave blank for hotels.' },
+      { key: 'amount', label: 'Distance or nights', type: 'number', hint: 'Kilometres for flights and taxis (passenger-km = passengers × km). Room-nights for hotels.' },
     ],
     amountField: 'amount',
-    amountLabel: 'pkm / nights / km',
+    amountLabel: 'pkm / nights',
     resolveFactorKey: (v) => {
+      if (v.type === 'Hotel') return hotelFactorKey(v.hotel_country || 'UK')
       const map: Record<string, string> = {
         'Domestic flight': 'flight_domestic_pkm',
         'Short-haul flight': 'flight_shorthaul_pkm',
         'Long-haul flight (economy)': 'flight_longhaul_economy_pkm',
         'Long-haul flight (business)': 'flight_longhaul_business_pkm',
-        'Hotel (UK)': 'hotel_uk_night',
-        'Hotel (overseas)': 'hotel_overseas_night',
-        'Taxi': 'taxi_km',
+        Taxi: 'taxi_pkm',
       }
       return map[v.type] || 'flight_shorthaul_pkm'
     },
-    resolveUnit: (v) => {
-      if (v.type?.includes('Hotel')) return 'nights'
-      if (v.type?.includes('Taxi')) return 'km'
-      return 'pkm'
+    resolveUnit: (v) => (v.type === 'Hotel' ? 'nights' : 'pkm'),
+    resolveActivityAmount: (v, amount) => {
+      if (v.type === 'Hotel') return amount
+      const passengers = num(v, 'passengers') || 1
+      return passengers * amount
     },
-    resolveDetails: (v, amount) => `${amount.toLocaleString()} — ${v.type || 'business travel'}`,
+    resolveDetails: (v, amount) => {
+      if (v.type === 'Hotel') return `${amount.toLocaleString()} room-nights — ${v.hotel_country || 'UK'}`
+      const passengers = num(v, 'passengers') || 1
+      return `${passengers} passengers × ${num(v, 'amount').toLocaleString()} km = ${amount.toLocaleString()} pkm — ${v.type}`
+    },
   },
   {
     id: 'employee_commuting',
@@ -668,7 +754,7 @@ export const CATEGORIES: CategoryConfig[] = [
         key: 'mode',
         label: 'Commute mode',
         type: 'select',
-        options: ['Car', 'Bus', 'Rail', 'Motorbike'],
+        options: ['Car', 'Car (diesel)', 'Car (petrol)', 'Bus', 'Rail', 'Motorbike'],
       },
       { key: 'distance', label: 'One-way distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
       { key: 'employees', label: 'Number of employees', type: 'number' },
@@ -677,6 +763,8 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'distance',
     amountLabel: 'km',
     resolveFactorKey: (v) => {
+      if (v.mode === 'Car (diesel)') return 'car_diesel_km'
+      if (v.mode === 'Car (petrol)') return 'car_petrol_km'
       const map: Record<string, string> = {
         Car: 'commute_car_km',
         Bus: 'commute_bus_pkm',
@@ -730,7 +818,9 @@ export const CATEGORIES: CategoryConfig[] = [
           'LPG (WTT)',
           'Gas oil (WTT)',
           'Natural gas (WTT)',
-          'UK grid electricity T&D',
+          'UK electricity WTT (generation)',
+          'UK electricity T&D losses',
+          'UK electricity WTT (T&D)',
         ],
       },
       { key: 'amount', label: 'Amount', type: 'number' },
@@ -744,7 +834,9 @@ export const CATEGORIES: CategoryConfig[] = [
         'LPG (WTT)': 'wtt_lpg_litre',
         'Gas oil (WTT)': 'wtt_gas_oil_litre',
         'Natural gas (WTT)': 'wtt_natural_gas_kwh',
-        'UK grid electricity T&D': 'wtt_electricity_kwh',
+        'UK electricity WTT (generation)': 'wtt_electricity_kwh',
+        'UK electricity T&D losses': 'electricity_td_kwh',
+        'UK electricity WTT (T&D)': 'wtt_electricity_td_kwh',
       }
       return map[v.source] || 'wtt_diesel_litre'
     },
@@ -758,23 +850,59 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Spend-based estimate for bought-in goods and services where activity data is unavailable (GHG Protocol Scope 3, Category 1). Use £ thousands. Prefer activity-based methods when possible.',
+      'Spend-based estimate for bought-in goods and services where activity data is unavailable (GHG Protocol Scope 3, Category 1). Prefer activity-based methods when possible. Defra SIC-19 is kg CO₂e per £. Open CEDA by Watershed is kg CO₂e per 2023 producer-price US dollar — GBP is converted at the CEDA 2025 FX rate and is never mixed with the Defra £ factor.',
     fields: [
+      {
+        key: 'spend_source',
+        label: 'Spend factor family',
+        type: 'select',
+        options: [
+          'Defra SIC-19 (kg CO₂e per £)',
+          'Open CEDA by Watershed (kg CO₂e per $)',
+        ],
+        hint: 'Defra is the UK average £ multiplier. CEDA is a sector EEIO in USD, with attribution “CEDA by Watershed”.',
+      },
       {
         key: 'type',
         label: 'Category',
         type: 'select',
         options: ['Purchased goods & services', 'Capital goods'],
       },
-      { key: 'amount', label: 'Spend (£ thousands)', type: 'number' },
+      {
+        key: 'ceda_sector',
+        label: 'CEDA sector (UK)',
+        type: 'select',
+        options: [...CEDA_SECTOR_OPTIONS],
+        hint: 'Used when the factor family is Open CEDA. Construction, mining, and logistics sectors from GHG_t_Raw United Kingdom.',
+      },
+      {
+        key: 'spend_currency',
+        label: 'Spend currency',
+        type: 'select',
+        options: ['GBP', 'USD'],
+        hint: 'CEDA factors are USD. GBP is converted using 0.765396 GBP per USD (CEDA 2025). Defra always uses £.',
+      },
+      { key: 'amount', label: 'Spend', type: 'number', hint: 'Pounds or dollars as selected — not thousands.' },
     ],
     amountField: 'amount',
-    amountLabel: '£k',
-    resolveFactorKey: (v) =>
-      v.type === 'Capital goods' ? 'capital_goods_gbp' : 'purchased_goods_gbp',
-    resolveUnit: () => '£k',
-    resolveDetails: (v, amount) =>
-      `£${(amount * 1000).toLocaleString()} spend on ${v.type?.toLowerCase() || 'purchased goods'}`,
+    amountLabel: '£ / $',
+    resolveFactorKey: (v) => {
+      if ((v.spend_source || '').includes('CEDA')) {
+        return cedaSectorByName(v.ceda_sector)?.key ?? 'ceda_gbr_2332c0_usd'
+      }
+      return v.type === 'Capital goods' ? 'capital_goods_gbp' : 'purchased_goods_gbp'
+    },
+    resolveUnit: (v) => {
+      if ((v.spend_source || '').includes('CEDA')) return v.spend_currency === 'USD' ? '$' : '£'
+      return '£'
+    },
+    resolveDetails: (v, amount) => {
+      const currency = (v.spend_source || '').includes('CEDA') && v.spend_currency === 'USD' ? '$' : '£'
+      const label = (v.spend_source || '').includes('CEDA')
+        ? v.ceda_sector || 'CEDA sector'
+        : v.type?.toLowerCase() || 'purchased goods'
+      return `${currency}${amount.toLocaleString()} spend on ${label}`
+    },
   },
   {
     id: 'custom',
@@ -782,7 +910,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Custom',
     group: 'scope3',
     instructions:
-      'Enter an activity amount and conversion value from a verified source. tCO₂e = (activity × conversion value) / 1000.',
+      'Enter an activity amount and a conversion value from a verified source. The last step is always tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000. Build the activity first (tkm, pkm, GWP mass, or converted units).',
     fields: [
       { key: 'label', label: 'Activity name', type: 'text', placeholder: 'e.g. imported cladding or process reagent' },
       { key: 'amount', label: 'Activity amount', type: 'number' },
@@ -814,6 +942,24 @@ export function categoriesForScope(scope: (typeof SCOPE_NAV_ORDER)[number]) {
 
 export function getCategory(id: string) {
   return CATEGORIES.find((c) => c.id === id)
+}
+
+export function unitOptionsFor(category: CategoryConfig, values: Record<string, string>): UnitOption[] | undefined {
+  if (category.id === 'site_fuel' || category.id === 'energy_wtt') {
+    const key = category.resolveFactorKey(values)
+    if (key.includes('kwh')) return ELECTRICITY_UNITS
+    if (key.includes('m3') || key.includes('_m3')) return WATER_VOLUME_UNITS
+    if (
+      key.includes('litre') ||
+      key.includes('diesel') ||
+      key.includes('petrol') ||
+      key.includes('lpg') ||
+      key.includes('gas_oil')
+    ) {
+      return FUEL_VOLUME_UNITS
+    }
+  }
+  return category.unitOptions
 }
 
 export function adjacentCategory(id: string) {

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Lock, Unlock } from 'lucide-react'
-import { PROFESSIONAL_PLAN, formatPlanPrice } from '../lib/commercial'
+import { PROFESSIONAL_PLAN } from '../lib/commercial'
 import { useAuth } from '../lib/auth-context'
 import { useOrg } from '../providers/OrgProvider'
 
@@ -65,11 +65,8 @@ export default function OrganisationPage() {
       ) : null}
 
       <section className="rounded-2xl border border-line bg-white p-5">
-        <h2 className="text-lg font-semibold text-ink">{PROFESSIONAL_PLAN.name} plan</h2>
-        <p className="mt-1 text-sm text-muted">
-          {formatPlanPrice()} {PROFESSIONAL_PLAN.billing}. Carbon Logic issues an order form — there is
-          no self-serve checkout.
-        </p>
+        <h2 className="text-lg font-semibold text-ink">What this workspace includes</h2>
+        <p className="mt-1 text-sm text-muted">{PROFESSIONAL_PLAN.summary}</p>
         <ul className="mt-3 grid gap-2 text-sm text-ink md:grid-cols-2">
           {PROFESSIONAL_PLAN.includes.map((item) => (
             <li key={item} className="flex gap-2">

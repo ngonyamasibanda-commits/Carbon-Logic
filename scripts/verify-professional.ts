@@ -53,7 +53,7 @@ function entry(partial: Partial<EmissionEntry>): EmissionEntry {
 
 console.log('\nProfessional inventory helpers\n')
 
-check('Professional plan is €6,000 per organisation per year', PROFESSIONAL_PLAN.priceEur === 6000)
+check('workspace lists inventory capabilities without a public price', PROFESSIONAL_PLAN.includes.length >= 6)
 
 const grid = 0.13096
 const kwh = 10_000
@@ -99,6 +99,7 @@ check(
 check(
   'form labels map to instruments',
   instrumentFromForm('Purchased electricity', 'REGO or 100% renewable tariff') === 'rego' &&
+    instrumentFromForm('Purchased electricity', 'REGO / GoO / REC or 100% renewable tariff') === 'rego' &&
     instrumentFromForm('On-site renewable electricity', '') === 'onsite-renewable',
 )
 

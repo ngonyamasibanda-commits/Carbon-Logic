@@ -4,7 +4,7 @@
  *
  *   npm run verify:format
  */
-import { formatCsvNumber, formatNumber, formatPercent, formatTco2e, roundDisplay } from '../src/lib/format'
+import { formatCsvNumber, formatFactor, formatNumber, formatPercent, formatTco2e, roundDisplay } from '../src/lib/format'
 
 let passed = 0
 let failed = 0
@@ -51,6 +51,11 @@ check(
   'a large KPI figure stays compact with grouping',
   formatNumber(123456.7890123) === '123,456.789',
   formatNumber(123456.7890123),
+)
+check(
+  'published factors keep DESNZ digits instead of rounding to 3 dp',
+  formatFactor(1.27043) === '1.27043' && formatFactor(2.58354) === '2.58354',
+  formatFactor(1.27043),
 )
 
 console.log(`\n${passed} passed, ${failed} failed\n`)

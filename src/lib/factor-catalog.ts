@@ -1,7 +1,9 @@
-import type { EmissionFactor, Scope, SourceFamily } from './types'
+import type { EmissionFactor, FactorMethod, Scope, SourceFamily } from './types'
+import { buildCedaFactors } from './ceda'
+import { buildEpaFactors } from './epa-catalog'
 
 export const FACTOR_YEAR = '2026'
-export const FACTOR_VERIFIED_AT = '2026-09-10'
+export const FACTOR_VERIFIED_AT = '2026-09-11'
 
 const YEAR = FACTOR_YEAR
 const VERIFIED = FACTOR_VERIFIED_AT
@@ -17,11 +19,17 @@ const DEFRA =
 const DESNZ =
   'UK GHG Conversion Factors for Company Reporting 2026 — electricity / heat (DESNZ). kg CO₂e, IPCC AR5. Published 11 June 2026; flat file revised 31 July 2026. For 2026 activity / SECR 2026.'
 const IPCC =
-  'IPCC Fifth Assessment Report (AR5) Working Group I, 100-year GWP without climate-carbon feedbacks. Methane GWP = 28. DESNZ 2026 refrigerants still use AR5, so mine methane stays on AR5 for consistency.'
+  'IPCC Fifth Assessment Report (AR5) Working Group I, 100-year GWP without climate-carbon feedbacks. Methane GWP = 28. DESNZ 2026 refrigerants still use AR5, so mine methane stays on AR5 for consistency. EPA Hub 2026 publishes fossil methane GWP 29.8 as mine_ch4_epa_fossil_kg.'
 const NPI =
   'Australian National Pollutant Inventory Emission Estimation Technique Manual for Explosives Detonation and Firing Ranges v3.1 (August 2016). Mass-balance combustion CO₂. NGER Measurement Determination has no Method 1 look-up table for detonation. Prefer a manufacturer or site-specific factor when available.'
 const EIO =
-  'Defra spend-based emissions multipliers, 1997 to 2023 (published 30 June 2026), SIC-19 current-price GHG multipliers (kg CO₂e per £). Converted to kg CO₂e per £1,000 so the catalogue unit £k matches tCO₂e = (activity × conversion) / 1000. Use only when activity data is unavailable.'
+  'Defra spend-based emissions multipliers, 1997 to 2023 (published 30 June 2026), SIC-19 current-price GHG multipliers (kg CO₂e per £). Catalogue stores the published kg CO₂e per pound. tCO₂e = £ spent × kg/£ ÷ 1,000. Use only when activity data is unavailable. Open CEDA by Watershed (CEDA 2025) is a separate USD EEIO family — do not mix £ and $.'
+
+type FactorExtras = {
+  method?: FactorMethod
+  wttKey?: string
+  tdKey?: string
+}
 
 function factor(
   key: string,
@@ -33,6 +41,7 @@ function factor(
   sourceFamily: SourceFamily,
   source: string,
   sourceUrl: string,
+  extras: FactorExtras = {},
 ): EmissionFactor {
   return {
     key,
@@ -48,7 +57,71 @@ function factor(
     validFrom: `${YEAR}-01-01`,
     lastVerifiedAt: VERIFIED,
     isPlaceholder: false,
+    ...extras,
   }
+}
+
+const HOTEL_COUNTRIES: Array<[string, string, number]> = [
+  ['UK (London)', 'hotel_london_night', 11.5],
+  ['Australia', 'hotel_australia_night', 35],
+  ['Belgium', 'hotel_belgium_night', 12.2],
+  ['Brazil', 'hotel_brazil_night', 8.7],
+  ['Canada', 'hotel_canada_night', 7.4],
+  ['Chile', 'hotel_chile_night', 27.6],
+  ['China', 'hotel_china_night', 53.5],
+  ['Colombia', 'hotel_colombia_night', 14.7],
+  ['Costa Rica', 'hotel_costa_rica_night', 4.7],
+  ['Egypt', 'hotel_egypt_night', 44.2],
+  ['France', 'hotel_france_night', 6.7],
+  ['Germany', 'hotel_germany_night', 13.2],
+  ['Hong Kong, China', 'hotel_hong_kong_night', 51.5],
+  ['India', 'hotel_india_night', 58.9],
+  ['Indonesia', 'hotel_indonesia_night', 62.7],
+  ['Italy', 'hotel_italy_night', 14.3],
+  ['Japan', 'hotel_japan_night', 39],
+  ['Jordan', 'hotel_jordan_night', 68.9],
+  ['Korea', 'hotel_korea_night', 55.8],
+  ['Malaysia', 'hotel_malaysia_night', 61.5],
+  ['Maldives', 'hotel_maldives_night', 152.2],
+  ['Mexico', 'hotel_mexico_night', 19.3],
+  ['Netherlands', 'hotel_netherlands_night', 14.8],
+  ['Oman', 'hotel_oman_night', 90.3],
+  ['Philippines', 'hotel_philippines_night', 54.3],
+  ['Portugal', 'hotel_portugal_night', 19],
+  ['Qatar', 'hotel_qatar_night', 86.2],
+  ['Russian Federation', 'hotel_russia_night', 24.2],
+  ['Saudi Arabia', 'hotel_saudi_night', 106.4],
+  ['Singapore', 'hotel_singapore_night', 24.5],
+  ['South Africa', 'hotel_south_africa_night', 51.4],
+  ['Spain', 'hotel_spain_night', 7],
+  ['Switzerland', 'hotel_switzerland_night', 6.6],
+  ['Thailand', 'hotel_thailand_night', 43.4],
+  ['Turkey', 'hotel_turkey_night', 32.1],
+  ['United Arab Emirates', 'hotel_uae_night', 63.8],
+  ['United States', 'hotel_usa_night', 16.1],
+  ['Vietnam', 'hotel_vietnam_night', 38.5],
+]
+
+const HOTEL_COUNTRY_FACTORS = HOTEL_COUNTRIES.map(([country, key, kg]) =>
+  factor(
+    key,
+    `Hotel stay (${country})`,
+    'Business travel',
+    'Scope 3',
+    kg,
+    'night',
+    'DEFRA',
+    `${DEFRA} Hotel stay — ${country}, per room per night. tCO₂e = room-nights × ${kg} ÷ 1,000.`,
+    GOV_URL,
+  ),
+)
+
+export const HOTEL_COUNTRY_OPTIONS = ['UK', ...HOTEL_COUNTRIES.map(([country]) => country)]
+
+export function hotelFactorKey(country: string) {
+  if (!country || country === 'UK') return 'hotel_uk_night'
+  const row = HOTEL_COUNTRIES.find(([name]) => name === country)
+  return row?.[1] ?? 'hotel_uk_night'
 }
 
 export const FACTOR_CATALOG: EmissionFactor[] = [
@@ -60,8 +133,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     0.13096,
     'kWh',
     'DESNZ',
-    `${DESNZ} UK electricity / Electricity generated / Electricity: UK.`,
+    `${DESNZ} UK electricity / Electricity generated / Electricity: UK. tCO₂e = kWh × 0.13096 ÷ 1,000. Also log T&D (electricity_td_kwh) and WTT generation (wtt_electricity_kwh) for a complete energy chain.`,
     GOV_URL,
+    { wttKey: 'wtt_electricity_kwh', tdKey: 'electricity_td_kwh' },
   ),
   factor(
     'electricity_renewable_kwh',
@@ -95,6 +169,7 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'DESNZ',
     `${DESNZ} Heat and steam / Onsite or District heat and steam.`,
     GOV_URL,
+    { tdKey: 'heat_td_kwh' },
   ),
   factor(
     'natural_gas_kwh',
@@ -106,6 +181,7 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'DEFRA',
     `${DEFRA} Fuels — natural gas, kWh (Gross CV).`,
     GOV_URL,
+    { wttKey: 'wtt_natural_gas_kwh' },
   ),
   factor(
     'natural_gas_m3',
@@ -128,6 +204,7 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'DEFRA',
     `${DEFRA} Fuels — diesel (average biofuel blend), litres.`,
     GOV_URL,
+    { wttKey: 'wtt_diesel_litre' },
   ),
   factor(
     'petrol_litre',
@@ -139,6 +216,7 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'DEFRA',
     `${DEFRA} Fuels — petrol (average biofuel blend), litres.`,
     GOV_URL,
+    { wttKey: 'wtt_petrol_litre' },
   ),
   factor(
     'lpg_litre',
@@ -150,6 +228,7 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'DEFRA',
     `${DEFRA} Fuels — LPG, litres.`,
     GOV_URL,
+    { wttKey: 'wtt_lpg_litre' },
   ),
   factor(
     'hvo_litre',
@@ -172,6 +251,7 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'DEFRA',
     `${DEFRA} Fuels — gas oil, litres.`,
     GOV_URL,
+    { wttKey: 'wtt_gas_oil_litre' },
   ),
   factor(
     'marine_gas_oil_litre',
@@ -203,8 +283,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     3943,
     'kg',
     'DEFRA',
-    `${DEFRA} Refrigerants — GWP of R-404A (Kyoto products, IPCC AR5).`,
+    `${DEFRA} Refrigerants — GWP of R-404A (Kyoto products, IPCC AR5). tCO₂e = kg leaked × GWP ÷ 1,000.`,
     GOV_URL,
+    { method: 'gwp' },
   ),
   factor(
     'r410a_kg',
@@ -214,8 +295,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     1924,
     'kg',
     'DEFRA',
-    `${DEFRA} Refrigerants — GWP of R-410A (Kyoto products, IPCC AR5).`,
+    `${DEFRA} Refrigerants — GWP of R-410A (Kyoto products, IPCC AR5). tCO₂e = kg leaked × GWP ÷ 1,000.`,
     GOV_URL,
+    { method: 'gwp' },
   ),
   factor(
     'r134a_kg',
@@ -225,8 +307,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     1300,
     'kg',
     'DEFRA',
-    `${DEFRA} Refrigerants — GWP of HFC-134a (Kyoto products, IPCC AR5).`,
+    `${DEFRA} Refrigerants — GWP of HFC-134a (Kyoto products, IPCC AR5). tCO₂e = kg leaked × GWP ÷ 1,000.`,
     GOV_URL,
+    { method: 'gwp' },
   ),
   factor(
     'co2_kg',
@@ -236,8 +319,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     1,
     'kg',
     'DEFRA',
-    `${DEFRA} Refrigerants — GWP of CO₂.`,
+    `${DEFRA} Refrigerants — GWP of CO₂. tCO₂e = kg leaked × 1 ÷ 1,000.`,
     GOV_URL,
+    { method: 'gwp' },
   ),
   factor(
     'freight_road_tkm',
@@ -274,13 +358,13 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
   ),
   factor(
     'freight_air_tkm',
-    'Air freight (short-haul, without RF)',
+    'Air freight (short-haul, with RF)',
     'Air freight',
     'Scope 3',
-    0.75539,
+    1.27835,
     'tkm',
     'DEFRA',
-    `${DEFRA} Freighting goods — freight flights, short-haul, without radiative forcing.`,
+    `${DEFRA} Freighting goods — freight flights, short-haul, with radiative forcing (the DESNZ default air row). Without RF is freight_air_tkm_no_rf (0.75539). tCO₂e = tonnes × km × factor ÷ 1,000.`,
     GOV_URL,
   ),
   factor(
@@ -288,10 +372,10 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'Construction waste to landfill',
     'Waste',
     'Scope 3',
-    0.00127043,
-    'kg',
+    1.27043,
+    't',
     'DEFRA',
-    `${DEFRA} Waste disposal — construction aggregates/asphalt/concrete/bricks landfill, 1.27043 kg CO₂e/tonne.`,
+    `${DEFRA} Waste disposal — construction aggregates/asphalt/concrete/bricks landfill. Published as 1.27043 kg CO₂e per tonne, not per kg. Convert kg to tonnes first, then tCO₂e = tonnes × 1.27043 ÷ 1,000.`,
     GOV_URL,
   ),
   factor(
@@ -299,10 +383,21 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'Construction waste recycled',
     'Waste',
     'Scope 3',
-    0.00101398,
-    'kg',
+    1.01398,
+    't',
     'DEFRA',
-    `${DEFRA} Waste disposal — construction closed-loop / open-loop recycling, 1.01398 kg CO₂e/tonne.`,
+    `${DEFRA} Waste disposal — construction closed-loop / open-loop recycling. Published as 1.01398 kg CO₂e per tonne.`,
+    GOV_URL,
+  ),
+  factor(
+    'waste_combustion_kg',
+    'Construction waste combusted / energy recovery',
+    'Waste',
+    'Scope 3',
+    4.65358,
+    't',
+    'DEFRA',
+    `${DEFRA} Waste disposal — average construction, combustion. Published as 4.65358 kg CO₂e per tonne. Use for energy recovery; do not use the landfill row (1.27043).`,
     GOV_URL,
   ),
   factor(
@@ -531,28 +626,29 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     `${DEFRA} Hotel stay — UK, per room per night.`,
     GOV_URL,
   ),
-  factor(
-    'hotel_overseas_night',
-    'Hotel stay (overseas)',
-    'Business travel',
-    'Scope 3',
-    40.28648648648648,
-    'night',
-    'DEFRA',
-    `${DEFRA} 2026 has no single “overseas” hotel row. Unweighted mean of the 37 published non-UK, non-“UK (London)” country factors.`,
-    GOV_URL,
-  ),
+  ...HOTEL_COUNTRY_FACTORS,
 
   // ── Business travel: land / taxis ───────────────────────────────────────
   factor(
-    'taxi_km',
+    'taxi_pkm',
     'Regular taxi',
+    'Business travel',
+    'Scope 3',
+    0.14861,
+    'pkm',
+    'DEFRA',
+    `${DEFRA} Business travel–land — regular taxi, kg CO₂e per passenger.km. tCO₂e = passengers × km × 0.14861 ÷ 1,000. The vehicle-km row (0.20806) is taxi_km.`,
+    GOV_URL,
+  ),
+  factor(
+    'taxi_km',
+    'Regular taxi (vehicle-km)',
     'Business travel',
     'Scope 3',
     0.20806,
     'km',
     'DEFRA',
-    `${DEFRA} Business travel–land — regular taxi, kg CO₂e per vehicle-km (not passenger.km).`,
+    `${DEFRA} Business travel–land — regular taxi, kg CO₂e per vehicle-km. Use only when you do not know passenger count.`,
     GOV_URL,
   ),
 
@@ -621,10 +717,10 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'Purchased goods & services (UK average)',
     'Purchased goods',
     'Scope 3',
-    855.9280439858236,
-    '£k',
+    0.8559280439858236,
+    '£',
     'EIO',
-    `${EIO} Unweighted mean of the 18 non-zero SIC-19 GHG multipliers (Construction is published as ~0 and is excluded).`,
+    `${EIO} Unweighted mean of the 18 non-zero SIC-19 GHG multipliers (Construction is published as ~0 and is excluded). tCO₂e = £ spent × 0.8559 ÷ 1,000.`,
     SPEND_URL,
   ),
   factor(
@@ -632,10 +728,10 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'Capital goods (UK average)',
     'Capital goods',
     'Scope 3',
-    698.7898127964011,
-    '£k',
+    0.6987898127964011,
+    '£',
     'EIO',
-    `${EIO} SIC C Manufacturing.`,
+    `${EIO} SIC C Manufacturing. tCO₂e = £ spent × 0.6988 ÷ 1,000.`,
     SPEND_URL,
   ),
 
@@ -738,8 +834,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     28000,
     't',
     'IPCC',
-    `${IPCC} 1 t CH₄ × GWP 28 = 28,000 kg CO₂e.`,
+    `${IPCC} 1 t CH₄ × GWP 28 = 28 tCO₂e. tCO₂e = tonnes CH₄ × 28,000 ÷ 1,000.`,
     IPCC_URL,
+    { method: 'gwp' },
   ),
   factor(
     'mine_ch4_kg',
@@ -749,8 +846,9 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     28,
     'kg',
     'IPCC',
-    `${IPCC} 1 kg CH₄ × GWP 28 = 28 kg CO₂e.`,
+    `${IPCC} 1 kg CH₄ × GWP 28 = 28 kg CO₂e. tCO₂e = kg CH₄ × 28 ÷ 1,000.`,
     IPCC_URL,
+    { method: 'gwp' },
   ),
   factor(
     'mine_ch4_m3',
@@ -760,9 +858,124 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     20.08,
     'm³',
     'IPCC',
-    `${IPCC} CH₄ density 0.717 kg/m³ at 0 °C, 1 atm × GWP 28 ≈ 20.08 kg CO₂e/m³. Convert ventilation air to CH₄ first.`,
+    `${IPCC} CH₄ density 0.717 kg/m³ at 0 °C, 1 atm × GWP 28 ≈ 20.08 kg CO₂e/m³. Convert ventilation air to CH₄ first, then tCO₂e = m³ CH₄ × 20.08 ÷ 1,000.`,
     IPCC_URL,
+    { method: 'gwp' },
   ),
+
+  factor(
+    'wtt_electricity_td_kwh',
+    'WTT — UK electricity T&D',
+    'WTT energy',
+    'Scope 3',
+    0.00359,
+    'kWh',
+    'DESNZ',
+    `${DESNZ} WTT- UK electricity (T&D). Separate from T&D losses (electricity_td_kwh = 0.01299) and WTT generation (0.03682).`,
+    GOV_URL,
+  ),
+  factor(
+    'heat_td_kwh',
+    'District heat and steam distribution losses (5%)',
+    'Heat and steam',
+    'Scope 3',
+    0.00945,
+    'kWh',
+    'DESNZ',
+    `${DESNZ} Distribution - district heat & steam, 5% loss.`,
+    GOV_URL,
+  ),
+  factor(
+    'freight_road_rigid_tkm',
+    'Road freight (average non-refrigerated rigids)',
+    'Road freight',
+    'Scope 3',
+    0.19947,
+    'tkm',
+    'DEFRA',
+    `${DEFRA} Freighting goods — average non-refrigerated rigids, average laden.`,
+    GOV_URL,
+  ),
+  factor(
+    'freight_road_artic_tkm',
+    'Road freight (average non-refrigerated artics)',
+    'Road freight',
+    'Scope 3',
+    0.07926,
+    'tkm',
+    'DEFRA',
+    `${DEFRA} Freighting goods — average non-refrigerated artics, average laden.`,
+    GOV_URL,
+  ),
+  factor(
+    'freight_van_tkm',
+    'Van freight (average up to 3.5 t)',
+    'Road freight',
+    'Scope 3',
+    0.63511,
+    'tkm',
+    'DEFRA',
+    `${DEFRA} Freighting goods — vans, average (up to 3.5 tonnes).`,
+    GOV_URL,
+  ),
+  factor(
+    'freight_sea_bulk_tkm',
+    'Sea freight (bulk carrier, average)',
+    'Sea freight',
+    'Scope 3',
+    0.00353,
+    'tkm',
+    'DEFRA',
+    `${DEFRA} Freighting goods — cargo ship, bulk carrier, average.`,
+    GOV_URL,
+  ),
+  factor(
+    'freight_sea_roro_tkm',
+    'Sea freight (RoRo ferry, average)',
+    'Sea freight',
+    'Scope 3',
+    0.05158,
+    'tkm',
+    'DEFRA',
+    `${DEFRA} Freighting goods — cargo ship, RoRo-Ferry, average.`,
+    GOV_URL,
+  ),
+  factor(
+    'freight_air_tkm_no_rf',
+    'Air freight (short-haul, without RF)',
+    'Air freight',
+    'Scope 3',
+    0.75539,
+    'tkm',
+    'DEFRA',
+    `${DEFRA} Freighting goods — freight flights, short-haul, without radiative forcing.`,
+    GOV_URL,
+  ),
+  factor(
+    'car_diesel_km',
+    'Average car (diesel)',
+    'Passenger vehicles',
+    'Scope 3',
+    0.17265,
+    'km',
+    'DEFRA',
+    `${DEFRA} Passenger vehicles — average car, diesel.`,
+    GOV_URL,
+  ),
+  factor(
+    'car_petrol_km',
+    'Average car (petrol)',
+    'Passenger vehicles',
+    'Scope 3',
+    0.16152,
+    'km',
+    'DEFRA',
+    `${DEFRA} Passenger vehicles — average car, petrol.`,
+    GOV_URL,
+  ),
+
+  ...buildCedaFactors({ year: YEAR, verifiedAt: VERIFIED }),
+  ...buildEpaFactors({ year: YEAR, verifiedAt: VERIFIED }),
 ]
 
 export const PLACEHOLDER_FACTORS = FACTOR_CATALOG

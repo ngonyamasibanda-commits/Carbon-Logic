@@ -25,6 +25,26 @@ export function formatTco2e(value: number, withUnit = false): string {
   return withUnit ? `${formatted} tCO₂e` : formatted
 }
 
+/**
+ * Published conversion factors and calculator working. KPI cards stay on
+ * {@link formatNumber}; this keeps DESNZ digits (1.27043, 2.58354, 0.855928…)
+ * so the working does not look like 1,000 × 2.584 = 2,583.54.
+ */
+export function formatFactor(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  if (value === 0) return '0'
+  const abs = Math.abs(value)
+  return value.toLocaleString('en-GB', {
+    maximumFractionDigits: 12,
+    minimumFractionDigits: 0,
+    useGrouping: abs >= 1000,
+  })
+}
+
+export function formatWorkingTco2e(value: number): string {
+  return `${formatFactor(value)} tCO₂e`
+}
+
 export function formatPercent(value: number, digits = 1): string {
   if (!Number.isFinite(value)) return '—'
   return `${value.toLocaleString('en-GB', {

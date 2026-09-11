@@ -107,7 +107,9 @@ export function dualFromActivity(input: {
 export function instrumentFromForm(source: string, marketInstrument: string): MarketInstrument {
   if (source.toLowerCase().includes('renewable')) return 'onsite-renewable'
   const value = marketInstrument.toLowerCase()
-  if (value.includes('rego') || value.includes('100%')) return 'rego'
+  if (value.includes('rego') || value.includes('goo') || /\brec\b/.test(value) || value.includes('100%')) {
+    return 'rego'
+  }
   if (value.includes('supplier')) return 'supplier-specific'
   return 'residual-mix'
 }

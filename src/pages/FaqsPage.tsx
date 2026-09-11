@@ -2,7 +2,7 @@ export default function FaqsPage() {
   const items = [
     {
       q: 'How is tCO₂e calculated?',
-      a: 'Every entry uses (Activity Amount × Conversion Value) / 1000. Conversion values are kg CO₂e per unit, loaded from the emission factors database. Combined Results and Analysis show GHG Protocol totals, not the calculation working for each row.',
+      a: 'Each activity has its own conversion steps, then the DESNZ kg-to-tonne step. Freight is tonnes × km (tkm). Flights and taxis are passengers × km (pkm). Commuting is one-way × people × days × 2. Waste and materials use published kg CO₂e per tonne. UK spend uses kg CO₂e per £; CEDA spend converts currency, price year, and purchaser prices first. Refrigerants and methane use GWP. Electricity can add T&D and well-to-tank as separate Scope 3 lines; water can add treatment. The last line is always tCO₂e = activity × (kg CO₂e per unit) ÷ 1,000. The form shows the working before you save.',
     },
     {
       q: 'Which activities are in Scope 1, 2, and 3?',
@@ -10,7 +10,7 @@ export default function FaqsPage() {
     },
     {
       q: 'Where do emission factors come from?',
-      a: 'Fuel, energy, freight, waste, water, travel, and most construction-material factors come from the DEFRA/DESNZ UK GHG Conversion Factors 2026 (published 11 June 2026, flat file revised 31 July 2026). Steel, rebar, cement, aluminium, copper, and lime have no DESNZ row — paste a supplier EPD (EN 15804 A1–A3) on Bulk Materials or import an EPD spreadsheet on Emission factors. Spend-based factors use Defra SIC-19 multipliers to 2023 (published 30 June 2026). Mine methane uses IPCC AR5 GWP 28. Explosives combustion uses the Australian NPI explosives detonation mass-balance factors. All factors show their source, source family, and verification date.',
+      a: 'Fuel, energy, freight, waste, water, travel, and most construction-material factors come from the DEFRA/DESNZ UK GHG Conversion Factors 2026 (published 11 June 2026, flat file revised 31 July 2026). US electricity, US steam, and AR6 refrigerant GWPs come from the EPA Emission Factors Hub (26 May 2026) and are labelled as US rows — they do not overwrite UK DESNZ keys. Steel, rebar, cement, aluminium, copper, and lime have no DESNZ row — paste a supplier EPD (EN 15804 A1–A3) on Bulk Materials. Spend-based factors are either Defra SIC-19 (kg CO₂e per £) or Open CEDA by Watershed (kg CO₂e per 2023 USD, with £ converted at the CEDA 2025 FX rate). Mine methane defaults to IPCC AR5 GWP 28; EPA Hub 2026 fossil methane GWP 29.8 is an optional US/AR6 row. Explosives combustion uses the Australian NPI mass-balance defaults.',
     },
     {
       q: 'Can I log data by project site?',
@@ -49,20 +49,16 @@ export default function FaqsPage() {
       a: 'Those materials need a supplier Environmental Product Declaration (EPD). On Bulk Materials, choose the material (marked EPD required), paste the A1–A3 GWP, and name the EPD. Admins can also download the EPD template on Emission factors and import several products at once. Do not guess a generic ICE number — this app does not ship ICE values.',
     },
     {
-      q: 'What does €6,000 per year include?',
-      a: 'The Professional plan is €6,000 per organisation per year, sold on an order form. It covers unlimited colleagues in that organisation, the DESNZ/DEFRA 2026 library, supplier EPDs, dual Scope 2, year-end close, SECR and PPN 06/21 packs, the SBTi modeller, and CSV/PDF exports. It does not include a third-party verification opinion or file hosting for invoices.',
-    },
-    {
       q: 'Can I change activities after year-end?',
       a: 'Yes, until an administrator closes the reporting year on Organisation settings. A closed year rejects new logs, deletes, and bulk uploads. Reopening a year is written to the activity log. That is how the inventory stays defensible for SECR and customer questionnaires.',
     },
     {
       q: 'How do location-based and market-based Scope 2 differ?',
-      a: 'Location-based always uses the DESNZ UK grid generation factor. Market-based uses the instrument on the electricity activity: a supplier-specific kg CO₂e/kWh from the bill or PPA, a REGO / 100% renewable tariff (zero Scope 2), or the GB residual mix from Organisation settings. SECR requires both figures. Carbon Logic does not invent a residual-mix factor — paste the AIB number when you have it.',
+      a: 'Location-based uses the grid generation factor for the electricity source you selected (UK DESNZ 0.13096 kg/kWh, or US eGRID 2024 average from EPA Hub 2026). Market-based follows the GHG Protocol hierarchy: supplier-specific kg CO₂e/kWh from the bill or PPA; a retired REGO, GoO, or REC (zero Scope 2 for matched kWh); residual mix from Organisation settings; location-based if no residual mix is set. T&D losses are a separate Scope 3 line. SECR requires both Scope 2 figures. Carbon Logic does not invent a residual-mix factor — paste the AIB number when you have it.',
     },
     {
       q: 'Can I use spend-based factors for Scope 3?',
-      a: 'Yes — Purchased Goods & Services uses Defra’s spend-based SIC-19 multipliers (kg CO₂e per £, shown in the catalogue as kg CO₂e per £1,000). Activity-based methods (material weights, fuel volumes, tkm) are always more accurate and should be preferred when data is available.',
+      a: 'Yes, when you do not have activity data. Purchased Goods & Services can use Defra’s SIC-19 multipliers as kg CO₂e per pound (tCO₂e = £ × kg/£ ÷ 1,000), or Open CEDA by Watershed sector multipliers as kg CO₂e per 2023 producer-price US dollar. GBP spend on a CEDA row is converted at 0.765396 GBP per USD, deflated with the 2025 sector price index, and adjusted from purchaser to producer price using the ratios in the same CEDA workbook. Do not mix £ and $ on one factor. Activity-based methods (material weights, fuel volumes, tkm) are more accurate and should be preferred when data is available. CEDA is not a substitute for a steel or cement EPD.',
     },
   ]
 

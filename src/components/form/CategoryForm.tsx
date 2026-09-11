@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { CloudUpload, Grid2x2, Play } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
-import { adjacentCategory } from '../../lib/categories'
-import { calculateTco2e, lookupFactor } from '../../lib/calculate'
+import { adjacentCategory, unitOptionsFor } from '../../lib/categories'
+import { lookupFactor } from '../../lib/calculate'
+import { workingFromForm, computeWorking } from '../../lib/emissions'
 import {
   conversionToPerTonne,
   epdMaterialForKey,
@@ -11,7 +12,7 @@ import {
   isEpdRequiredOption,
   EPD_DECLARED_UNITS,
 } from '../../lib/epd-materials'
-import { formatNumber, formatTco2e } from '../../lib/format'
+import { formatFactor, formatTco2e } from '../../lib/format'
 import { CATEGORY_ICONS } from '../../lib/icons'
 import { useEntries } from '../../lib/entries-context'
 import { useAuth } from '../../lib/auth-context'
@@ -81,6 +82,28 @@ export default function CategoryForm({ category }: Props) {
     [entries, category.id],
   )
   const activityYearLocked = isYearLocked(profile.lockedYears, yearFromIsoDate(additional.activity_date))
+  const liveUnits = unitOptionsFor(category, values) ?? category.unitOptions
+
+  const liveFactorKey = category.resolveFactorKey(values)
+  const liveCustom = Number(values.conversion) || undefined
+  const liveFactor = lookupFactor(factors, liveFactorKey, liveCustom)
+  const liveWorking =
+    liveFactor && Number(values[category.amountField] || values.amount)
+      ? workingFromForm(category, values, liveFactor)
+      : null
+
+  useEffect(() => {
+    const options = unitOptionsFor(category, values)
+    if (!options?.length) return
+    if (options.some((row) => row.value === values.unit)) return
+    setValues((prev) => ({
+      ...prev,
+      unit: options[0].value,
+      unit_factor: String(options[0].toBase),
+    }))
+    // only when fuel/source selection changes the unit set
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values.fuel, values.source, category.id])
 
   function setField(key: string, value: string) {
     setValues((prevValues) => ({ ...prevValues, [key]: value }))
@@ -90,19 +113,6 @@ export default function CategoryForm({ category }: Props) {
     event.preventDefault()
     setError(null)
     setMessage(null)
-
-    const rawAmount = Number(values[category.amountField] ?? values.amount)
-    // Apply category-level unit conversion (e.g. m³ → L when factor expects L)
-    const unitFactor = Number(values['unit_factor'] ?? 1) || 1
-    const amount = rawAmount * unitFactor
-    const activityAmount = category.resolveActivityAmount
-      ? category.resolveActivityAmount(values, amount)
-      : amount
-
-    if (!Number.isFinite(activityAmount) || activityAmount <= 0) {
-      setError('Enter a valid activity amount greater than zero.')
-      return
-    }
 
     const factorKey = category.resolveFactorKey(values)
     const needsEpd = isEpdRequiredKey(factorKey) && isEpdRequiredOption(values.material || '')
@@ -132,7 +142,13 @@ export default function CategoryForm({ category }: Props) {
       return
     }
 
-    const totalTco2e = calculateTco2e(activityAmount, factor.conversionValue)
+    const working = workingFromForm(category, values, factor)
+    if (working.error || !Number.isFinite(working.tco2e) || working.tco2e < 0 || working.activityAmount <= 0) {
+      setError(working.error ?? 'Enter a valid activity amount greater than zero.')
+      return
+    }
+    const activityAmount = working.activityAmount
+    const totalTco2e = working.tco2e
     const activityYear = yearFromIsoDate(additional.activity_date)
     if (isYearLocked(profile.lockedYears, activityYear)) {
       setError(
@@ -145,8 +161,7 @@ export default function CategoryForm({ category }: Props) {
     let detailsExtra = ''
     let customFields = additional.customFields
     if (category.id === 'site_electricity') {
-      const grid = lookupFactor(factors, 'electricity_grid_kwh')
-      const locationKg = factor.key === 'electricity_renewable_kwh' ? 0 : (grid?.conversionValue ?? factor.conversionValue)
+      const locationKg = factor.key === 'electricity_renewable_kwh' ? 0 : factor.conversionValue
       const instrument = instrumentFromForm(values.source || '', values.market_instrument || '')
       const dual = dualFromActivity({
         kwh: activityAmount,
@@ -189,7 +204,7 @@ export default function CategoryForm({ category }: Props) {
         emissions_tco2e: emissions,
         details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
-        } | ${formatNumber(activityAmount)} ${factor.unit} × ${formatNumber(factor.conversionValue)} kg CO₂e/${factor.unit} ÷ 1000 = ${formatTco2e(emissions, true)} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})${detailsExtra}`,
+        } | ${working.formula} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})${detailsExtra}`,
         amount: activityAmount,
         unit: category.resolveUnit(values),
         link: additional.link,
@@ -200,7 +215,76 @@ export default function CategoryForm({ category }: Props) {
         files: [],
         activity_date: additional.activity_date,
       })
-      setMessage(`Added ${formatTco2e(emissions, true)} to your footprint.`)
+      const extras: string[] = []
+      if (values.include_td === '1' && factor.tdKey) {
+        const td = lookupFactor(factors, factor.tdKey)
+        if (td) {
+          const extra = computeWorking(td, activityAmount)
+          await addEntry({
+            category: category.id,
+            scope: td.scope,
+            emissions_tco2e: extra.tco2e,
+            details: `T&D chain for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${td.name}`,
+            amount: activityAmount,
+            unit: td.unit,
+            link: additional.link,
+            comment: additional.comment,
+            site: additional.site,
+            tags: additional.tags,
+            customFields: additional.customFields,
+            files: [],
+            activity_date: additional.activity_date,
+          })
+          extras.push(`T&D ${formatTco2e(extra.tco2e, true)}`)
+        }
+      }
+      if (values.include_wtt === '1' && factor.wttKey) {
+        const wtt = lookupFactor(factors, factor.wttKey)
+        if (wtt) {
+          const extra = computeWorking(wtt, activityAmount)
+          await addEntry({
+            category: category.id,
+            scope: wtt.scope,
+            emissions_tco2e: extra.tco2e,
+            details: `WTT chain for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${wtt.name}`,
+            amount: activityAmount,
+            unit: wtt.unit,
+            link: additional.link,
+            comment: additional.comment,
+            site: additional.site,
+            tags: additional.tags,
+            customFields: additional.customFields,
+            files: [],
+            activity_date: additional.activity_date,
+          })
+          extras.push(`WTT ${formatTco2e(extra.tco2e, true)}`)
+        }
+      }
+      if (values.include_treatment === '1' && category.chainExtras?.includes('treatment')) {
+        const treatment = lookupFactor(factors, 'wastewater_m3')
+        if (treatment) {
+          const extra = computeWorking(treatment, activityAmount)
+          await addEntry({
+            category: 'wastewater',
+            scope: treatment.scope,
+            emissions_tco2e: extra.tco2e,
+            details: `Water treatment chain for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${treatment.name}`,
+            amount: activityAmount,
+            unit: treatment.unit,
+            link: additional.link,
+            comment: additional.comment,
+            site: additional.site,
+            tags: additional.tags,
+            customFields: additional.customFields,
+            files: [],
+            activity_date: additional.activity_date,
+          })
+          extras.push(`treatment ${formatTco2e(extra.tco2e, true)}`)
+        }
+      }
+      setMessage(
+        `Added ${formatTco2e(emissions, true)} to your footprint${extras.length ? `; also ${extras.join(', ')}` : ''}.`,
+      )
       setValues(defaultValues)
       setAdditional(emptyAdditional())
     } catch (err) {
@@ -270,7 +354,15 @@ export default function CategoryForm({ category }: Props) {
                 </Callout>
               </div>
             ) : null}
-            {category.fields.map((field) => (
+            {category.fields.map((field) => {
+              if (field.key === 'hotel_country' && values.type !== 'Hotel') return null
+              if (field.key === 'passengers' && values.type === 'Hotel') return null
+              if (field.key === 'ceda_sector' && !(values.spend_source || '').includes('CEDA')) return null
+              if (field.key === 'spend_currency' && !(values.spend_source || '').includes('CEDA')) return null
+              if (field.key === 'type' && category.id === 'purchased_goods' && (values.spend_source || '').includes('CEDA')) {
+                return null
+              }
+              return (
               <label key={field.key} className="block text-sm font-semibold text-ink">
                 {field.label}
                 {field.type === 'select' ? (
@@ -278,7 +370,7 @@ export default function CategoryForm({ category }: Props) {
                     value={values[field.key] ?? ''}
                     onChange={(event) => setField(field.key, event.target.value)}
                     className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
-                    required
+                    required={!field.optional && field.key !== 'rf'}
                   >
                     <option value="">Select an option</option>
                     {field.options?.map((option) => (
@@ -333,14 +425,14 @@ export default function CategoryForm({ category }: Props) {
                     placeholder={field.placeholder}
                     onChange={(event) => setField(field.key, event.target.value)}
                     className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
-                    required
+                    required={!field.optional && field.key !== 'passengers'}
                   />
                 )}
                 {field.hint ? (
                   <span className="mt-1 block text-xs font-normal text-muted">{field.hint}</span>
                 ) : null}
               </label>
-            ))}
+            )})}
             {category.id === 'site_electricity' &&
             (values.source || '').toLowerCase().includes('purchased') ? (
               <Scope2MarketFields
@@ -359,13 +451,13 @@ export default function CategoryForm({ category }: Props) {
               />
             ) : null}
             {/* Category-level unit selector (for single-amount categories) */}
-            {category.unitOptions?.length ? (
+            {liveUnits?.length ? (
               <label className="block text-sm font-semibold text-ink">
                 Unit of measure
                 <select
-                  value={values['unit'] ?? category.unitOptions[0].value}
+                  value={values['unit'] ?? liveUnits[0].value}
                   onChange={(event) => {
-                    const chosen = category.unitOptions!.find(
+                    const chosen = liveUnits.find(
                       (u) => u.value === event.target.value,
                     )
                     setField('unit', event.target.value)
@@ -373,16 +465,70 @@ export default function CategoryForm({ category }: Props) {
                   }}
                   className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
                 >
-                  {category.unitOptions.map((u) => (
+                  {liveUnits.map((u) => (
                     <option key={u.value} value={u.value}>
                       {u.label}
                     </option>
                   ))}
                 </select>
                 <span className="mt-1 block text-xs font-normal text-muted">
-                  Values will be converted to the factor&apos;s base unit before calculation.
+                  Converted to the published factor unit ({liveFactor?.unit || category.amountLabel}) before the kg→tonne step.
                 </span>
               </label>
+            ) : null}
+            {category.chainExtras?.includes('td') ? (
+              <label className="flex items-start gap-2 text-sm font-normal text-ink">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={values.include_td === '1'}
+                  onChange={(event) => setField('include_td', event.target.checked ? '1' : '0')}
+                />
+                Also add transmission and distribution losses as a separate Scope 3 line (same kWh ×
+                the matching T&D factor ÷ 1,000). EPA eGRID notes T&D is Category 3, not Scope 2.
+              </label>
+            ) : null}
+            {category.chainExtras?.includes('wtt') ? (
+              <label className="flex items-start gap-2 text-sm font-normal text-ink">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={values.include_wtt === '1'}
+                  onChange={(event) => setField('include_wtt', event.target.checked ? '1' : '0')}
+                />
+                Also add well-to-tank (fuel/electricity supply chain) as a separate Scope 3 line.
+              </label>
+            ) : null}
+            {category.chainExtras?.includes('treatment') ? (
+              <label className="flex items-start gap-2 text-sm font-normal text-ink">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={values.include_treatment === '1'}
+                  onChange={(event) => setField('include_treatment', event.target.checked ? '1' : '0')}
+                />
+                Also add wastewater treatment as a separate Scope 3 line (same m³ × DESNZ water
+                treatment 0.17088 ÷ 1,000). DESNZ water supply alone is not the full water picture.
+              </label>
+            ) : null}
+            {liveWorking && !liveWorking.error && liveWorking.activityAmount > 0 ? (
+              <div className="rounded-md border border-brand/30 bg-brand-soft/40 p-3 text-sm">
+                <p className="font-semibold text-ink">Calculation working</p>
+                <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted">
+                  {liveWorking.steps.map((step) => (
+                    <li key={step.label}>
+                      <span className="text-ink">{step.label}:</span> {step.value}
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-2 font-medium text-brand">{liveWorking.formula}</p>
+                {liveFactor && /CEDA by Watershed/i.test(liveFactor.source) ? (
+                  <p className="mt-2 text-xs text-muted">
+                    Spend-based EEIO factors: CEDA by Watershed (CEDA 2025, CC BY-SA 4.0). Not an
+                    A1–A3 material EPD.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </form>
 
@@ -479,8 +625,11 @@ function Scope2MarketFields({
   return (
     <div className="space-y-3 rounded-md border border-brand/30 bg-brand-soft/40 p-3">
       <Callout tone="info">
-        Location-based Scope 2 always uses the DESNZ 2026 UK grid factor. Market-based Scope 2 uses
-        the instrument below, as required for SECR dual reporting.
+        Location-based Scope 2 uses the grid generation factor for the source you selected (UK
+        DESNZ or US eGRID). Market-based Scope 2 follows the GHG Protocol hierarchy: supplier-
+        specific factor if you have a bill or PPA; otherwise a retired REGO, GoO, or REC (0 kg/kWh
+        for matched consumption); otherwise residual mix; location-based if no residual mix is set.
+        SECR requires both figures.
       </Callout>
       <label className="block text-sm font-semibold text-ink">
         Market-based instrument
@@ -495,7 +644,9 @@ function Scope2MarketFields({
           <option value="Supplier-specific factor (bill / PPA)">
             Supplier-specific factor (bill / PPA)
           </option>
-          <option value="REGO or 100% renewable tariff">REGO or 100% renewable tariff</option>
+          <option value="REGO / GoO / REC or 100% renewable tariff">
+            REGO / GoO / REC or 100% renewable tariff
+          </option>
         </select>
       </label>
       {instrument.toLowerCase().includes('supplier') ? (
@@ -543,7 +694,7 @@ function EpdFields({
       <Callout tone="info">
         Using your organisation factor for {spec?.name ?? existing.name}:{' '}
         <span className="font-semibold tabular-nums">
-          {formatNumber(existing.conversionValue)} kg CO₂e/t
+          {formatFactor(existing.conversionValue)} kg CO₂e/t
         </span>
         {existing.source ? ` — ${existing.source}` : ''}. To use a different EPD, edit this key on{' '}
         <Link to="/factors" className="font-semibold underline">
