@@ -61,6 +61,11 @@ if (waste) {
     Math.abs(tonnes.tco2e - 0.00127043) < 1e-12,
     String(tonnes.tco2e),
   )
+  check(
+    'waste working shows the published 1.27043 factor, not a 3-decimal 1.27',
+    tonnes.formula.includes('1.27043') && tonnes.formula.includes('0.00127043'),
+    tonnes.formula,
+  )
   const kg = workingFromForm(
     waste,
     { route: 'Landfill', amount: '1000', unit: 'kg', unit_factor: '0.001' },

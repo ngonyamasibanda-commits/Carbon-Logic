@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { downloadText } from '../lib/export'
 import { epdTemplateCsv, EPD_REQUIRED_MATERIALS } from '../lib/epd-materials'
-import { formatNumber } from '../lib/format'
+import { formatFactor } from '../lib/format'
 import { factorsToCsv, monthsStale, parseFactorSpreadsheet } from '../lib/factors-store'
 import { safeHttpUrl } from '../lib/safe'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from '../lib/types'
@@ -280,7 +280,7 @@ export default function FactorsPage() {
                 <td className="px-3 py-2 font-mono text-xs">{factor.key}</td>
                 <td className="px-3 py-2">{factor.category}</td>
                 <td className="px-3 py-2">{factor.scope}</td>
-                <td className="px-3 py-2 tabular-nums">{formatNumber(factor.conversionValue)}</td>
+                <td className="px-3 py-2 tabular-nums">{formatFactor(factor.conversionValue)}</td>
                 <td className="px-3 py-2">{factor.unit}</td>
                 <td className="px-3 py-2">
                   <span

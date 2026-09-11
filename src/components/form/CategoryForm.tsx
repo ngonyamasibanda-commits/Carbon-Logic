@@ -12,7 +12,7 @@ import {
   isEpdRequiredOption,
   EPD_DECLARED_UNITS,
 } from '../../lib/epd-materials'
-import { formatNumber, formatTco2e } from '../../lib/format'
+import { formatFactor, formatTco2e } from '../../lib/format'
 import { CATEGORY_ICONS } from '../../lib/icons'
 import { useEntries } from '../../lib/entries-context'
 import { useAuth } from '../../lib/auth-context'
@@ -644,7 +644,7 @@ function EpdFields({
       <Callout tone="info">
         Using your organisation factor for {spec?.name ?? existing.name}:{' '}
         <span className="font-semibold tabular-nums">
-          {formatNumber(existing.conversionValue)} kg CO₂e/t
+          {formatFactor(existing.conversionValue)} kg CO₂e/t
         </span>
         {existing.source ? ` — ${existing.source}` : ''}. To use a different EPD, edit this key on{' '}
         <Link to="/factors" className="font-semibold underline">

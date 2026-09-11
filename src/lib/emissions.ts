@@ -1,5 +1,5 @@
 import type { CategoryConfig, EmissionFactor, FactorMethod } from './types'
-import { formatNumber, formatTco2e } from './format'
+import { formatFactor, formatNumber, formatWorkingTco2e } from './format'
 
 export type CalcStep = {
   label: string
@@ -67,21 +67,21 @@ export function computeWorking(factor: EmissionFactor, activityInFactorUnit: num
         method === 'gwp'
           ? `GWP (kg CO₂e per kg of gas)`
           : `Published factor (kg CO₂e / ${factor.unit})`,
-      value: formatNumber(factor.conversionValue),
+      value: formatFactor(factor.conversionValue),
     },
     {
       label: 'kg CO₂e',
-      value: `${formatNumber(activityInFactorUnit)} × ${formatNumber(factor.conversionValue)} = ${formatNumber(kg)}`,
+      value: `${formatFactor(activityInFactorUnit)} × ${formatFactor(factor.conversionValue)} = ${formatFactor(kg)}`,
     },
     {
       label: 'Convert kg to tonnes (÷ 1,000)',
-      value: formatTco2e(tco2e, true),
+      value: formatWorkingTco2e(tco2e),
     },
   ]
   const formula =
     method === 'gwp'
-      ? `tCO₂e = mass × GWP ÷ 1,000 = ${formatNumber(activityInFactorUnit)} ${factor.unit} × ${formatNumber(factor.conversionValue)} ÷ 1,000 = ${formatTco2e(tco2e, true)}`
-      : `tCO₂e = activity × (kg CO₂e / ${factor.unit}) ÷ 1,000 = ${formatNumber(activityInFactorUnit)} × ${formatNumber(factor.conversionValue)} ÷ 1,000 = ${formatTco2e(tco2e, true)}`
+      ? `tCO₂e = mass × GWP ÷ 1,000 = ${formatFactor(activityInFactorUnit)} ${factor.unit} × ${formatFactor(factor.conversionValue)} ÷ 1,000 = ${formatWorkingTco2e(tco2e)}`
+      : `tCO₂e = activity × (kg CO₂e / ${factor.unit}) ÷ 1,000 = ${formatFactor(activityInFactorUnit)} × ${formatFactor(factor.conversionValue)} ÷ 1,000 = ${formatWorkingTco2e(tco2e)}`
   return {
     tco2e,
     kgCo2e: kg,
