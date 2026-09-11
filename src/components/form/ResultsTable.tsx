@@ -64,7 +64,7 @@ export default function ResultsTable({ entries, onDelete, lockedYears = [], canD
                       ) : null}
                       {entry.id.startsWith('local-') || entry.id.startsWith('pending-') ? (
                         <div className="mt-1 text-[11px] font-normal text-amber-800">
-                          Saving to organisation…
+                          On this device only — not yet in the organisation database
                         </div>
                       ) : null}
                     </td>

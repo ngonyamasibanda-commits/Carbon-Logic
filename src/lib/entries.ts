@@ -51,11 +51,11 @@ function fromRow(row: Record<string, unknown>): EmissionEntry {
       : []
   const entry = applyMeta({
     id: String(row.id),
-    category: String(row.category ?? ''),
+    category: String(row.category ?? row.activity_type ?? ''),
     scope: String(row.scope ?? ''),
-    emissions_tco2e: Number(row.emissions_tco2e) || 0,
+    emissions_tco2e: Number(row.emissions_tco2e ?? row.emissions) || 0,
     details: String(row.details ?? ''),
-    amount: row.amount == null ? null : Number(row.amount),
+    amount: row.amount == null && row.activity_amount == null ? null : Number(row.amount ?? row.activity_amount),
     unit: String(row.unit ?? ''),
     comment: String(row.comment ?? ''),
     link: String(row.link ?? ''),
