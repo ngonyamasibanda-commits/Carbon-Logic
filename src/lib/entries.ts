@@ -1,6 +1,7 @@
 import { isLocalOrganizationId } from './auth'
 import { readJson, writeJson } from './browser-storage'
 import { applyMeta, deleteEntryMeta, setEntryMeta } from './entry-meta'
+import { parseScope2Meta } from './scope2'
 import {
   PermissionDeniedError,
   RateLimitError,
@@ -43,7 +44,12 @@ function lightEntry(entry: EmissionEntry): EmissionEntry {
 function fromRow(row: Record<string, unknown>): EmissionEntry {
   const organizationId = row.organization_id ?? row.organizationId
   const activityDate = row.activity_date ? String(row.activity_date).slice(0, 10) : undefined
-  return applyMeta({
+  const customFields = Array.isArray(row.custom_fields)
+    ? (row.custom_fields as EmissionEntry['customFields'])
+    : Array.isArray(row.customFields)
+      ? (row.customFields as EmissionEntry['customFields'])
+      : []
+  const entry = applyMeta({
     id: String(row.id),
     category: String(row.category ?? ''),
     scope: String(row.scope ?? ''),
@@ -56,13 +62,12 @@ function fromRow(row: Record<string, unknown>): EmissionEntry {
     created_at: String(row.created_at ?? new Date().toISOString()),
     site: String(row.site ?? ''),
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
-    customFields: Array.isArray(row.custom_fields)
-      ? (row.custom_fields as EmissionEntry['customFields'])
-      : [],
+    customFields,
     files: [],
     activity_date: activityDate,
     organization_id: organizationId ? String(organizationId) : undefined,
   })
+  return { ...entry, scope2: parseScope2Meta(entry.customFields) }
 }
 
 function asEntry(row: unknown): EmissionEntry | null {
@@ -85,7 +90,10 @@ export function parseRpcRow(data: unknown): EmissionEntry | null {
 }
 
 function hydrate(rows: EmissionEntry[]): EmissionEntry[] {
-  return rows.map((row) => applyMeta({ ...extrasFrom(row), ...row, files: [] }))
+  return rows.map((row) => {
+    const next = applyMeta({ ...extrasFrom(row), ...row, files: [] })
+    return { ...next, scope2: parseScope2Meta(next.customFields) }
+  })
 }
 
 function readOrgLocal(organizationId: string): EmissionEntry[] {

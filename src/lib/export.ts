@@ -1,7 +1,10 @@
 import { getCategory } from './categories'
+import { completenessForYear } from './completeness'
 import { entryActivityDate } from './entry-date'
 import { summarizeInventory, type InventorySummary } from './ghg'
+import type { OrgProfile } from './org'
 import { escapeHtml } from './safe'
+import { parseScope2Meta, summarizeScope2 } from './scope2'
 import { formatCsvNumber, formatNumber, formatPercent, formatTco2e } from './format'
 import type { EmissionEntry } from './types'
 
@@ -23,9 +26,14 @@ export function entriesToCsv(entries: EmissionEntry[]) {
     'Comment',
     'Tags',
     'Link',
+    'Evidence',
+    'Scope2_location_tCO2e',
+    'Scope2_market_tCO2e',
+    'Market_instrument',
   ]
-  const rows = entries.map((entry) =>
-    [
+  const rows = entries.map((entry) => {
+    const scope2 = entry.scope2 ?? parseScope2Meta(entry.customFields)
+    return [
       entryActivityDate(entry),
       getCategory(entry.category)?.name ?? entry.category,
       entry.scope,
@@ -37,8 +45,12 @@ export function entriesToCsv(entries: EmissionEntry[]) {
       entry.comment,
       entry.tags.join('; '),
       entry.link,
-    ].map((value) => csvEscape(String(value))),
-  )
+      entry.link.trim() ? 'Yes' : 'No',
+      scope2 ? formatCsvNumber(scope2.locationTco2e) : '',
+      scope2 ? formatCsvNumber(scope2.marketTco2e) : '',
+      scope2?.instrument ?? '',
+    ].map((value) => csvEscape(String(value)))
+  })
   return [header.join(','), ...rows.map((row) => row.join(','))].join('\n')
 }
 
@@ -79,6 +91,45 @@ export function downloadInventoryCsv(filename: string, entries: EmissionEntry[])
 export type ReportContext = {
   organizationName: string
   revenue?: number
+  year?: number
+  employeeCount?: number
+  baselineTco2e?: number
+  residualMixKg?: number
+  country?: string
+  locked?: boolean
+  netZeroYear?: number
+  profile?: OrgProfile
+}
+
+export function auditorPackCsv(entries: EmissionEntry[], context: ReportContext) {
+  const year = context.year ?? new Date().getFullYear()
+  const summary = summarizeInventory(entries)
+  const dual = summarizeScope2(entries, context.residualMixKg ?? 0, 0.13096)
+  const complete = context.profile
+    ? completenessForYear({
+        entries,
+        sites: [],
+        profile: context.profile,
+        year,
+      })
+    : null
+  const lines = [
+    `# Carbon Logic auditor pack`,
+    `# Organisation,${csvEscape(context.organizationName)}`,
+    `# Reporting year,${year}`,
+    `# Generated,${new Date().toISOString()}`,
+    `# Total tCO2e,${formatCsvNumber(summary.total)}`,
+    `# Scope 1,${formatCsvNumber(summary.scope1)}`,
+    `# Scope 2 location-based,${formatCsvNumber(dual.locationTco2e || summary.scope2)}`,
+    `# Scope 2 market-based,${formatCsvNumber(dual.marketTco2e)}`,
+    `# Scope 3,${formatCsvNumber(summary.scope3)}`,
+    `# Electricity kWh,${formatCsvNumber(dual.electricityKwh)}`,
+    complete ? `# Completeness score,${formatCsvNumber(complete.score * 100)}` : '',
+    `# Closed year,${context.locked ? 'yes' : 'no'}`,
+    '',
+    entriesToCsv(entries),
+  ]
+  return lines.filter((line) => line !== '').join('\n')
 }
 
 const REPORT_CSS = `
@@ -141,20 +192,22 @@ function inventoryTable(summary: InventorySummary) {
 
 export function printInventoryReport(entries: EmissionEntry[], context: ReportContext) {
   const summary = summarizeInventory(entries)
+  const dual = summarizeScope2(entries, context.residualMixKg ?? 0, 0.13096)
   const org = context.organizationName || 'Organisation'
+  const yearLabel = context.year ? String(context.year) : 'all years'
   const generated = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   const body = `
     <p class="kicker">Carbon Logic · GHG inventory</p>
     <h1>${escapeHtml(org)}</h1>
-    <p class="muted">Combined results for reporting · ${escapeHtml(generated)} · ${summary.entryCount} logged ${summary.entryCount === 1 ? 'activity' : 'activities'}</p>
+    <p class="muted">Combined results for reporting · ${escapeHtml(yearLabel)} · ${escapeHtml(generated)} · ${summary.entryCount} logged ${summary.entryCount === 1 ? 'activity' : 'activities'}${context.locked ? ' · year closed' : ''}</p>
     <div class="hero">
       ${kpi('Total reported', formatTco2e(summary.total, true))}
       ${kpi('Scope 1 (owned fuel & leaks)', formatTco2e(summary.scope1, true))}
-      ${kpi('Scope 2 (bought energy)', formatTco2e(summary.scope2, true))}
-      ${kpi('Scope 3 (value chain)', formatTco2e(summary.scope3, true))}
+      ${kpi('Scope 2 location-based', formatTco2e(dual.locationTco2e || summary.scope2, true))}
+      ${kpi('Scope 2 market-based', formatTco2e(dual.marketTco2e, true))}
     </div>
     <h2>How to read this report</h2>
-    <p>Figures are tonnes of carbon dioxide equivalent (tCO₂e). Scope 1 is fuel and leaks you own. Scope 2 is electricity and heat you buy. Scope 3 is everything else in your value chain, labelled with the GHG Protocol’s 15 categories so this table can sit in a SECR, PPN 06/21, or customer questionnaire without translation.</p>
+    <p>Figures are tonnes of carbon dioxide equivalent (tCO₂e). Scope 1 is fuel and leaks you own. Scope 2 is electricity and heat you buy, shown both location-based (UK grid) and market-based (contracts / residual mix) as required by the GHG Protocol Scope 2 Guidance. Scope 3 is everything else in your value chain, labelled with the GHG Protocol’s 15 categories so this table can sit in a SECR, PPN 06/21, or customer questionnaire without translation.</p>
     <h2>Greenhouse Gas Protocol inventory</h2>
     ${inventoryTable(summary)}
     <h2>What the totals mean</h2>
@@ -172,7 +225,7 @@ export function printInventoryReport(entries: EmissionEntry[], context: ReportCo
     </tbody></table>`
         : ''
     }
-    <p class="footnote">Method: tCO₂e = (activity amount × conversion value in kg CO₂e) ÷ 1000. Conversion values are taken from the organisation’s emission-factor library (typically DESNZ/DEFRA and ICE). Empty Scope 3 categories are shown on purpose: “not yet logged” is a completeness signal, not a zero. Categories 8–15 are often not relevant for a typical contractor, miner, or logistics operator.</p>
+    <p class="footnote">Method: tCO₂e = (activity amount × conversion value in kg CO₂e) ÷ 1000. Conversion values are taken from the organisation’s emission-factor library (DESNZ/DEFRA 2026, plus supplier EPDs for steel, cement, aluminium, and similar). Empty Scope 3 categories are shown on purpose: “not yet logged” is a completeness signal, not a zero. Categories 8–15 are often not relevant for a typical contractor, miner, or logistics operator. This is not a third-party verification statement.</p>
   `
   openPrint(`${org} — GHG inventory`, body)
 }
@@ -244,4 +297,117 @@ export function printAnalysisReport(entries: EmissionEntry[], context: ReportCon
 /** @deprecated Use printInventoryReport or printAnalysisReport. */
 export function printReport(title: string, entries: EmissionEntry[]) {
   printInventoryReport(entries, { organizationName: title })
+}
+
+export function printSecrStatement(entries: EmissionEntry[], context: ReportContext) {
+  const summary = summarizeInventory(entries)
+  const dual = summarizeScope2(entries, context.residualMixKg ?? 0, 0.13096)
+  const org = context.organizationName || 'Organisation'
+  const year = context.year ?? new Date().getFullYear()
+  const generated = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const secrTotalLocation = summary.scope1 + (dual.locationTco2e || summary.scope2)
+  const secrTotalMarket = summary.scope1 + dual.marketTco2e
+  const intensity =
+    context.revenue && context.revenue > 0
+      ? `${formatNumber(secrTotalLocation / (context.revenue / 1_000_000))} tCO₂e / £m turnover (location-based Scope 1+2)`
+      : 'Turnover is not set — add it in Organisation settings to calculate the mandatory intensity ratio.'
+  const fte =
+    context.employeeCount && context.employeeCount > 0
+      ? `${formatNumber(secrTotalLocation / context.employeeCount)} tCO₂e / FTE (location-based Scope 1+2)`
+      : 'Average FTE is not set — add it in Organisation settings for a second intensity ratio.'
+  const energyKwh = dual.electricityKwh + dual.heatKwh
+  const body = `
+    <p class="kicker">Streamlined Energy and Carbon Reporting</p>
+    <h1>${escapeHtml(org)}</h1>
+    <p class="muted">SECR energy and carbon statement · reporting year ${year} · prepared ${escapeHtml(generated)}${context.locked ? ' · inventory closed' : ''}</p>
+    <div class="hero">
+      ${kpi('Scope 1', formatTco2e(summary.scope1, true))}
+      ${kpi('Scope 2 location-based', formatTco2e(dual.locationTco2e || summary.scope2, true))}
+      ${kpi('Scope 2 market-based', formatTco2e(dual.marketTco2e, true))}
+      ${kpi('Purchased energy', `${formatNumber(energyKwh)} kWh`)}
+    </div>
+    <h2>Methodology</h2>
+    <p>This statement follows HM Government’s Streamlined Energy and Carbon Reporting guidance and the GHG Protocol Corporate Standard, including the Scope 2 dual-reporting requirement. Activity data (kWh, litres, kilometres) is multiplied by DESNZ/DEFRA 2026 conversion factors, except where a supplier Environmental Product Declaration is used for a material with no published DESNZ row. Location-based electricity uses the UK grid generation factor. Market-based electricity uses the contractual instrument recorded on each activity (supplier-specific factor, REGO / 100% renewable tariff, or residual mix). ${dual.residualMixMissing ? 'A GB residual-mix factor has not been entered, so some market-based rows currently equal the location-based figure.' : ''}</p>
+    <h2>UK energy use and associated GHG emissions</h2>
+    <table>
+      <thead><tr><th>Item</th><th>Quantity</th><th>Unit</th></tr></thead>
+      <tbody>
+        <tr><td>Purchased electricity</td><td>${formatNumber(dual.electricityKwh)}</td><td>kWh</td></tr>
+        <tr><td>Purchased heat and steam</td><td>${formatNumber(dual.heatKwh)}</td><td>kWh</td></tr>
+        <tr><td>Scope 1</td><td>${formatTco2e(summary.scope1, true)}</td><td>tCO₂e</td></tr>
+        <tr><td>Scope 2 (location-based)</td><td>${formatTco2e(dual.locationTco2e || summary.scope2, true)}</td><td>tCO₂e</td></tr>
+        <tr><td>Scope 2 (market-based)</td><td>${formatTco2e(dual.marketTco2e, true)}</td><td>tCO₂e</td></tr>
+        <tr><td>Scope 1+2 location-based total</td><td>${formatTco2e(secrTotalLocation, true)}</td><td>tCO₂e</td></tr>
+        <tr><td>Scope 1+2 market-based total</td><td>${formatTco2e(secrTotalMarket, true)}</td><td>tCO₂e</td></tr>
+        <tr><td>Scope 3 (voluntary in this statement)</td><td>${formatTco2e(summary.scope3, true)}</td><td>tCO₂e</td></tr>
+      </tbody>
+    </table>
+    <h2>Intensity ratios</h2>
+    <ul>
+      <li>${escapeHtml(intensity)}</li>
+      <li>${escapeHtml(fte)}</li>
+    </ul>
+    <h2>Energy efficiency action</h2>
+    <ul>${summary.insights.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+    <h2>Directors’ statement</h2>
+    <p>The directors confirm that this statement has been prepared from the organisation’s Carbon Logic inventory for ${year}. It is a management estimate to support statutory reporting. It is not a limited-assurance or reasonable-assurance opinion. Underlying activity rows, evidence links, and emission factors are available to the organisation’s appointed auditor.</p>
+    <p class="footnote">SECR applies to quoted companies and to large unquoted companies and LLPs meeting the Companies Act thresholds. Confirm with your company secretary whether this organisation is in scope. Factors: DESNZ/DEFRA 2026. Dual Scope 2: GHG Protocol Scope 2 Guidance.</p>
+  `
+  openPrint(`${org} — SECR ${year}`, body)
+}
+
+export function printPpnCarbonReductionPlan(entries: EmissionEntry[], context: ReportContext) {
+  const summary = summarizeInventory(entries)
+  const dual = summarizeScope2(entries, context.residualMixKg ?? 0, 0.13096)
+  const org = context.organizationName || 'Organisation'
+  const year = context.year ?? new Date().getFullYear()
+  const baseline = context.baselineTco2e ?? 0
+  const netZero = context.netZeroYear ?? 2050
+  const generated = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  const reduction = baseline > 0 ? ((baseline - summary.total) / baseline) * 100 : null
+  const body = `
+    <p class="kicker">PPN 06/21 · Carbon Reduction Plan</p>
+    <h1>${escapeHtml(org)}</h1>
+    <p class="muted">Procurement Policy Note 06/21 · reporting year ${year} · prepared ${escapeHtml(generated)}</p>
+    <h2>Commitment to achieving Net Zero</h2>
+    <p>${escapeHtml(org)} is committed to achieving Net Zero emissions by ${netZero}. This Carbon Reduction Plan is produced to support bids for UK government contracts above £5 million per annum, in line with PPN 06/21.</p>
+    <h2>Baseline emissions footprint</h2>
+    <p>${
+      baseline > 0
+        ? `The baseline organisational footprint is ${formatTco2e(baseline, true)} (tCO₂e), as recorded in Carbon Logic.`
+        : 'A baseline tCO₂e has not been entered yet. Set it in Organisation settings so this plan can show progress against a fixed year.'
+    }</p>
+    <h2>Current emissions reporting</h2>
+    <table>
+      <thead><tr><th>GHG Protocol</th><th>tCO₂e</th></tr></thead>
+      <tbody>
+        <tr><td>Scope 1</td><td>${formatTco2e(summary.scope1, true)}</td></tr>
+        <tr><td>Scope 2 (location-based)</td><td>${formatTco2e(dual.locationTco2e || summary.scope2, true)}</td></tr>
+        <tr><td>Scope 2 (market-based)</td><td>${formatTco2e(dual.marketTco2e, true)}</td></tr>
+        <tr><td>Scope 3 (logged categories)</td><td>${formatTco2e(summary.scope3, true)}</td></tr>
+        <tr class="section"><td>Total reported</td><td>${formatTco2e(summary.total, true)}</td></tr>
+      </tbody>
+    </table>
+    ${
+      reduction != null
+        ? `<p>Reported emissions are ${formatPercent(reduction)} ${reduction >= 0 ? 'below' : 'above'} the baseline.</p>`
+        : ''
+    }
+    <h2>Carbon reduction projects</h2>
+    <p>The following actions follow from the current inventory. They are management recommendations, not a guarantee of future reductions.</p>
+    <ul>
+      ${summary.insights.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+      ${
+        summary.hotspots[0]
+          ? `<li>Priority source: ${escapeHtml(summary.hotspots[0].code)} ${escapeHtml(summary.hotspots[0].name)} (${formatPercent(summary.hotspots[0].percent, 0)} of the reported total).</li>`
+          : ''
+      }
+    </ul>
+    <h2>Declaration and sign off</h2>
+    <p>This Carbon Reduction Plan has been completed in accordance with PPN 06/21 and associated guidance and reporting standard for Carbon Reduction Plans. Emissions have been reported and recorded in accordance with the published reporting standard for Carbon Reduction Plans and the GHG Protocol Corporate Accounting and Reporting Standard, and use the appropriate government emission conversion factors for greenhouse gas company reporting. Scope 1 and Scope 2 emissions have been reported in accordance with SECR requirements, and the required subset of Scope 3 emissions have been reported in accordance with the published reporting standard for Carbon Reduction Plans and the Corporate Value Chain (Scope 3) Standard, where data has been logged.</p>
+    <p>This Carbon Reduction Plan has been reviewed and is intended to be signed by the board of directors (or equivalent management body).</p>
+    <p>Signed on behalf of the supplier: ___________________________ &nbsp;&nbsp; Date: _______________</p>
+    <p class="footnote">This document is generated from the organisation’s Carbon Logic inventory. It is not a third-party verification statement. Empty Scope 3 categories mean not yet logged, not a calculated zero.</p>
+  `
+  openPrint(`${org} — PPN 06/21 CRP ${year}`, body)
 }

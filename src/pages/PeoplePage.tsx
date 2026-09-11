@@ -344,7 +344,9 @@ export default function PeoplePage() {
         <section className="rounded-2xl border border-line bg-white p-5">
           <h2 className="text-lg font-semibold text-ink">Activity log</h2>
           <p className="mt-1 text-sm text-muted">
-            Access changes for {organization?.name} only. Entries cannot be edited or deleted.
+            Access changes and inventory writes for {organization?.name} only. Activities can be
+            deleted while a reporting year is open. Closed years cannot be changed until an
+            administrator reopens them.
           </p>
           {audit.length === 0 ? (
             <p className="mt-3 text-sm text-muted">Nothing recorded yet.</p>

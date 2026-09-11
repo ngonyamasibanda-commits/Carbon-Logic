@@ -103,6 +103,14 @@ export type EmissionEntry = {
   activity_date?: string
   /** Set when the row is stored for an organisation; omitted on unsynced local drafts. */
   organization_id?: string
+  /** Dual Scope 2 working for electricity and heat rows. */
+  scope2?: {
+    locationTco2e: number
+    marketTco2e: number
+    instrument: string
+    marketFactorKg: number
+    kwh: number
+  }
 }
 
 export type AdditionalState = {

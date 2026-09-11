@@ -21,6 +21,13 @@ import BulkUpload from './BulkUpload'
 import ResultsTable from './ResultsTable'
 import Tutorial from './Tutorial'
 import Callout from '../ui/Callout'
+import { useOrg } from '../../providers/OrgProvider'
+import { isYearLocked, yearFromIsoDate } from '../../lib/period-lock'
+import {
+  customFieldsWithScope2,
+  dualFromActivity,
+  instrumentFromForm,
+} from '../../lib/scope2'
 
 type Props = {
   category: CategoryConfig
@@ -29,6 +36,7 @@ type Props = {
 export default function CategoryForm({ category }: Props) {
   const { entries, factors, addEntry, removeEntry, saveFactors } = useEntries()
   const { can } = useAuth()
+  const { profile } = useOrg()
   const canWrite = can('entries:write')
   const canWriteFactors = can('factors:write')
   const navigate = useNavigate()
@@ -72,6 +80,7 @@ export default function CategoryForm({ category }: Props) {
     () => entries.filter((entry) => entry.category === category.id),
     [entries, category.id],
   )
+  const activityYearLocked = isYearLocked(profile.lockedYears, yearFromIsoDate(additional.activity_date))
 
   function setField(key: string, value: string) {
     setValues((prevValues) => ({ ...prevValues, [key]: value }))
@@ -124,6 +133,43 @@ export default function CategoryForm({ category }: Props) {
     }
 
     const totalTco2e = calculateTco2e(activityAmount, factor.conversionValue)
+    const activityYear = yearFromIsoDate(additional.activity_date)
+    if (isYearLocked(profile.lockedYears, activityYear)) {
+      setError(
+        `Reporting year ${activityYear} is closed. An administrator can reopen it from Organisation settings.`,
+      )
+      return
+    }
+
+    let emissions = totalTco2e
+    let detailsExtra = ''
+    let customFields = additional.customFields
+    if (category.id === 'site_electricity') {
+      const grid = lookupFactor(factors, 'electricity_grid_kwh')
+      const locationKg = factor.key === 'electricity_renewable_kwh' ? 0 : (grid?.conversionValue ?? factor.conversionValue)
+      const instrument = instrumentFromForm(values.source || '', values.market_instrument || '')
+      const dual = dualFromActivity({
+        kwh: activityAmount,
+        locationKg,
+        instrument,
+        residualMixKg: profile.residualMixKgPerKwh,
+        supplierKg: Number(values.supplier_kg),
+      })
+      emissions = dual.meta.locationTco2e
+      customFields = customFieldsWithScope2(additional.customFields, dual.meta)
+      detailsExtra = ` | Scope 2 location ${formatTco2e(dual.meta.locationTco2e, true)}; market ${formatTco2e(dual.meta.marketTco2e, true)} (${dual.meta.instrument})`
+    } else if (category.id === 'heat_steam') {
+      const dual = dualFromActivity({
+        kwh: activityAmount,
+        locationKg: factor.conversionValue,
+        instrument: Number(values.supplier_kg) > 0 ? 'supplier-specific' : 'residual-mix',
+        residualMixKg: 0,
+        supplierKg: Number(values.supplier_kg) || factor.conversionValue,
+      })
+      emissions = dual.meta.locationTco2e
+      customFields = customFieldsWithScope2(additional.customFields, dual.meta)
+    }
+
     setSubmitting(true)
     try {
       if (
@@ -140,21 +186,21 @@ export default function CategoryForm({ category }: Props) {
       await addEntry({
         category: category.id,
         scope: category.scope,
-        emissions_tco2e: totalTco2e,
+        emissions_tco2e: emissions,
         details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
-        } | ${formatNumber(activityAmount)} ${factor.unit} × ${formatNumber(factor.conversionValue)} kg CO₂e/${factor.unit} ÷ 1000 = ${formatTco2e(totalTco2e, true)} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
+        } | ${formatNumber(activityAmount)} ${factor.unit} × ${formatNumber(factor.conversionValue)} kg CO₂e/${factor.unit} ÷ 1000 = ${formatTco2e(emissions, true)} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})${detailsExtra}`,
         amount: activityAmount,
         unit: category.resolveUnit(values),
         link: additional.link,
         comment: additional.comment,
         site: additional.site,
         tags: additional.tags,
-        customFields: additional.customFields,
+        customFields,
         files: [],
         activity_date: additional.activity_date,
       })
-      setMessage(`Added ${formatTco2e(totalTco2e, true)} to your footprint.`)
+      setMessage(`Added ${formatTco2e(emissions, true)} to your footprint.`)
       setValues(defaultValues)
       setAdditional(emptyAdditional())
     } catch (err) {
@@ -168,8 +214,14 @@ export default function CategoryForm({ category }: Props) {
     <div>
       {!canWrite ? (
         <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          You have read-only access, so this form is disabled. Ask an admin for the editor role to
-          log emissions data.
+          You have read-only access, so this form is disabled. Ask an administrator for the editor
+          role to log emissions data.
+        </p>
+      ) : null}
+      {activityYearLocked ? (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Reporting year {yearFromIsoDate(additional.activity_date)} is closed. Change the activity
+          date to an open year, or ask an administrator to reopen it from Organisation settings.
         </p>
       ) : null}
       {showTutorial ? (
@@ -289,6 +341,14 @@ export default function CategoryForm({ category }: Props) {
                 ) : null}
               </label>
             ))}
+            {category.id === 'site_electricity' &&
+            (values.source || '').toLowerCase().includes('purchased') ? (
+              <Scope2MarketFields
+                values={values}
+                setField={setField}
+                residualMixKg={profile.residualMixKgPerKwh}
+              />
+            ) : null}
             {isEpdRequiredOption(values.material || '') ? (
               <EpdFields
                 factorKey={category.resolveFactorKey(values)}
@@ -352,7 +412,7 @@ export default function CategoryForm({ category }: Props) {
         <button
           form={`${category.id}-form`}
           type="submit"
-          disabled={submitting || !canWrite}
+          disabled={submitting || !canWrite || activityYearLocked}
           className="inline-flex items-center gap-2 rounded-md bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
         >
           <Grid2x2 size={16} />
@@ -396,7 +456,70 @@ export default function CategoryForm({ category }: Props) {
         </p>
       ) : null}
 
-      <ResultsTable entries={categoryEntries} onDelete={(id) => void removeEntry(id)} />
+      <ResultsTable
+        entries={categoryEntries}
+        lockedYears={profile.lockedYears}
+        canDelete={canWrite}
+        onDelete={(id) => void removeEntry(id)}
+      />
+    </div>
+  )
+}
+
+function Scope2MarketFields({
+  values,
+  setField,
+  residualMixKg,
+}: {
+  values: Record<string, string>
+  setField: (key: string, value: string) => void
+  residualMixKg: number
+}) {
+  const instrument = values.market_instrument || ''
+  return (
+    <div className="space-y-3 rounded-md border border-brand/30 bg-brand-soft/40 p-3">
+      <Callout tone="info">
+        Location-based Scope 2 always uses the DESNZ 2026 UK grid factor. Market-based Scope 2 uses
+        the instrument below, as required for SECR dual reporting.
+      </Callout>
+      <label className="block text-sm font-semibold text-ink">
+        Market-based instrument
+        <select
+          value={instrument}
+          onChange={(event) => setField('market_instrument', event.target.value)}
+          className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-normal"
+          required
+        >
+          <option value="">Select an option</option>
+          <option value="None — residual mix">None — residual mix</option>
+          <option value="Supplier-specific factor (bill / PPA)">
+            Supplier-specific factor (bill / PPA)
+          </option>
+          <option value="REGO or 100% renewable tariff">REGO or 100% renewable tariff</option>
+        </select>
+      </label>
+      {instrument.toLowerCase().includes('supplier') ? (
+        <label className="block text-sm font-semibold text-ink">
+          Supplier-specific kg CO₂e per kWh
+          <input
+            type="number"
+            min={0}
+            step="any"
+            required
+            value={values.supplier_kg ?? ''}
+            placeholder="From the contract or PPA"
+            onChange={(event) => setField('supplier_kg', event.target.value)}
+            className="mt-1 w-full rounded-md border border-line bg-white px-3 py-2 text-sm font-normal"
+          />
+        </label>
+      ) : null}
+      {instrument.toLowerCase().includes('residual') && residualMixKg <= 0 ? (
+        <p className="text-xs text-amber-900">
+          No GB residual mix is set yet. Market-based will equal location-based until an
+          administrator enters the AIB figure in Organisation settings, or you choose a supplier
+          factor or REGO.
+        </p>
+      ) : null}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import {
   fetchOrgSettings,
   fetchSites,
   saveOrgSettings,
+  setReportingYearLock,
   type OrgProfile,
   type Site,
 } from '../lib/org'
@@ -19,6 +20,7 @@ type OrgContextValue = {
   addSite: (site: Omit<Site, 'id'>) => Promise<{ error: string | null }>
   removeSite: (id: string) => Promise<{ error: string | null }>
   updateProfile: (profile: OrgProfile) => Promise<{ error: string | null }>
+  setYearLock: (year: number, locked: boolean, reason?: string) => Promise<{ error: string | null }>
 }
 
 const OrgContext = createContext<OrgContextValue | null>(null)
@@ -100,6 +102,29 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     [orgId],
   )
 
+  const setYearLock = useCallback(
+    async (year: number, locked: boolean, reason = '') => {
+      if (!orgId) return { error: 'No active organisation' }
+      const remote = await setReportingYearLock(orgId, year, locked, reason)
+      if (remote.error) {
+        setError(remote.error)
+        return { error: remote.error }
+      }
+      const nextYears = remote.lockedYears
+        ? remote.lockedYears
+        : locked
+          ? [...new Set([...profile.lockedYears, year])].sort((a, b) => a - b)
+          : profile.lockedYears.filter((item) => item !== year)
+      const next = { ...profile, lockedYears: nextYears }
+      setProfile(next)
+      const saved = await saveOrgSettings(orgId, next)
+      if (saved.error) setError(saved.error)
+      else setError(null)
+      return saved
+    },
+    [orgId, profile],
+  )
+
   const value = useMemo(
     () => ({
       sites,
@@ -109,8 +134,9 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       addSite,
       removeSite,
       updateProfile,
+      setYearLock,
     }),
-    [sites, profile, loading, error, addSite, removeSite, updateProfile],
+    [sites, profile, loading, error, addSite, removeSite, updateProfile, setYearLock],
   )
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>

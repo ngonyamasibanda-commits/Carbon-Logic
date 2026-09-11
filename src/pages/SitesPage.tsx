@@ -35,7 +35,11 @@ export default function SitesPage() {
         <p className="mt-2 text-sm text-muted">
           Construction sites, mines, processing plants, depots, warehouses, and offices. Facilities
           are stored on this organisation, so every colleague sees the same list on the dashboard,
-          data-entry forms, and Analysis filters.
+          data-entry forms, and Analysis filters. Average FTE for intensity ratios is set on{' '}
+          <Link to="/organisation" className="text-brand hover:underline">
+            Organisation
+          </Link>
+          , not per site.
         </p>
       </div>
 

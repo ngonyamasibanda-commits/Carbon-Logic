@@ -13,15 +13,15 @@ export const ROLE_RANK: Record<OrgRole, number> = {
 }
 
 export const ROLE_DESCRIPTIONS: Record<OrgRole, string> = {
-  owner: 'CEO / owner — full control, including people, organisation settings and billing.',
-  admin: 'Manager — add, remove and change access for colleagues; manage factors and targets.',
-  editor: 'Editor — log and edit this organisation’s emissions data.',
-  viewer: 'Viewer — read-only access to this organisation’s dashboards and reports.',
+  owner: 'Organisation owner — people, settings, year-end close, and the commercial relationship.',
+  admin: 'Administrator — colleagues, emission factors, targets, and closing a reporting year.',
+  editor: 'Editor — log and delete this organisation’s emissions data while a year is open.',
+  viewer: 'Viewer — read-only access to dashboards, inventories, and reports.',
 }
 
 export const ROLE_LABELS: Record<OrgRole, string> = {
-  owner: 'CEO / Owner',
-  admin: 'Manager',
+  owner: 'Owner',
+  admin: 'Administrator',
   editor: 'Editor',
   viewer: 'Viewer',
 }
@@ -42,6 +42,7 @@ export type Permission =
   | 'members:manage'
   | 'audit:read'
   | 'org:manage'
+  | 'settings:write'
 
 const MINIMUM_ROLE: Record<Permission, OrgRole> = {
   'entries:read': 'viewer',
@@ -54,6 +55,7 @@ const MINIMUM_ROLE: Record<Permission, OrgRole> = {
   'members:manage': 'admin',
   'audit:read': 'admin',
   'org:manage': 'owner',
+  'settings:write': 'admin',
 }
 
 export function roleAllows(role: OrgRole | null, permission: Permission): boolean {

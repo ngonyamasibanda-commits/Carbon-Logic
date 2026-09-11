@@ -18,7 +18,7 @@ export default function FaqsPage() {
     },
     {
       q: 'What is the difference between SECR and full GHG Protocol reporting?',
-      a: 'UK SECR requires Scope 1 + 2 plus an intensity metric (tCO₂e per £M revenue). The full GHG Protocol also requires material Scope 3 categories. Use the reporting framework filter in Analysis to see which entries are mandatory for each framework.',
+      a: 'UK SECR requires Scope 1 + 2, dual reporting of location-based and market-based Scope 2, energy use in kWh, and at least one intensity ratio (this app uses tCO₂e per £ million turnover, and tCO₂e per FTE when headcount is set). The full GHG Protocol also requires material Scope 3 categories. Use Reports for the SECR statement; Combined Results for the 15-category inventory; Analysis to filter a view.',
     },
     {
       q: 'How do I choose the right unit of measure?',
@@ -47,6 +47,18 @@ export default function FaqsPage() {
     {
       q: 'How do I log steel, cement, or aluminium without a published factor?',
       a: 'Those materials need a supplier Environmental Product Declaration (EPD). On Bulk Materials, choose the material (marked EPD required), paste the A1–A3 GWP, and name the EPD. Admins can also download the EPD template on Emission factors and import several products at once. Do not guess a generic ICE number — this app does not ship ICE values.',
+    },
+    {
+      q: 'What does €6,000 per year include?',
+      a: 'The Professional plan is €6,000 per organisation per year, sold on an order form. It covers unlimited colleagues in that organisation, the DESNZ/DEFRA 2026 library, supplier EPDs, dual Scope 2, year-end close, SECR and PPN 06/21 packs, the SBTi modeller, and CSV/PDF exports. It does not include a third-party verification opinion or file hosting for invoices.',
+    },
+    {
+      q: 'Can I change activities after year-end?',
+      a: 'Yes, until an administrator closes the reporting year on Organisation settings. A closed year rejects new logs, deletes, and bulk uploads. Reopening a year is written to the activity log. That is how the inventory stays defensible for SECR and customer questionnaires.',
+    },
+    {
+      q: 'How do location-based and market-based Scope 2 differ?',
+      a: 'Location-based always uses the DESNZ UK grid generation factor. Market-based uses the instrument on the electricity activity: a supplier-specific kg CO₂e/kWh from the bill or PPA, a REGO / 100% renewable tariff (zero Scope 2), or the GB residual mix from Organisation settings. SECR requires both figures. Carbon Logic does not invent a residual-mix factor — paste the AIB number when you have it.',
     },
     {
       q: 'Can I use spend-based factors for Scope 3?',

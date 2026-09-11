@@ -165,6 +165,16 @@ async function main() {
   await db.exec(saasWorkspace)
   check('SaaS cloud workspace migration is idempotent (second run is clean)', true)
 
+  const governance = readFileSync(join(root, 'supabase/migrations/0007_inventory_governance.sql'), 'utf8')
+  await db.exec(governance)
+  check('inventory governance migration applies cleanly', true)
+  await db.exec(governance)
+  check('inventory governance migration is idempotent (second run is clean)', true)
+  check(
+    'fix_inventory_governance.sql matches migration 0007',
+    readFileSync(join(root, 'supabase/fix_inventory_governance.sql'), 'utf8') === governance,
+  )
+
   const liveFix = readFileSync(join(root, 'supabase/fix_live_database.sql'), 'utf8')
   const liveFixMarker = '-- >>> BEGIN MIGRATIONS\n'
   const markerAt = liveFix.indexOf(liveFixMarker)
@@ -1043,6 +1053,44 @@ async function main() {
     const rows = await db.query('select * from public.ip_usage_windows')
     check('clients cannot read IP usage buckets', rows.rows.length === 0)
   })
+
+  await asUser(id['owner@acme.test'], async () => {
+    await db.query('select public.set_reporting_year_lock($1, $2, true, $3)', [
+      acme,
+      2026,
+      'year-end close',
+    ])
+  })
+  await asUser(id['editor@acme.test'], () =>
+    expectFailure(
+      'an editor cannot log activity into a closed reporting year',
+      () =>
+        db.query(
+          `insert into public.emission_entries
+             (organization_id, owner_id, category, scope, emissions_tco2e, activity_date)
+           values ($1, $2, 'fuels', 'Scope 1', 1, '2026-03-01')`,
+          [acme, id['editor@acme.test']],
+        ),
+      /closed/i,
+    ),
+  )
+  await asUser(id['editor@acme.test'], async () => {
+    const inserted = await db.query(
+      `insert into public.emission_entries
+         (organization_id, owner_id, category, scope, emissions_tco2e, activity_date)
+       values ($1, $2, 'fuels', 'Scope 1', 1, '2025-03-01')
+       returning id`,
+      [acme, id['editor@acme.test']],
+    )
+    check('an editor can still log activity in an open year', inserted.rows.length === 1)
+  })
+  await asUser(id['viewer@acme.test'], () =>
+    expectFailure(
+      'a viewer cannot close a reporting year',
+      () => db.query('select public.set_reporting_year_lock($1, $2, true, $3)', [acme, 2025, 'no']),
+      /administrator/i,
+    ),
+  )
 
   console.log(`\n${passed} passed, ${failed} failed\n`)
   await db.close()

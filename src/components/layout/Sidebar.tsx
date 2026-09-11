@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, Scale, Users } from 'lucide-react'
+import { ChevronDown, FileBarChart, Scale, Settings, Users } from 'lucide-react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { LogoMark } from '../brand/Logo'
 import { SCOPE_NAV_ORDER, categoriesForScope } from '../../lib/categories'
@@ -95,6 +95,15 @@ export default function Sidebar() {
           }}
         </NavLink>
 
+        <NavLink to="/organisation" className={({ isActive }) => navClass(isActive)}>
+          {({ isActive }) => (
+            <>
+              <Settings size={16} className={isActive ? 'text-brand' : 'text-muted'} />
+              Organisation
+            </>
+          )}
+        </NavLink>
+
         <NavLink to="/factors" className={({ isActive }) => navClass(isActive)}>
           {({ isActive }) => {
             const Icon = CATEGORY_ICONS.factors
@@ -169,6 +178,14 @@ export default function Sidebar() {
                 </>
               )
             }}
+          </NavLink>
+          <NavLink to="/reports" className={({ isActive }) => navClass(isActive)}>
+            {({ isActive }) => (
+              <>
+                <FileBarChart size={16} className={isActive ? 'text-brand' : 'text-muted'} />
+                Reports
+              </>
+            )}
           </NavLink>
           <NavLink to="/learn" className={({ isActive }) => navClass(isActive)}>
             {({ isActive }) => {

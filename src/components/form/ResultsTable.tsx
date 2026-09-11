@@ -2,12 +2,16 @@ import { Trash2 } from 'lucide-react'
 import { getCategory } from '../../lib/categories'
 import { entryActivityDate } from '../../lib/entry-date'
 import { formatTco2e } from '../../lib/format'
+import { entryYearIsLocked } from '../../lib/period-lock'
 import { safeHttpUrl } from '../../lib/safe'
+import { parseScope2Meta } from '../../lib/scope2'
 import type { EmissionEntry } from '../../lib/types'
 
 type Props = {
   entries: EmissionEntry[]
   onDelete: (id: string) => void
+  lockedYears?: number[]
+  canDelete?: boolean
 }
 
 function formatDate(value: string) {
@@ -16,7 +20,7 @@ function formatDate(value: string) {
   return date.toISOString().slice(0, 10)
 }
 
-export default function ResultsTable({ entries, onDelete }: Props) {
+export default function ResultsTable({ entries, onDelete, lockedYears = [], canDelete = true }: Props) {
   return (
     <section className="mt-8">
       <h2 className="mb-3 text-xl font-bold text-ink">Results</h2>
@@ -37,13 +41,15 @@ export default function ResultsTable({ entries, onDelete }: Props) {
             {entries.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-muted">
-                  No entries, please add some data above.
+                  No entries yet. Log an activity above.
                 </td>
               </tr>
             ) : (
               entries.map((entry) => {
                 const category = getCategory(entry.category)
                 const evidence = safeHttpUrl(entry.link)
+                const locked = entryYearIsLocked(lockedYears, entry)
+                const scope2 = entry.scope2 ?? parseScope2Meta(entry.customFields)
                 return (
                   <tr key={entry.id} className="border-t border-line">
                     <td className="px-4 py-3">{formatDate(entryActivityDate(entry))}</td>
@@ -51,6 +57,11 @@ export default function ResultsTable({ entries, onDelete }: Props) {
                     <td className="px-4 py-3">{category?.name ?? entry.category}</td>
                     <td className="px-4 py-3 font-semibold tabular-nums">
                       {formatTco2e(entry.emissions_tco2e)}
+                      {scope2 ? (
+                        <div className="mt-1 text-[11px] font-normal text-muted">
+                          L {formatTco2e(scope2.locationTco2e)} · M {formatTco2e(scope2.marketTco2e)}
+                        </div>
+                      ) : null}
                       {entry.id.startsWith('local-') || entry.id.startsWith('pending-') ? (
                         <div className="mt-1 text-[11px] font-normal text-amber-800">
                           Saving to organisation…
@@ -68,14 +79,20 @@ export default function ResultsTable({ entries, onDelete }: Props) {
                     </td>
                     <td className="px-4 py-3 text-muted">{entry.comment || '—'}</td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => onDelete(entry.id)}
-                        className="text-red-600 hover:text-red-700"
-                        aria-label="Delete entry"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {canDelete && !locked ? (
+                        <button
+                          type="button"
+                          onClick={() => onDelete(entry.id)}
+                          className="text-red-600 hover:text-red-700"
+                          aria-label="Delete entry"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      ) : locked ? (
+                        <span className="text-xs text-muted">Closed year</span>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                   </tr>
                 )

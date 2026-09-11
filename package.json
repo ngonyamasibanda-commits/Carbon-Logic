@@ -12,7 +12,8 @@
     "verify:migration": "tsx scripts/verify-migration.ts",
     "verify:entries": "tsx scripts/verify-entries.ts",
     "verify:format": "tsx scripts/verify-format.ts",
-    "verify:factors": "tsx scripts/verify-factors.ts"
+    "verify:factors": "tsx scripts/verify-factors.ts",
+    "verify:professional": "tsx scripts/verify-professional.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",
