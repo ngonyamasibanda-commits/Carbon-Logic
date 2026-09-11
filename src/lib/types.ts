@@ -21,6 +21,11 @@ export type FormField = {
   label: string
   type: FieldType
   options?: string[]
+  optionGroups?: Array<{ label: string; options: string[] }>
+  optionsFrom?: (values: Record<string, string>) => string[]
+  visibleWhen?:
+    | { field: string; equals: string | string[] }
+    | Array<{ field: string; equals: string | string[] }>
   hint?: string
   placeholder?: string
   /** Skip HTML required when the field is supporting data (water-positive volumes, optional GWP set). */
@@ -56,8 +61,10 @@ export type CategoryConfig = {
   resolveUnit: (values: Record<string, string>) => string
   resolveDetails: (values: Record<string, string>, amount: number) => string
   resolveActivityAmount?: (values: Record<string, string>, amount: number) => number
+  /** Hired fleet uses the same DESNZ km/litre rows but must be logged as Scope 3. */
+  resolveScope?: (values: Record<string, string>) => Scope
   /** Optional extra lines to offer (WTT / T&D / wastewater) without mixing scopes on one row. */
-  chainExtras?: Array<'wtt' | 'td' | 'treatment'>
+  chainExtras?: Array<'wtt' | 'td' | 'treatment' | 'ev' | 'ev_td'>
 }
 
 /**
@@ -86,6 +93,10 @@ export type EmissionFactor = {
   wttKey?: string
   /** Matching T&D factor (electricity / heat), when DESNZ publishes one. */
   tdKey?: string
+  /** DESNZ UK electricity for EVs (Scope 2), when the row is a PHEV/BEV km factor. */
+  evKey?: string
+  /** DESNZ UK electricity T&D for EVs (Scope 3). */
+  evTdKey?: string
   /** CEDA / EEIO: published factor currency (Open CEDA GHG_t_Raw is USD). */
   spendCurrency?: 'GBP' | 'USD'
   /** Local currency units per 1 USD, from the CEDA exchange-rate sheet. */

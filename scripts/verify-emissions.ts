@@ -282,6 +282,156 @@ if (gasEpa) {
   check('1 kg R-410A on EPA AR6 is GWP 2256 → 2.256 tCO₂e', Math.abs(working.tco2e - 2.256) < 1e-9)
 }
 
+const fleet = getCategory('fleet')
+if (fleet && freight) {
+  const rigidKmKey = fleet.resolveFactorKey({
+    method: 'Distance (Method 2 — vehicle km)',
+    vehicle: 'HGV',
+    hgv_class: 'Rigid (>3.5 - 7.5 tonnes)',
+    hgv_body: 'Non-refrigerated (all diesel)',
+    laden: 'Average laden',
+  })
+  check(
+    'fleet Method 2 rigid >3.5-7.5 average laden resolves the DESNZ vehicle-km row',
+    rigidKmKey === 'hgv_nr_rigid_gt3_5_7_5_tonnes_average_laden_km',
+    rigidKmKey,
+  )
+  const kmWorking = workingFromForm(
+    fleet,
+    {
+      method: 'Distance (Method 2 — vehicle km)',
+      vehicle: 'HGV',
+      hgv_class: 'Rigid (>3.5 - 7.5 tonnes)',
+      hgv_body: 'Non-refrigerated (all diesel)',
+      laden: 'Average laden',
+      amount: '1',
+      unit: 'km',
+      unit_factor: '1',
+    },
+    factor('hgv_nr_rigid_gt3_5_7_5_tonnes_average_laden_km'),
+  )
+  check(
+    '1 km rigid >3.5-7.5 average laden is 0.49944 kg → 0.00049944 tCO₂e',
+    Math.abs(kmWorking.tco2e - 0.00049944) < 1e-12,
+    String(kmWorking.tco2e),
+  )
+  check(
+    'legacy mode HGV rigid still resolves freight_road_rigid_tkm',
+    freight.resolveFactorKey({ mode: 'HGV rigid' }) === 'freight_road_rigid_tkm',
+    freight.resolveFactorKey({ mode: 'HGV rigid' }),
+  )
+  const vehicleKm = workingFromForm(
+    freight,
+    {
+      family: 'HGV',
+      hgv_class: 'Rigid (>3.5 - 7.5 tonnes)',
+      hgv_body: 'Non-refrigerated (all diesel)',
+      laden: 'Average laden',
+      metric: 'Vehicle kilometres (mass unknown)',
+      distance: '1',
+      distance_unit: 'km',
+      distance_unit_factor: '1',
+    },
+    factor('hgv_nr_rigid_gt3_5_7_5_tonnes_average_laden_km'),
+  )
+  check(
+    'road freight vehicle-km does not label tonne-kilometres',
+    vehicleKm.steps.some((step) => /vehicle-kilometre/i.test(step.label)) &&
+      !vehicleKm.steps.some((step) => /tonne-kilometre/i.test(step.label)),
+    vehicleKm.steps.map((step) => step.label).join('; '),
+  )
+  check(
+    '1 tkm average rigid still 0.19947',
+    Math.abs(factor('freight_road_rigid_tkm').conversionValue - 0.19947) < 1e-12,
+  )
+}
+
+const commute = getCategory('employee_commuting')
+if (commute) {
+  const homeworking = workingFromForm(
+    commute,
+    {
+      mode: 'Homeworking (office equipment + heating)',
+      employees: '1',
+      days: '1',
+      hours: '1',
+    },
+    factor('homeworking_homeworking_office_equipment_heating_hour'),
+  )
+  check(
+    '1 FTE homeworking hour uses DESNZ 0.32393 kg → 0.00032393 tCO₂e',
+    Math.abs(homeworking.tco2e - 0.00032393) < 1e-12,
+    String(homeworking.tco2e),
+  )
+  check(
+    'commute modes include DESNZ car sizes, vans, and homeworking',
+    commute.fields.some(
+      (field) =>
+        field.key === 'mode' &&
+        field.optionGroups?.some((group) => group.options.includes('Car — Average car')) &&
+        field.optionGroups?.some((group) => group.options.includes('Van — Class I (up to 1.305 tonnes)')) &&
+        field.optionGroups?.some((group) =>
+          group.options.includes('Homeworking (office equipment + heating)'),
+        ),
+    ),
+  )
+}
+
+const wtt = getCategory('energy_wtt')
+if (wtt) {
+  check(
+    'WTT lists the published DESNZ fuel set, not only five liquids',
+    wtt.fields.some(
+      (field) =>
+        field.key === 'source' &&
+        field.optionGroups?.some((group) => group.options.includes('Diesel (average biofuel blend)')) &&
+        field.optionGroups?.some((group) => group.options.includes('Biodiesel HVO')) &&
+        field.optionGroups?.some((group) => group.options.includes('UK electricity WTT (generation)')),
+    ),
+  )
+  check(
+    'WTT HVO litres resolves the bioenergy WTT row',
+    wtt.resolveFactorKey({ source: 'Biodiesel HVO', fuel_basis: 'litres' }) === 'wtt_bio_biodiesel_hvo_litres',
+    wtt.resolveFactorKey({ source: 'Biodiesel HVO', fuel_basis: 'litres' }),
+  )
+}
+
+const sea = getCategory('sea_freight')
+if (sea) {
+  check(
+    'sea freight lists DESNZ vessel types including tankers and size bands',
+    (sea.fields.find((field) => field.key === 'mode')?.options || []).includes('Crude tanker') &&
+      (sea.fields.find((field) => field.key === 'size')?.optionsFrom?.({ mode: 'Container ship' }) || []).includes(
+        'Average',
+      ),
+  )
+}
+
+const wasteCat = getCategory('waste')
+if (wasteCat) {
+  check(
+    'waste types include the published DESNZ streams',
+    wasteCat.fields.some(
+      (field) =>
+        field.key === 'waste_type' &&
+        field.optionGroups?.some((group) => group.options.includes('Average construction')) &&
+        field.optionGroups?.some((group) => group.options.includes('Household residual waste')),
+    ),
+  )
+}
+
+const gases = getCategory('refrigerants')
+if (gases) {
+  check(
+    'refrigerants list more than R-134A / R-410A / R-404A',
+    gases.fields.some(
+      (field) =>
+        field.key === 'gas' &&
+        (field.optionGroups?.flatMap((group) => group.options) || []).length > 20,
+    ),
+  )
+}
+
 if (failed) {
   console.log(`\n${failed} failed, ${passed} passed`)
   process.exit(1)

@@ -132,6 +132,11 @@ expectValue('flight_domestic_pkm', 0.22928)
 expectValue('flight_shorthaul_pkm', 0.12576)
 expectValue('flight_longhaul_economy_pkm', 0.11704)
 expectValue('flight_longhaul_business_pkm', 0.3394)
+expectValue('hgv_nr_rigid_gt3_5_7_5_tonnes_average_laden_km', 0.49944)
+expectValue('van_class_i_up_to_1_305_tonnes_diesel_km', 0.15833)
+expectValue('homeworking_homeworking_office_equipment_heating_hour', 0.32393)
+expectValue('homeworking_office_equipment_hour', 0.02159)
+expectValue('homeworking_heating_hour', 0.30234)
 expectValue('explosives_anfo_kg', 0.22)
 expectValue('explosives_emulsion_kg', 0.14)
 expectValue('mine_ch4_t', 28000)
@@ -322,6 +327,18 @@ if (catalogGrid) {
     kept.get('electricity_grid_kwh')?.conversionValue === 0.2,
     String(kept.get('electricity_grid_kwh')?.conversionValue),
   )
+}
+
+const detailSamples = [
+  'hgv_nr_rigid_gt3_5_7_5_tonnes_average_laden_km',
+  'van_class_i_up_to_1_305_tonnes_diesel_km',
+  'waste_soils_landfill_t',
+  'ref_hfc_32_kg',
+  'sea_chemical_tanker_average_tkm',
+  'flight_international_economy_class_rf_pkm',
+]
+for (const key of detailSamples) {
+  check(`catalogue includes DESNZ detail row ${key}`, FACTOR_CATALOG.some((row) => row.key === key))
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
