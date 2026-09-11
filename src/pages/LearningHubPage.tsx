@@ -5,7 +5,7 @@ const ARTICLES = [
   },
   {
     title: 'Scope 2 — Purchased energy',
-    body: 'Site electricity and purchased heat/steam are Scope 2. Use kWh from utility bills or smart meter readings. If you generate renewable electricity on-site (e.g. solar panels), you can report zero Scope 2 for that generation using the location-based method.',
+    body: 'Site electricity and purchased heat/steam are Scope 2. Location-based reporting uses the DESNZ UK grid factor. Market-based reporting uses the instrument on each activity: supplier-specific factor, REGO / 100% renewable tariff, or residual mix. SECR requires both. On-site renewable generation is zero under both approaches for that kWh.',
   },
   {
     title: 'Scope 3 — Upstream & downstream value chain',
@@ -24,8 +24,8 @@ const ARTICLES = [
     body: 'WTT factors account for emissions from extracting, refining, and transporting fuel before it reaches your site. WTT is Scope 3 and is mandatory for complete GHG reporting. This tool includes DESNZ/DEFRA 2026 WTT factors for diesel, petrol, LPG, gas oil, natural gas, and UK electricity generation.',
   },
   {
-    title: 'UK reporting: SECR and ESOS',
-    body: 'The Streamlined Energy and Carbon Reporting (SECR) framework requires large UK companies to report Scope 1 + 2 emissions plus at least one intensity metric (e.g. tCO₂e per £M turnover). The Energy Savings Opportunity Scheme (ESOS) requires energy audits every four years. Use the "SECR" filter in Analysis to see only mandatory scopes.',
+    title: 'UK reporting: SECR and PPN 06/21',
+    body: 'SECR requires large UK companies to report Scope 1 and Scope 2, both location-based and market-based, plus energy use in kWh and at least one intensity ratio. PPN 06/21 asks suppliers bidding for major UK government contracts to publish a Carbon Reduction Plan. Use Organisation settings to close a reporting year, then download both documents from Reports. The Combined Results page remains the GHG Protocol inventory annex.',
   },
   {
     title: 'Science Based Targets (SBTi)',

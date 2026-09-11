@@ -81,16 +81,19 @@ export default function AdditionalData({ value, onChange }: Props) {
           Evidence files
         </div>
         <p className="mt-2 text-xs leading-5 text-muted">
-          Files are not stored in this browser or on the organisation database — that is what used
-          to fill device storage. Paste a SharePoint, Google Drive, or document-system link above so
-          every colleague can open the same evidence.
+          Files are not uploaded here. Paste a SharePoint, Google Drive, or document-system link so
+          every colleague and your auditor can open the same evidence. Completeness on the dashboard
+          tracks how many rows have a link.
         </p>
       </div>
 
       <div className="rounded-md border border-brand/30 px-3 py-3">
         <div className="text-sm font-semibold text-brand-dark">Custom Fields</div>
         <div className="mt-2 space-y-2">
-          {value.customFields.map((field, index) => (
+          {value.customFields
+            .map((field, index) => ({ field, index }))
+            .filter(({ field }) => !field.label.startsWith('_'))
+            .map(({ field, index }) => (
             <div key={index} className="flex gap-2">
               <input
                 value={field.label}

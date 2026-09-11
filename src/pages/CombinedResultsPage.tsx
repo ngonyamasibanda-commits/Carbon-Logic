@@ -1,25 +1,33 @@
 import { downloadInventoryCsv, printInventoryReport } from '../lib/export'
 import { summarizeInventory } from '../lib/ghg'
 import { entryActivityYear } from '../lib/entry-date'
+import { isYearLocked } from '../lib/period-lock'
+import { summarizeScope2 } from '../lib/scope2'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
 import { formatPercent, formatTco2e } from '../lib/format'
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useOrg } from '../providers/OrgProvider'
 
 export default function CombinedResultsPage() {
   const { entries } = useEntries()
   const { organization } = useAuth()
+  const { profile } = useOrg()
   const years = useMemo(() => {
     const set = new Set(entries.map((entry) => entryActivityYear(entry)))
+    set.add(profile.reportingYear || new Date().getFullYear())
     return [...set].sort((a, b) => b - a)
-  }, [entries])
-  const [year, setYear] = useState<'all' | number>('all')
+  }, [entries, profile.reportingYear])
+  const [year, setYear] = useState<'all' | number>(profile.reportingYear || new Date().getFullYear())
   const visible = useMemo(
     () => (year === 'all' ? entries : entries.filter((entry) => entryActivityYear(entry) === year)),
     [entries, year],
   )
   const summary = summarizeInventory(visible)
+  const dual = summarizeScope2(visible, profile.residualMixKgPerKwh, 0.13096)
   const orgName = organization?.name ?? 'This organisation'
+  const locked = typeof year === 'number' && isYearLocked(profile.lockedYears, year)
 
   return (
     <div className="space-y-6">
@@ -27,7 +35,11 @@ export default function CombinedResultsPage() {
         <h1 className="text-3xl font-bold text-ink">Combined Results</h1>
         <p className="mt-2 max-w-3xl text-sm text-muted">
           A GHG Protocol inventory for {orgName}: totals by Scope 1, 2 and 3, and all fifteen Scope 3
-          categories. Use this page for reporting. Use Analysis for trends and where to act.
+          categories. Use this page for the inventory table. Use{' '}
+          <Link to="/reports" className="text-brand hover:underline">
+            Reports
+          </Link>{' '}
+          for the SECR statement and PPN 06/21 Carbon Reduction Plan.
         </p>
       </section>
 
@@ -35,7 +47,8 @@ export default function CombinedResultsPage() {
         <div>
           Reported footprint: <strong>{formatTco2e(summary.total, true)}</strong> from {summary.entryCount}{' '}
           {summary.entryCount === 1 ? 'activity' : 'activities'}
-          {year === 'all' ? '' : ` in ${year}`}.
+          {year === 'all' ? '' : ` in ${year}`}
+          {locked ? ' · closed' : ''}.
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {years.length > 0 ? (
@@ -67,18 +80,38 @@ export default function CombinedResultsPage() {
           <button
             type="button"
             className="text-brand hover:underline"
-            onClick={() => printInventoryReport(visible, { organizationName: orgName })}
+            onClick={() =>
+              printInventoryReport(visible, {
+                organizationName: orgName,
+                year: year === 'all' ? undefined : year,
+                residualMixKg: profile.residualMixKgPerKwh,
+                locked,
+              })
+            }
           >
             Download inventory PDF
           </button>
         </div>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryCard label="Scope 1" hint="Fuel and leaks you own" value={summary.scope1} total={summary.total} color="#02234e" />
-        <SummaryCard label="Scope 2" hint="Electricity and heat you buy" value={summary.scope2} total={summary.total} color="#14396d" />
+        <SummaryCard
+          label="Scope 2 location-based"
+          hint="UK grid electricity and heat"
+          value={dual.locationTco2e || summary.scope2}
+          total={summary.total}
+          color="#14396d"
+        />
+        <SummaryCard
+          label="Scope 2 market-based"
+          hint="Contracts, REGO, or residual mix"
+          value={dual.marketTco2e}
+          total={summary.total}
+          color="#14396d"
+        />
         <SummaryCard label="Scope 3" hint="Your value chain (Categories 1–15)" value={summary.scope3} total={summary.total} color="#6cbe2c" />
-        <SummaryCard label="Total" hint="All reported tCO₂e" value={summary.total} total={summary.total} color="#0f1e33" />
+        <SummaryCard label="Total" hint="Location-based organisational total" value={summary.total} total={summary.total} color="#0f1e33" />
       </section>
 
       {summary.insights.length > 0 ? (
@@ -93,7 +126,11 @@ export default function CombinedResultsPage() {
       ) : null}
 
       <InventoryBlock title="Scope 1 — direct emissions" rows={summary.rows.filter((row) => row.scope === 'Scope 1')} />
-      <InventoryBlock title="Scope 2 — purchased energy" rows={summary.rows.filter((row) => row.scope === 'Scope 2')} />
+      <InventoryBlock
+        title="Scope 2 — purchased energy"
+        caption="Location-based totals sit in this table (UK grid). Market-based Scope 2 is shown in the headline cards and in the SECR statement."
+        rows={summary.rows.filter((row) => row.scope === 'Scope 2')}
+      />
       <InventoryBlock
         title="Scope 3 — GHG Protocol Categories 1 to 15"
         caption="Empty rows are intentional. They show completeness for a customer or framework request, not a calculated zero."

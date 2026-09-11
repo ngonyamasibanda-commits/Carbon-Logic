@@ -11,7 +11,9 @@ import DataInput from './pages/DataInput'
 import FactorsPage from './pages/FactorsPage'
 import FaqsPage from './pages/FaqsPage'
 import LearningHubPage from './pages/LearningHubPage'
+import OrganisationPage from './pages/OrganisationPage'
 import PeoplePage from './pages/PeoplePage'
+import ReportsPage from './pages/ReportsPage'
 import SitesPage from './pages/SitesPage'
 import TargetsPage from './pages/TargetsPage'
 import TermsPage from './pages/TermsPage'
@@ -65,6 +67,8 @@ export default function App() {
             <Route path="/input/:categoryId" element={<CategoryPage />} />
             <Route path="/analysis" element={<AnalysisPage />} />
             <Route path="/combined" element={<CombinedResultsPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/organisation" element={<OrganisationPage />} />
             <Route path="/faqs" element={<FaqsPage />} />
             <Route path="/learn" element={<LearningHubPage />} />
             <Route path="/sites" element={<SitesPage />} />

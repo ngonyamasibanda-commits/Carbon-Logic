@@ -3,10 +3,12 @@ import { BookOpen, Building2, Check, LogOut, Plus, ShieldCheck, UserRound } from
 import { Link } from 'react-router-dom'
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '../../lib/auth'
 import { useAuth } from '../../lib/auth-context'
+import { useOrg } from '../../providers/OrgProvider'
 
 export default function Header() {
   const { profile, user, organization, memberships, role, switchOrganization, createOrganization, canCreateOrganizations, signOut, hasVerifiedMfa } =
     useAuth()
+  const { profile: orgProfile } = useOrg()
   const [open, setOpen] = useState(false)
   const [creatingOrg, setCreatingOrg] = useState(false)
   const [newOrgName, setNewOrgName] = useState('')
@@ -64,6 +66,11 @@ export default function Header() {
         {role ? (
           <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand">
             {ROLE_LABELS[role]}
+          </span>
+        ) : null}
+        {orgProfile.lockedYears.includes(orgProfile.reportingYear) ? (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
+            {orgProfile.reportingYear} closed
           </span>
         ) : null}
       </div>
@@ -171,6 +178,15 @@ export default function Header() {
             </div>
 
             <div className="py-1.5">
+              <Link
+                to="/organisation"
+                role="menuitem"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-page"
+              >
+                <Building2 size={15} className="text-muted" />
+                Organisation settings
+              </Link>
               <Link
                 to="/account"
                 role="menuitem"

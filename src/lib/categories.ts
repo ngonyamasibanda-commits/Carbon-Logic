@@ -51,7 +51,7 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 2',
     group: 'input',
     instructions:
-      'Enter purchased or on-site electricity used at construction sites, mines, processing plants, depots, and warehouses. Link utility bills in Additional Data.',
+      'Enter purchased or on-site electricity used at construction sites, mines, processing plants, depots, and warehouses. Location-based Scope 2 uses the DESNZ UK grid factor. For purchased electricity, record the market-based instrument (supplier factor, REGO, or residual mix). Link utility bills in Additional Data.',
     fields: [
       {
         key: 'source',

@@ -23,6 +23,7 @@ import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
 import { formatNumber, formatPercent, formatTco2e, roundDisplay } from '../lib/format'
 import { useOrg } from '../providers/OrgProvider'
+import { summarizeScope2 } from '../lib/scope2'
 
 const SCOPE_COLORS: Record<string, string> = {
   'Scope 1': '#02234e',
@@ -151,6 +152,10 @@ export default function AnalysisPage() {
   const scope2 = byScope.find((row) => row.name === 'Scope 2')?.value ?? 0
   const scope3 = byScope.find((row) => row.name === 'Scope 3')?.value ?? 0
   const inventory = useMemo(() => summarizeInventory(filtered), [filtered])
+  const dual = useMemo(
+    () => summarizeScope2(filtered, profile.residualMixKgPerKwh, 0.13096),
+    [filtered, profile.residualMixKgPerKwh],
+  )
 
   const rowsByScope = useMemo(() => {
     const groups = new Map<string, { name: string; value: number }[]>()
@@ -178,7 +183,8 @@ export default function AnalysisPage() {
           <h1 className="text-3xl font-bold text-ink">Yearly Analysis</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
             What the numbers mean for {organization?.name ?? 'this organisation'}: mix, hotspots, and gaps.
-            Combined Results is the GHG Protocol inventory for disclosure.
+          Combined Results is the GHG Protocol inventory for disclosure. Reports produces the SECR
+            statement and PPN 06/21 Carbon Reduction Plan.
           </p>
         </div>
         <button
@@ -212,7 +218,7 @@ export default function AnalysisPage() {
           onChange={setReporting}
           options={[
             ['All', 'All scopes'],
-            ['SECR', 'SECR (Scope 1 + 2)'],
+            ['SECR', 'SECR (S1 + dual S2)'],
             ['PPN 06/21', 'PPN 06/21 (All scopes)'],
             ['SBTi / CDP', 'SBTi / CDP (All scopes)'],
           ]}
@@ -220,9 +226,20 @@ export default function AnalysisPage() {
       </div>
 
       {/* ── Scope summary KPIs ───────────────────────────────────────── */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard label="Scope 1" value={formatTco2e(scope1)} unit="tCO₂e" color="#02234e" />
-        <KpiCard label="Scope 2" value={formatTco2e(scope2)} unit="tCO₂e" color="#14396d" />
+        <KpiCard
+          label="Scope 2 location-based"
+          value={formatTco2e(dual.locationTco2e || scope2)}
+          unit="tCO₂e"
+          color="#14396d"
+        />
+        <KpiCard
+          label="Scope 2 market-based"
+          value={formatTco2e(dual.marketTco2e)}
+          unit="tCO₂e"
+          color="#14396d"
+        />
         <KpiCard label="Scope 3" value={formatTco2e(scope3)} unit="tCO₂e" color="#6cbe2c" />
         <KpiCard label="Total" value={formatTco2e(total)} unit="tCO₂e" color="#0f1e33" />
       </section>
@@ -310,7 +327,8 @@ export default function AnalysisPage() {
       <section className="rounded-xl border border-line bg-white p-5 shadow-sm">
         <h2 className="mb-3 text-lg font-semibold">Intensity Metrics</h2>
         <p className="mb-3 text-xs text-muted">
-          Used for SECR reporting (tCO₂e per £M revenue) and benchmarking. Enter annual revenue to calculate.
+          Used for SECR reporting (tCO₂e per £M revenue) and benchmarking. Enter annual revenue
+          here or in Organisation settings.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm font-medium">
@@ -336,8 +354,14 @@ export default function AnalysisPage() {
           />
           <IntensityCard
             label="tCO₂e per FTE"
-            value="—"
-            hint="Add employee count in Facilities"
+            value={
+              profile.employeeCount > 0 ? formatNumber(total / profile.employeeCount) : '—'
+            }
+            hint={
+              profile.employeeCount > 0
+                ? 'Average FTE from Organisation settings'
+                : 'Add average FTE in Organisation settings'
+            }
           />
           <IntensityCard
             label="Scope 1 + 2 / Total"
