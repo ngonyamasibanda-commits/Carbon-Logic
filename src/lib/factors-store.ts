@@ -1,5 +1,6 @@
 import { FACTOR_CATALOG } from './factor-catalog'
 import { parseCsv } from './csv'
+import { conversionToPerTonne, isTenantMaterialOverride } from './epd-materials'
 import { readJson, writeJson } from './browser-storage'
 import { throwIfUnsafeToFallback } from './security-errors'
 import { supabase } from './supabase'
@@ -105,6 +106,7 @@ export function mergeFactorMaps(
   const map = new Map<string, EmissionFactor>()
   for (const factor of catalog) map.set(factor.key, factor)
   for (const factor of [...remote, ...local]) {
+    if (!isTenantMaterialOverride(factor)) continue
     if (preferStored(map.get(factor.key), factor)) map.set(factor.key, factor)
   }
   for (const key of deleted) map.delete(key)
@@ -226,18 +228,27 @@ export function parseFactorSpreadsheet(text: string): EmissionFactor[] {
   return rows
     .map((row) => {
       const key = pick(row, 'key', 'activity_type', 'name', 'activity')
-      const value = Number(pick(row, 'conversion_value', 'co2e_factor', 'value', 'factor'))
-      if (!key || !Number.isFinite(value)) return null
+      const declared = pick(row, 'declared_unit', 'declared_unit_on_epd', 'epd_unit', 'functional_unit')
+      const gwpPrinted = Number(
+        pick(row, 'gwp_a1_a3', 'gwp', 'gwp_total', 'a1_a3', 'kg_co2e'),
+      )
+      const direct = pick(row, 'conversion_value', 'co2e_factor', 'value', 'factor')
+      const fromEpd = Number.isFinite(gwpPrinted) && gwpPrinted > 0 ? conversionToPerTonne(gwpPrinted, declared || 'kg') : null
+      const value = direct && Number(direct) > 0 ? Number(direct) : fromEpd
+      if (!key || value == null || !Number.isFinite(value) || value <= 0) return null
+      const unitRaw = pick(row, 'unit')
+      const unit = fromEpd && !(direct && Number(direct) > 0) ? 't' : unitRaw
+      const source = pick(row, 'source', 'epd', 'epd_number') || 'Spreadsheet import'
       return normalize({
         key,
-        name: pick(row, 'name', 'activity_type') || key,
+        name: pick(row, 'name', 'activity_type', 'product', 'product_name') || key,
         category: pick(row, 'category') || 'Imported',
         scope: (pick(row, 'scope') as Scope) || 'Custom',
         conversionValue: value,
-        unit: pick(row, 'unit'),
-        sourceFamily: inferSourceFamily(pick(row, 'source_family', 'source') || 'User'),
-        source: pick(row, 'source') || 'Spreadsheet import',
-        sourceUrl: pick(row, 'source_url', 'url'),
+        unit: unit || 't',
+        sourceFamily: inferSourceFamily(pick(row, 'source_family', 'source') || source, 'User'),
+        source,
+        sourceUrl: pick(row, 'source_url', 'url', 'epd_url'),
         region: pick(row, 'region'),
         validFrom: pick(row, 'valid_from'),
         lastVerifiedAt: pick(row, 'last_verified_at', 'verified'),

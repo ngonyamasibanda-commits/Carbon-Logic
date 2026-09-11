@@ -1,4 +1,5 @@
 import { loadFactorLibrary } from './factors-store'
+import { factorFromEpd, isEpdRequiredKey } from './epd-materials'
 import type { EmissionFactor } from './types'
 
 /**
@@ -18,25 +19,32 @@ export function lookupFactor(
   key: string,
   customConversion?: number,
 ): EmissionFactor | null {
-  if (key === 'custom') {
+  if (key === 'custom' || (!factors.get(key) && isEpdRequiredKey(key))) {
     if (!customConversion || !Number.isFinite(customConversion) || customConversion <= 0) {
-      return null
+      return factors.get(key) ?? null
     }
-    return {
-      key: 'custom',
-      name: 'Custom factor',
-      category: 'Custom',
-      scope: 'Custom',
+    if (key === 'custom') {
+      return {
+        key: 'custom',
+        name: 'Custom factor',
+        category: 'Custom',
+        scope: 'Custom',
+        conversionValue: customConversion,
+        unit: 'unit',
+        sourceFamily: 'User',
+        source: 'User-supplied verified factor',
+        sourceUrl: '',
+        region: '',
+        validFrom: new Date().toISOString().slice(0, 10),
+        lastVerifiedAt: new Date().toISOString().slice(0, 10),
+        isPlaceholder: false,
+      }
+    }
+    return factorFromEpd({
+      key,
       conversionValue: customConversion,
-      unit: 'unit',
-      sourceFamily: 'User',
-      source: 'User-supplied verified factor',
-      sourceUrl: '',
-      region: '',
-      validFrom: new Date().toISOString().slice(0, 10),
-      lastVerifiedAt: new Date().toISOString().slice(0, 10),
-      isPlaceholder: false,
-    }
+      source: 'Environmental Product Declaration (entered on the activity form)',
+    })
   }
   return factors.get(key) ?? null
 }

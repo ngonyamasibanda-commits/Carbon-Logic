@@ -1,11 +1,13 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { downloadText } from '../lib/export'
+import { epdTemplateCsv, EPD_REQUIRED_MATERIALS } from '../lib/epd-materials'
 import { formatNumber } from '../lib/format'
 import { factorsToCsv, monthsStale, parseFactorSpreadsheet } from '../lib/factors-store'
 import { safeHttpUrl } from '../lib/safe'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from '../lib/types'
 import { useEntries } from '../lib/entries-context'
+import Callout from '../components/ui/Callout'
 
 const SCOPES: Array<Scope | 'Custom'> = ['Scope 1', 'Scope 2', 'Scope 3', 'Custom']
 
@@ -14,6 +16,7 @@ const FAMILY_STYLE: Record<SourceFamily, string> = {
   DESNZ: 'bg-teal-100 text-teal-800',
   BEIS: 'bg-sky-100 text-sky-800',
   ICE: 'bg-violet-100 text-violet-800',
+  EPD: 'bg-indigo-100 text-indigo-800',
   EIO: 'bg-amber-100 text-amber-900',
   EPA: 'bg-orange-100 text-orange-800',
   IPCC: 'bg-slate-200 text-slate-800',
@@ -120,9 +123,9 @@ export default function FactorsPage() {
           <p className="mt-2 max-w-3xl text-sm text-muted">
             Conversion values are kg CO₂e per activity unit. tCO₂e = (activity × conversion
             value) / 1000. Each row shows the publisher: DEFRA / DESNZ (UK government
-            conversion factors 2026, formerly BEIS), ICE v4.1 (Circular Ecology) where DESNZ
-            has no equivalent, or EIO / EPA / IPCC for spend-based, explosives, and GWP
-            sources.
+            conversion factors 2026, formerly BEIS), EPD or user factors for steel, cement,
+            and other materials without a DESNZ row, or EIO / EPA / IPCC for spend-based,
+            explosives, and GWP sources.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -134,7 +137,7 @@ export default function FactorsPage() {
             <Download size={14} /> Export spreadsheet
           </button>
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white">
-            <Upload size={14} /> Import spreadsheet
+            <Upload size={14} /> Import EPD or spreadsheet
             <input
               type="file"
               accept=".csv,text/csv,.tsv,text/tab-separated-values"
@@ -142,6 +145,13 @@ export default function FactorsPage() {
               onChange={(event) => void onImport(event.target.files?.[0])}
             />
           </label>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-md border border-line bg-white px-3 py-2 text-sm"
+            onClick={() => downloadText('epd-material-factors.csv', epdTemplateCsv(), 'text/csv')}
+          >
+            <Download size={14} /> EPD template
+          </button>
           <button
             type="button"
             className="rounded-md border border-line px-3 py-2 text-sm"
@@ -161,6 +171,19 @@ export default function FactorsPage() {
           marked as seed/placeholder. Update them before using figures in a filing.
         </p>
       ) : null}
+      <Callout tone="info">
+        Steel, rebar, cement, aluminium, copper, and lime are not in the published DESNZ 2026
+        library. Add them here from a supplier EPD (keep the keys{' '}
+        {EPD_REQUIRED_MATERIALS.map((row) => row.key).join(', ')}
+        ) so Bulk Materials can calculate. Generic ICE database values are not shipped in this
+        product.
+      </Callout>
+      <Callout tone="tip">
+        Download the EPD template, paste GWP A1–A3 into <span className="font-semibold">gwp_a1_a3</span>{' '}
+        and set <span className="font-semibold">declared_unit</span> to kg CO2e/kg or kg CO2e per
+        tonne. Import converts per-kg figures to kg CO₂e per tonne automatically. You can also
+        fill conversion_value yourself if the EPD is already per tonne.
+      </Callout>
       {status ? <p className="text-sm text-brand-dark">{status}</p> : null}
 
       <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -224,7 +247,7 @@ export default function FactorsPage() {
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search factors or source (DEFRA, DESNZ, ICE, EIO)..."
+        placeholder="Search factors or source (DEFRA, DESNZ, EPD, EIO)..."
         className="w-full rounded-md border border-line px-3 py-2 text-sm"
       />
 

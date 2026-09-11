@@ -8,7 +8,6 @@ const VERIFIED = FACTOR_VERIFIED_AT
 const GOV_URL =
   'https://www.gov.uk/government/publications/greenhouse-gas-reporting-conversion-factors-2026'
 const SPEND_URL = 'https://www.gov.uk/government/statistics/uks-carbon-footprint'
-const ICE_URL = 'https://circularecology.com/embodied-carbon-footprint-database.html'
 const IPCC_URL = 'https://www.ipcc.ch/report/ar5/wg1/'
 const NPI_URL =
   'https://www.dcceew.gov.au/environment/protection/npi/reporting/industry-reporting-materials/emission-estimation-technique-manuals/emission-estimation-technique-manual-explosives-detonation-and-firing-ranges'
@@ -17,8 +16,6 @@ const DEFRA =
   'UK GHG Conversion Factors for Company Reporting 2026 (DESNZ / DEFRA; formerly BEIS). kg CO₂e, IPCC AR5. Published 11 June 2026; flat file revised 31 July 2026. For 2026 activity / SECR 2026.'
 const DESNZ =
   'UK GHG Conversion Factors for Company Reporting 2026 — electricity / heat (DESNZ). kg CO₂e, IPCC AR5. Published 11 June 2026; flat file revised 31 July 2026. For 2026 activity / SECR 2026.'
-const ICE =
-  'Inventory of Carbon and Energy (ICE) Database v4.1, Circular Ecology (29 October 2025). Cradle-to-gate A1–A3, kg CO₂e per kg converted to per tonne. Used only where DESNZ 2026 has no equivalent material row. ICE Educational v5.0 is education-only after 30 September 2026.'
 const IPCC =
   'IPCC Fifth Assessment Report (AR5) Working Group I, 100-year GWP without climate-carbon feedbacks. Methane GWP = 28. DESNZ 2026 refrigerants still use AR5, so mine methane stays on AR5 for consistency.'
 const NPI =
@@ -364,17 +361,6 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     GOV_URL,
   ),
   factor(
-    'material_steel_t',
-    'Structural steel sections (A1–A3)',
-    'Bulk materials',
-    'Scope 3',
-    1550,
-    't',
-    'ICE',
-    `${ICE} Industry-average / section steel ≈ 1.55 kg CO₂e/kg. Headline steel factors were unchanged from v3.0 to v4.1.`,
-    ICE_URL,
-  ),
-  factor(
     'material_timber_t',
     'Wood (primary production)',
     'Bulk materials',
@@ -406,28 +392,6 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'DEFRA',
     `${DEFRA} Material use — construction aggregates, primary material production.`,
     GOV_URL,
-  ),
-  factor(
-    'material_cement_t',
-    'Cement CEM I / Portland (A1–A3)',
-    'Bulk materials',
-    'Scope 3',
-    910,
-    't',
-    'ICE',
-    `${ICE} CEM I (Portland) ≈ 0.91 kg CO₂e/kg.`,
-    ICE_URL,
-  ),
-  factor(
-    'material_rebar_t',
-    'Reinforcing steel (A1–A3)',
-    'Bulk materials',
-    'Scope 3',
-    1990,
-    't',
-    'ICE',
-    `${ICE} Reinforcing steel ≈ 1.99 kg CO₂e/kg. No newer published replacement for this headline row.`,
-    ICE_URL,
   ),
   factor(
     'material_metals_t',
@@ -688,17 +652,6 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     GOV_URL,
   ),
   factor(
-    'material_aluminium_t',
-    'Aluminium (primary production)',
-    'Bulk materials',
-    'Scope 3',
-    13100,
-    't',
-    'ICE',
-    `${ICE} Primary / virgin aluminium ≈ 13.1 kg CO₂e/kg (not the industry-average recycled blend).`,
-    ICE_URL,
-  ),
-  factor(
     'material_bricks_t',
     'Bricks (generic)',
     'Bulk materials',
@@ -732,17 +685,6 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     GOV_URL,
   ),
   factor(
-    'material_copper_t',
-    'Copper (primary)',
-    'Bulk materials',
-    'Scope 3',
-    3830,
-    't',
-    'ICE',
-    `${ICE} Copper ≈ 3.83 kg CO₂e/kg.`,
-    ICE_URL,
-  ),
-  factor(
     'material_pvc_t',
     'PVC pipe / general',
     'Bulk materials',
@@ -763,17 +705,6 @@ export const FACTOR_CATALOG: EmissionFactor[] = [
     'DEFRA',
     `${DEFRA} Material use — soils primary production is no longer published in 2026 (cell withdrawn). Conversion is 0 rather than an invented replacement. Prefer a site-specific or EPD factor.`,
     GOV_URL,
-  ),
-  factor(
-    'material_lime_t',
-    'Lime (general)',
-    'Bulk materials',
-    'Scope 3',
-    760,
-    't',
-    'ICE',
-    `${ICE} Last published ICE general lime ≈ 0.76 kg CO₂e/kg. No DESNZ 2026 or v4.1 headline replacement found.`,
-    ICE_URL,
   ),
 
   // ── Mining: explosives (Scope 1 combustion) and fugitive methane ────────

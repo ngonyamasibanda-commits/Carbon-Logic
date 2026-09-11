@@ -10,7 +10,7 @@ export default function FaqsPage() {
     },
     {
       q: 'Where do emission factors come from?',
-      a: 'Fuel, energy, freight, waste, water, travel, and most construction-material factors come from the DEFRA/DESNZ UK GHG Conversion Factors 2026 (published 11 June 2026, flat file revised 31 July 2026). Where DESNZ has no equivalent, embodied carbon uses ICE Database v4.1 (October 2025). Spend-based factors use Defra SIC-19 multipliers to 2023 (published 30 June 2026). Mine methane uses IPCC AR5 GWP 28. Explosives combustion uses the Australian NPI explosives detonation mass-balance factors. All factors show their source, source family, and verification date. You can add your own factors from EPDs or other sources.',
+      a: 'Fuel, energy, freight, waste, water, travel, and most construction-material factors come from the DEFRA/DESNZ UK GHG Conversion Factors 2026 (published 11 June 2026, flat file revised 31 July 2026). Steel, rebar, cement, aluminium, copper, and lime have no DESNZ row — paste a supplier EPD (EN 15804 A1–A3) on Bulk Materials or import an EPD spreadsheet on Emission factors. Spend-based factors use Defra SIC-19 multipliers to 2023 (published 30 June 2026). Mine methane uses IPCC AR5 GWP 28. Explosives combustion uses the Australian NPI explosives detonation mass-balance factors. All factors show their source, source family, and verification date.',
     },
     {
       q: 'Can I log data by project site?',
@@ -43,6 +43,10 @@ export default function FaqsPage() {
     {
       q: 'Why did I not get an invite or confirmation email?',
       a: 'Carbon Logic does not send invitation emails. The person who invited you should share a signup link. You must create an account with that exact email to join their organisation. Confirmation, magic-link, and password-reset messages come from Supabase, not Carbon Logic, and often never arrive until Custom SMTP is configured. Until then, a Carbon Logic owner can turn off Confirm email in Supabase Authentication.',
+    },
+    {
+      q: 'How do I log steel, cement, or aluminium without a published factor?',
+      a: 'Those materials need a supplier Environmental Product Declaration (EPD). On Bulk Materials, choose the material (marked EPD required), paste the A1–A3 GWP, and name the EPD. Admins can also download the EPD template on Emission factors and import several products at once. Do not guess a generic ICE number — this app does not ship ICE values.',
     },
     {
       q: 'Can I use spend-based factors for Scope 3?',
