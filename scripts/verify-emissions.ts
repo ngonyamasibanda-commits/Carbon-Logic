@@ -346,6 +346,92 @@ if (fleet && freight) {
   )
 }
 
+const commute = getCategory('employee_commuting')
+if (commute) {
+  const homeworking = workingFromForm(
+    commute,
+    {
+      mode: 'Homeworking (office equipment + heating)',
+      employees: '1',
+      days: '1',
+      hours: '1',
+    },
+    factor('homeworking_homeworking_office_equipment_heating_hour'),
+  )
+  check(
+    '1 FTE homeworking hour uses DESNZ 0.32393 kg → 0.00032393 tCO₂e',
+    Math.abs(homeworking.tco2e - 0.00032393) < 1e-12,
+    String(homeworking.tco2e),
+  )
+  check(
+    'commute modes include DESNZ car sizes, vans, and homeworking',
+    commute.fields.some(
+      (field) =>
+        field.key === 'mode' &&
+        field.optionGroups?.some((group) => group.options.includes('Car — Average car')) &&
+        field.optionGroups?.some((group) => group.options.includes('Van — Class I (up to 1.305 tonnes)')) &&
+        field.optionGroups?.some((group) =>
+          group.options.includes('Homeworking (office equipment + heating)'),
+        ),
+    ),
+  )
+}
+
+const wtt = getCategory('energy_wtt')
+if (wtt) {
+  check(
+    'WTT lists the published DESNZ fuel set, not only five liquids',
+    wtt.fields.some(
+      (field) =>
+        field.key === 'source' &&
+        field.optionGroups?.some((group) => group.options.includes('Diesel (average biofuel blend)')) &&
+        field.optionGroups?.some((group) => group.options.includes('Biodiesel HVO')) &&
+        field.optionGroups?.some((group) => group.options.includes('UK electricity WTT (generation)')),
+    ),
+  )
+  check(
+    'WTT HVO litres resolves the bioenergy WTT row',
+    wtt.resolveFactorKey({ source: 'Biodiesel HVO', fuel_basis: 'litres' }) === 'wtt_bio_biodiesel_hvo_litres',
+    wtt.resolveFactorKey({ source: 'Biodiesel HVO', fuel_basis: 'litres' }),
+  )
+}
+
+const sea = getCategory('sea_freight')
+if (sea) {
+  check(
+    'sea freight lists DESNZ vessel types including tankers and size bands',
+    (sea.fields.find((field) => field.key === 'mode')?.options || []).includes('Crude tanker') &&
+      (sea.fields.find((field) => field.key === 'size')?.optionsFrom?.({ mode: 'Container ship' }) || []).includes(
+        'Average',
+      ),
+  )
+}
+
+const wasteCat = getCategory('waste')
+if (wasteCat) {
+  check(
+    'waste types include the published DESNZ streams',
+    wasteCat.fields.some(
+      (field) =>
+        field.key === 'waste_type' &&
+        field.optionGroups?.some((group) => group.options.includes('Average construction')) &&
+        field.optionGroups?.some((group) => group.options.includes('Household residual waste')),
+    ),
+  )
+}
+
+const gases = getCategory('refrigerants')
+if (gases) {
+  check(
+    'refrigerants list more than R-134A / R-410A / R-404A',
+    gases.fields.some(
+      (field) =>
+        field.key === 'gas' &&
+        (field.optionGroups?.flatMap((group) => group.options) || []).length > 20,
+    ),
+  )
+}
+
 if (failed) {
   console.log(`\n${failed} failed, ${passed} passed`)
   process.exit(1)

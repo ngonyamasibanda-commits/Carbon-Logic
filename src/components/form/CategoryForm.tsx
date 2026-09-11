@@ -88,7 +88,11 @@ export default function CategoryForm({ category }: Props) {
   const liveCustom = Number(values.conversion) || undefined
   const liveFactor = lookupFactor(factors, liveFactorKey, liveCustom)
   const liveWorking =
-    liveFactor && Number(values[category.amountField] || values.amount)
+    liveFactor &&
+    (Number(values[category.amountField] || values.amount) ||
+      Number(values.hours) ||
+      Number(values.distance) ||
+      Number(values.weight))
       ? workingFromForm(category, values, liveFactor)
       : null
 
