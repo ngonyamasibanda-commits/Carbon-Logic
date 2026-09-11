@@ -13,8 +13,16 @@ import {
   epdTemplateCsv,
   isEpdRequiredKey,
 } from '../src/lib/epd-materials'
-import { CEDA_ATTRIBUTION, CEDA_FX_GBP_PER_USD_2025, cedaSectorByKey } from '../src/lib/ceda'
-import { EPA_US_EGRID_AVG_KG_PER_KWH, EPA_US_TD_KG_PER_KWH } from '../src/lib/epa-catalog'
+import {
+  EPA_EGRID_SUBREGIONS,
+  EPA_REFRIGERANT_GASES,
+  EPA_US_EGRID_AVG_KG_PER_KWH,
+  EPA_US_TD_KG_PER_KWH,
+  buildEpaFactors,
+  egridFactorKey,
+  epaFuelFactorKey,
+} from '../src/lib/epa-catalog'
+import { CEDA_ATTRIBUTION, CEDA_FX_GBP_PER_USD_2025, CEDA_GBR_SECTORS, CEDA_SECTOR_GROUPS, cedaSectorByKey } from '../src/lib/ceda'
 
 let passed = 0
 let failed = 0
@@ -340,6 +348,84 @@ const detailSamples = [
 for (const key of detailSamples) {
   check(`catalogue includes DESNZ detail row ${key}`, FACTOR_CATALOG.some((row) => row.key === key))
 }
+
+check('Open CEDA UK GHG_t_Raw has 400 sectors', CEDA_GBR_SECTORS.length === 400, String(CEDA_GBR_SECTORS.length))
+check(
+  'CEDA stays USD on every generated sector',
+  FACTOR_CATALOG.filter((row) => row.key.startsWith('ceda_')).every((row) => row.unit === '$' && row.spendCurrency === 'USD'),
+)
+check(
+  'EPA Hub Table 6 lists every eGRID subregion plus US Average',
+  EPA_EGRID_SUBREGIONS.length === 28 && EPA_EGRID_SUBREGIONS.some((row) => row.acronym === 'CAMX'),
+  String(EPA_EGRID_SUBREGIONS.length),
+)
+check(
+  'EPA California subregion does not overwrite UK electricity',
+  egridFactorKey('CAMX') === 'electricity_us_egrid_camx_kwh' &&
+    FACTOR_CATALOG.find((row) => row.key === 'electricity_grid_kwh')?.conversionValue === 0.13096,
+)
+check(
+  'EPA AR6 refrigerant list is broader than R-134A / R-410A / R-404A',
+  EPA_REFRIGERANT_GASES.length > 40 &&
+    EPA_REFRIGERANT_GASES.some((row) => row.key === 'r410a_epa_kg' && row.gwp === 2256),
+  String(EPA_REFRIGERANT_GASES.length),
+)
+check(
+  'EPA R-410A key is not the DESNZ r410a_kg row',
+  FACTOR_CATALOG.find((row) => row.key === 'r410a_kg')?.conversionValue === 1924 &&
+    FACTOR_CATALOG.find((row) => row.key === 'r410a_epa_kg')?.conversionValue === 2256,
+)
+check(
+  'catalogue includes EPA WARM mixed MSW landfill',
+  FACTOR_CATALOG.some((row) => row.key === 'epa_waste_mixed_msw_landfilled' && row.unit === 'short ton'),
+)
+
+const epaGenerated = buildEpaFactors({ year: '2026', verifiedAt: '2026-09-11' })
+const epaKeys = epaGenerated.map((row) => row.key)
+check('generated EPA Hub keys are unique', new Set(epaKeys).size === epaKeys.length, String(epaKeys.length))
+const protectedDesnz = [
+  'electricity_grid_kwh',
+  'electricity_td_kwh',
+  'r410a_kg',
+  'r134a_kg',
+  'r404a_kg',
+  'diesel_litre',
+  'waste_landfill_kg',
+  'flight_shorthaul_pkm',
+  'taxi_pkm',
+  'freight_road_rigid_tkm',
+  'heat_steam_kwh',
+]
+check(
+  'EPA Hub rows do not overwrite protected DESNZ keys',
+  protectedDesnz.every((key) => !epaKeys.includes(key)),
+  protectedDesnz.filter((key) => epaKeys.includes(key)).join(', '),
+)
+check(
+  'EPA Diesel Fuel option stays on diesel_us_gallon, not diesel_litre',
+  epaFuelFactorKey('Diesel Fuel') === 'diesel_us_gallon',
+)
+check(
+  'EPA Motor Gasoline (stationary) is distinct from mobile petrol_us_gallon',
+  epaFuelFactorKey('Motor Gasoline (stationary)') === 'epa_stat_motor_gasoline_gal_us' &&
+    epaFuelFactorKey('Motor Gasoline') === 'petrol_us_gallon',
+)
+check(
+  'CEDA dropdown groups cover every UK GHG_t_Raw sector',
+  CEDA_SECTOR_GROUPS.reduce((sum, group) => sum + group.options.length, 0) === 400,
+  String(CEDA_SECTOR_GROUPS.reduce((sum, group) => sum + group.options.length, 0)),
+)
+check(
+  'US purchased steam is a parallel EPA row',
+  FACTOR_CATALOG.some((row) => row.key === 'heat_steam_us_kwh' && row.sourceFamily === 'EPA'),
+)
+const camx = byKey('electricity_us_egrid_camx_kwh')
+const usAvg = byKey('electricity_us_egrid_kwh')
+check(
+  'CAMX eGRID is published and distinct from the US average',
+  Boolean(camx && usAvg && camx.conversionValue !== usAvg.conversionValue && camx.sourceFamily === 'EPA'),
+  String(camx?.conversionValue),
+)
 
 console.log(`\n${passed} passed, ${failed} failed\n`)
 if (failed > 0) process.exit(1)

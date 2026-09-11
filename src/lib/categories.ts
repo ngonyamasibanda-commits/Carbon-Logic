@@ -1,6 +1,26 @@
 import type { CategoryConfig, UnitOption } from './types'
 import { HOTEL_COUNTRY_OPTIONS, hotelFactorKey } from './factor-catalog'
-import { CEDA_SECTOR_OPTIONS, cedaSectorByName } from './ceda'
+import { CEDA_SECTOR_GROUPS, cedaSectorByName } from './ceda'
+import { isEpdRequiredOption } from './epd-materials'
+import {
+  EPA_EGRID_OPTIONS,
+  EPA_FREIGHT_OPTIONS,
+  EPA_FUEL_GROUPS,
+  EPA_REFRIGERANT_GROUPS,
+  EPA_TRAVEL_OPTIONS,
+  EPA_WASTE_MATERIALS,
+  epaFreightFactorKey,
+  epaFreightUnit,
+  epaFuelFactorKey,
+  epaFuelUnit,
+  epaRefrigerantFactorKey,
+  epaTravelFactorKey,
+  epaTravelUnit,
+  epaWasteFactorKey,
+  epaWasteRoutesFor,
+  egridFactorKey,
+  parseEgridOption,
+} from './epa-catalog'
 import {
   AIR_HAULS,
   BUS_TYPES,
@@ -86,6 +106,52 @@ const DISTANCE_KM_UNITS: UnitOption[] = [
   { label: 'Nautical miles (nmi)', value: 'nmi', toBase: 1.852 },
 ]
 
+const US_GALLON_UNITS: UnitOption[] = [
+  { label: 'US gallons (gal)', value: 'gal (US)', toBase: 1 },
+  { label: 'Litres (L)', value: 'L', toBase: 0.264172 },
+  { label: 'UK gallons (gal)', value: 'gal (UK)', toBase: 1.20095 },
+]
+
+const SCF_UNITS: UnitOption[] = [
+  { label: 'Standard cubic feet (scf)', value: 'scf', toBase: 1 },
+  { label: 'Cubic metres (m³)', value: 'm³', toBase: 35.3147 },
+]
+
+const SHORT_TON_UNITS: UnitOption[] = [
+  { label: 'Short tons (US)', value: 'short ton', toBase: 1 },
+  { label: 'Tonnes (t)', value: 't', toBase: 1.10231 },
+  { label: 'Kilograms (kg)', value: 'kg', toBase: 0.00110231 },
+]
+
+const FAMILY_DESNZ = 'DESNZ / UK 2026'
+const FAMILY_EPA = 'EPA Hub 2026'
+const FAMILY_CEDA = 'Open CEDA by Watershed (kg CO₂e per $)'
+const FAMILY_DEFRA = 'Defra SIC-19 (kg CO₂e per £)'
+const FAMILY_DESNZ_GWP = 'DESNZ 2026 (IPCC AR5, UK default)'
+const FAMILY_EPA_GWP = 'EPA Hub 2026 (IPCC AR6)'
+
+const WHEN_DESNZ = { field: 'factor_family', equals: [FAMILY_DESNZ, ''] }
+const WHEN_EPA = { field: 'factor_family', equals: FAMILY_EPA }
+
+export function isEpaFamily(values: Record<string, string>) {
+  const fam = values.factor_family || ''
+  if (fam.includes('EPA')) return true
+  if (fam.includes('DESNZ') || fam.includes('Defra')) {
+    return /eGRID|WARM/i.test(values.source || '')
+  }
+  return (
+    (values.gwp_set || '').includes('EPA') ||
+    (values.type || '').includes('EPA Hub') ||
+    /eGRID|WARM/i.test(values.source || '')
+  )
+}
+
+function epaShortTonMiles(values: Record<string, string>) {
+  const tonnes = num(values, 'weight') * (num(values, 'weight_unit_factor') || 1)
+  const km = num(values, 'distance') * (num(values, 'distance_unit_factor') || 1)
+  return tonnes * 1.10231 * (km / 1.60934)
+}
+
 const WATER_VOLUME_UNITS: UnitOption[] = [
   { label: 'Cubic metres (m³)', value: 'm³', toBase: 1 },
   { label: 'Litres (L)', value: 'L', toBase: 0.001 },
@@ -104,17 +170,34 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 2',
     group: 'input',
     instructions:
-      'Enter purchased or on-site electricity used at construction sites, mines, processing plants, depots, and warehouses. Location-based Scope 2 uses the DESNZ UK grid factor unless you select the US eGRID average. For purchased electricity, record the market-based instrument (supplier factor, retired REGO/GoO/REC, or residual mix). Link utility bills in Additional Data.',
+      'Enter purchased or on-site electricity used at construction sites, mines, processing plants, depots, and warehouses. Choose the published family first: DESNZ UK generated electricity, or EPA eGRID 2024 total-output (US average and every Hub subregion). These families are parallel — EPA never overwrites the UK grid key. For purchased electricity, record the market-based instrument (supplier factor, retired REGO/GoO/REC, or residual mix). Link utility bills in Additional Data.',
     fields: [
       {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+        hint: 'UK sites stay on DESNZ. US inventories pick an eGRID subregion. The catalogue keeps both.',
+      },
+      {
         key: 'source',
-        label: 'Energy source',
+        label: 'UK electricity (DESNZ)',
         type: 'select',
         options: [
           'Purchased electricity (UK grid)',
           'Purchased electricity (US eGRID average)',
           'On-site renewable electricity',
         ],
+        visibleWhen: WHEN_DESNZ,
+        hint: 'US eGRID average remains here so saved entries still resolve. Prefer the EPA family + subregion list for US sites.',
+      },
+      {
+        key: 'egrid_region',
+        label: 'eGRID subregion (EPA Hub 2026 Table 6)',
+        type: 'select',
+        options: [...EPA_EGRID_OPTIONS],
+        visibleWhen: WHEN_EPA,
+        hint: 'Total-output factors only. Non-baseload rows are not used for an inventory. T&D uses that subregion’s grid gross loss.',
       },
       {
         key: 'amount',
@@ -129,12 +212,13 @@ export const CATEGORIES: CategoryConfig[] = [
     chainExtras: ['td', 'wtt'],
     resolveFactorKey: (v) => {
       if (v.source?.includes('renewable')) return 'electricity_renewable_kwh'
+      if (isEpaFamily(v) || v.egrid_region) return egridFactorKey(parseEgridOption(v.egrid_region || 'US Average'))
       if (v.source?.includes('eGRID') || v.source?.includes('US')) return 'electricity_us_egrid_kwh'
       return 'electricity_grid_kwh'
     },
     resolveUnit: (v) => v.unit || 'kWh',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} ${v.unit || 'kWh'} of ${v.source || 'electricity'}`,
+      `${amount.toLocaleString()} ${v.unit || 'kWh'} of ${v.egrid_region || v.source || 'electricity'}`,
   },
   {
     id: 'site_fuel',
@@ -142,19 +226,34 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Log the DESNZ 2026 fuel the site actually combusted: gaseous, liquid, solid, and bioenergy rows, in the published unit (litres, tonnes, m³, kWh net or gross). Forecourt diesel/petrol use the average biofuel blend; 100% mineral is a separate row. Litres or kWh of fuel are more accurate than vehicle-km when you have them.',
+      'Choose the published family first. DESNZ 2026 fuels are litres, tonnes, m³, or kWh (preferred for UK owned plant). EPA Hub 2026 Table 2 is mobile CO₂ per US gallon/scf; Table 1 is stationary combustion converted to kg CO₂e with AR6 GWPs. The families are parallel — EPA gallons never overwrite diesel_litre. Litres or kWh of fuel are more accurate than vehicle-km when you have them.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'fuel',
         label: 'Fuel (DESNZ 2026)',
         type: 'select',
         options: SITE_FUEL_OPTIONS,
+        visibleWhen: WHEN_DESNZ,
+      },
+      {
+        key: 'epa_fuel',
+        label: 'US fuel (EPA Hub 2026)',
+        type: 'select',
+        optionGroups: EPA_FUEL_GROUPS,
+        visibleWhen: WHEN_EPA,
       },
       {
         key: 'fuel_basis',
         label: 'Published unit',
         type: 'select',
         optionsFrom: (v) => publishedUnitsForFuel(canonicalFuelName(v.fuel || 'Diesel (average biofuel blend)')),
+        visibleWhen: WHEN_DESNZ,
         hint: 'Only units DESNZ publishes for this fuel are listed. Energy bills are usually kWh Gross CV.',
       },
       {
@@ -168,10 +267,14 @@ export const CATEGORIES: CategoryConfig[] = [
     amountLabel: 'L',
     unitOptions: FUEL_VOLUME_UNITS,
     chainExtras: ['wtt'],
-    resolveFactorKey: (v) => energyFactorKey(v.fuel || 'Diesel / gas oil', v.fuel_basis),
-    resolveUnit: (v) => energyFactorUnit(v.fuel || 'Diesel / gas oil', v.fuel_basis) || v.unit || 'L',
+    resolveFactorKey: (v) =>
+      isEpaFamily(v) ? epaFuelFactorKey(v.epa_fuel || 'Diesel Fuel') : energyFactorKey(v.fuel || 'Diesel / gas oil', v.fuel_basis),
+    resolveUnit: (v) =>
+      isEpaFamily(v)
+        ? epaFuelUnit(v.epa_fuel || 'Diesel Fuel')
+        : energyFactorUnit(v.fuel || 'Diesel / gas oil', v.fuel_basis) || v.unit || 'L',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} ${v.unit || 'L'} of ${v.fuel || 'fuel'}`,
+      `${amount.toLocaleString()} ${v.unit || (isEpaFamily(v) ? epaFuelUnit(v.epa_fuel || 'Diesel Fuel') : 'L')} of ${v.epa_fuel || v.fuel || 'fuel'}`,
   },
   {
     id: 'heavy_machinery',
@@ -179,8 +282,14 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Capture fuel burned by excavators, haul trucks, drills, loaders, crushers, and other owned plant at construction sites and mines.',
+      'Capture fuel burned by excavators, haul trucks, drills, loaders, crushers, and other owned plant at construction sites and mines. DESNZ litres/kWh/tonnes are preferred for UK plant. EPA Hub Tables 1–2 are the parallel US gallon/scf/short-ton family — they never overwrite diesel_litre.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'equipment',
         label: 'Equipment type',
@@ -214,6 +323,14 @@ export const CATEGORIES: CategoryConfig[] = [
               !['Diesel / gas oil', 'Diesel (average biofuel blend)', 'Gas oil', 'Petrol', 'HVO'].includes(name),
           ),
         ],
+        visibleWhen: WHEN_DESNZ,
+      },
+      {
+        key: 'epa_fuel',
+        label: 'US fuel (EPA Hub 2026)',
+        type: 'select',
+        optionGroups: EPA_FUEL_GROUPS,
+        visibleWhen: WHEN_EPA,
       },
       {
         key: 'fuel_basis',
@@ -229,6 +346,7 @@ export const CATEGORIES: CategoryConfig[] = [
           return publishedUnitsForFuel(fuel)
         },
         optional: true,
+        visibleWhen: WHEN_DESNZ,
       },
       {
         key: 'amount',
@@ -241,6 +359,7 @@ export const CATEGORIES: CategoryConfig[] = [
     unitOptions: FUEL_VOLUME_UNITS,
     chainExtras: ['wtt'],
     resolveFactorKey: (v) => {
+      if (isEpaFamily(v)) return epaFuelFactorKey(v.epa_fuel || 'Diesel Fuel')
       if (v.fuel === 'HVO' || v.fuel === 'Biodiesel HVO') {
         return energyFactorKey('Biodiesel HVO', v.fuel_basis || 'litres')
       }
@@ -250,12 +369,14 @@ export const CATEGORIES: CategoryConfig[] = [
       return energyFactorKey(v.fuel || 'Gas oil', v.fuel_basis)
     },
     resolveUnit: (v) =>
-      energyFactorUnit(
-        v.fuel === 'Diesel / red diesel' ? 'Gas oil' : v.fuel === 'HVO' ? 'Biodiesel HVO' : v.fuel || 'Gas oil',
-        v.fuel_basis,
-      ) || v.unit || 'L',
+      isEpaFamily(v)
+        ? epaFuelUnit(v.epa_fuel || 'Diesel Fuel')
+        : energyFactorUnit(
+            v.fuel === 'Diesel / red diesel' ? 'Gas oil' : v.fuel === 'HVO' ? 'Biodiesel HVO' : v.fuel || 'Gas oil',
+            v.fuel_basis,
+          ) || v.unit || 'L',
     resolveDetails: (v, amount) =>
-      `${amount.toLocaleString()} ${v.unit || 'L'} ${v.fuel || 'diesel'} — ${v.equipment || 'plant'}`,
+      `${amount.toLocaleString()} ${v.unit || (isEpaFamily(v) ? epaFuelUnit(v.epa_fuel || 'Diesel Fuel') : 'L')} ${v.epa_fuel || v.fuel || 'diesel'} — ${v.equipment || 'plant'}`,
   },
   {
     id: 'explosives',
@@ -270,6 +391,7 @@ export const CATEGORIES: CategoryConfig[] = [
         label: 'Explosive type',
         type: 'select',
         options: ['ANFO', 'Emulsion', 'Other blasting agent'],
+        hint: 'NPI publishes mass-balance defaults for ANFO (0.22 kg CO₂e/kg) and emulsion (0.14). Other blasting agent uses the ANFO default — paste a manufacturer factor on Custom if you have one.',
       },
       {
         key: 'amount',
@@ -484,8 +606,15 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 1',
     group: 'input',
     instructions:
-      'Record refrigerant top-ups for site welfare HVAC, processing-plant HVAC, cold stores, and refrigerated logistics assets.',
+      'Record refrigerant top-ups for site welfare HVAC, processing-plant HVAC, cold stores, and refrigerated logistics assets. DESNZ 2026 uses IPCC AR5. EPA Hub 2026 Table 11/12 is the full AR6 list — a parallel family, not a replacement for r410a_kg / r134a_kg / r404a_kg.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'GWP family',
+        type: 'select',
+        options: [FAMILY_DESNZ_GWP, FAMILY_EPA_GWP],
+        hint: 'UK inventory stays on DESNZ AR5. EPA AR6 is every gas the Hub publishes.',
+      },
       {
         key: 'gas',
         label: 'Type of gas',
@@ -497,14 +626,24 @@ export const CATEGORIES: CategoryConfig[] = [
             options: REFRIGERANT_OPTIONS.filter((name) => !COMMON_REFRIGERANTS.includes(name)),
           },
         ],
+        visibleWhen: { field: 'factor_family', equals: [FAMILY_DESNZ_GWP, ''] },
+      },
+      {
+        key: 'epa_gas',
+        label: 'US gas (EPA Hub 2026 AR6)',
+        type: 'select',
+        optionGroups: EPA_REFRIGERANT_GROUPS,
+        visibleWhen: { field: 'factor_family', equals: FAMILY_EPA_GWP },
       },
       {
         key: 'gwp_set',
-        label: 'GWP set',
+        label: 'GWP set (legacy three-gas switch)',
         type: 'select',
-        options: ['DESNZ 2026 (IPCC AR5, UK default)', 'EPA Hub 2026 (IPCC AR6)'],
-        visibleWhen: { field: 'gas', equals: ['R-134A', 'R-410A', 'R-404A'] },
-        hint: 'UK inventory stays on DESNZ AR5. EPA AR6 is only published here for R-134A / R-410A / R-404A and does not replace the DESNZ row.',
+        options: [FAMILY_DESNZ_GWP, FAMILY_EPA_GWP],
+        visibleWhen: (v) =>
+          !v.factor_family && ['R-134A', 'R-410A', 'R-404A'].includes(v.gas),
+        optional: true,
+        hint: 'Kept so existing entries that only set gwp_set still resolve. Prefer GWP family above.',
       },
       {
         key: 'amount',
@@ -516,10 +655,11 @@ export const CATEGORIES: CategoryConfig[] = [
     amountLabel: 'kg',
     unitOptions: MASS_KG_UNITS,
     resolveFactorKey: (v) => {
-      const epa = (v.gwp_set || '').includes('EPA')
-      if (epa && v.gas === 'R-410A') return 'r410a_epa_kg'
-      if (epa && v.gas === 'R-404A') return 'r404a_epa_kg'
-      if (epa && (v.gas === 'R-134A' || v.gas === 'HFC-134a')) return 'r134a_epa_kg'
+      const epa =
+        (v.factor_family || '').includes('EPA') || (v.gwp_set || '').includes('EPA')
+      if (epa && (v.epa_gas || v.gas)) {
+        return epaRefrigerantFactorKey(v.epa_gas || v.gas)
+      }
       if (v.gas === 'R-410A') return 'r410a_kg'
       if (v.gas === 'R-404A') return 'r404a_kg'
       if (v.gas === 'CO2') return 'co2_kg'
@@ -594,41 +734,48 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'input',
     instructions:
-      'Log contracted road haulage. DESNZ Freighting goods publishes van class × fuel and HGV rigid/artic by GVW, refrigerated vs not, and 0/50/100%/average laden, as tonne-km (when mass is known) or vehicle-km (when it is not).',
+      'Log contracted road haulage. DESNZ Freighting goods publishes van class × fuel and HGV rigid/artic by GVW, refrigerated vs not, and 0/50/100%/average laden, as tonne-km or vehicle-km. EPA Hub 2026 Table 8 is the US distance-based method (vehicle-mile or short ton-mile) — a parallel family, not a substitute for DESNZ tkm keys.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'family',
         label: 'Vehicle family',
         type: 'select',
         options: ['HGV', 'Van'],
+        visibleWhen: WHEN_DESNZ,
       },
       {
         key: 'hgv_class',
         label: 'HGV class',
         type: 'select',
         options: [...HGV_SIZE_OPTIONS],
-        visibleWhen: { field: 'family', equals: 'HGV' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'HGV' }],
       },
       {
         key: 'hgv_body',
         label: 'Refrigerated?',
         type: 'select',
         options: ['Non-refrigerated (all diesel)', 'Refrigerated (all diesel)'],
-        visibleWhen: { field: 'family', equals: 'HGV' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'HGV' }],
       },
       {
         key: 'laden',
         label: 'Laden percentage',
         type: 'select',
         options: [...LADEN_OPTIONS],
-        visibleWhen: { field: 'family', equals: 'HGV' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'HGV' }],
       },
       {
         key: 'van_class',
         label: 'Van class',
         type: 'select',
         options: [...VAN_CLASSES],
-        visibleWhen: { field: 'family', equals: 'Van' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'Van' }],
       },
       {
         key: 'van_fuel',
@@ -639,7 +786,7 @@ export const CATEGORIES: CategoryConfig[] = [
             v.van_class || 'Average (up to 3.5 tonnes)',
             isVehicleKmMetric(v.metric) ? 'km' : 'tkm',
           ),
-        visibleWhen: { field: 'family', equals: 'Van' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'Van' }],
       },
       {
         key: 'metric',
@@ -647,6 +794,15 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         options: ['Tonne-kilometres (mass known)', 'Vehicle kilometres (mass unknown)'],
         hint: 'Tonne-km is preferred when cargo mass is known. Vehicle-km uses the DESNZ km column.',
+        visibleWhen: WHEN_DESNZ,
+      },
+      {
+        key: 'epa_mode',
+        label: 'US freight type (EPA Hub Table 8)',
+        type: 'select',
+        options: [...EPA_FREIGHT_OPTIONS],
+        visibleWhen: WHEN_EPA,
+        hint: 'Vehicle-mile when the vehicle is dedicated to your cargo. Short ton-mile when the vehicle is shared.',
       },
       {
         key: 'weight',
@@ -654,23 +810,41 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'number',
         unitOptions: MASS_TONNE_UNITS,
         optional: true,
-        visibleWhen: { field: 'metric', equals: ['Tonne-kilometres (mass known)', ''] },
+        visibleWhen: (v) =>
+          isEpaFamily(v)
+            ? epaFreightUnit(v.epa_mode || '') === 'short ton-mile'
+            : !(v.metric || '').includes('Vehicle'),
       },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
     chainExtras: ['wtt'],
-    resolveFactorKey: (v) => roadFreightFactorKey(v),
-    resolveUnit: (v) => ((v.metric || '').includes('Vehicle') ? v.distance_unit || 'km' : 'tkm'),
+    resolveFactorKey: (v) =>
+      isEpaFamily(v) ? epaFreightFactorKey(v.epa_mode || 'Medium- and Heavy-Duty Truck (short ton-mile)') : roadFreightFactorKey(v),
+    resolveUnit: (v) => {
+      if (isEpaFamily(v)) return epaFreightUnit(v.epa_mode || 'Medium- and Heavy-Duty Truck (short ton-mile)')
+      return (v.metric || '').includes('Vehicle') ? v.distance_unit || 'km' : 'tkm'
+    },
     resolveActivityAmount: (v) => {
-      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
-      if ((v.metric || '').includes('Vehicle')) return dist
+      const distKm = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      if (isEpaFamily(v)) {
+        const miles = distKm / 1.60934
+        if (epaFreightUnit(v.epa_mode || '') === 'short ton-mile') {
+          const tonnes = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
+          return tonnes * 1.10231 * miles
+        }
+        return miles
+      }
+      if ((v.metric || '').includes('Vehicle')) return distKm
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
-      return wt * dist
+      return wt * distKm
     },
     resolveDetails: (v) => {
       const du = v.distance_unit || 'km'
+      if (isEpaFamily(v)) {
+        return `${num(v, 'distance').toLocaleString()} ${du} — ${v.epa_mode || 'EPA freight'}`
+      }
       if ((v.metric || '').includes('Vehicle')) {
         return `${num(v, 'distance').toLocaleString()} ${du} vehicle-km — ${v.hgv_class || v.van_class || v.mode || 'road'}`
       }
@@ -683,20 +857,24 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Rail Freight',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Record inbound or outbound rail movements of bulk materials, ore, concentrate, and aggregates.',
+    instructions:
+      'Record inbound or outbound rail movements of bulk materials, ore, concentrate, and aggregates. DESNZ is kg CO₂e per tonne-km. EPA Hub Table 8 publishes one US rail short ton-mile row — a parallel family.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
-    resolveFactorKey: () => 'freight_rail_tkm',
-    resolveUnit: () => 'tkm',
-    resolveActivityAmount: (v) => {
-      const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
-      const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
-      return wt * dist
-    },
+    resolveFactorKey: (v) =>
+      isEpaFamily(v) ? epaFreightFactorKey('Rail (short ton-mile)') : 'freight_rail_tkm',
+    resolveUnit: (v) => (isEpaFamily(v) ? 'short ton-mile' : 'tkm'),
+    resolveActivityAmount: (v) => (isEpaFamily(v) ? epaShortTonMiles(v) : num(v, 'weight') * (num(v, 'weight_unit_factor') || 1) * num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)),
     resolveDetails: (v) => {
       const wu = v.weight_unit || 't'
       const du = v.distance_unit || 'km'
@@ -708,13 +886,21 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Sea Freight',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Log ocean or coastal shipping of steel, plant, reagents, concentrate, and other imported materials.',
+    instructions:
+      'Log ocean or coastal shipping of steel, plant, reagents, concentrate, and other imported materials. DESNZ publishes vessel type × size. EPA Hub Table 8 has one waterborne-craft short ton-mile row.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'mode',
         label: 'Vessel type',
         type: 'select',
         options: SEA_VESSEL_OPTIONS,
+        visibleWhen: WHEN_DESNZ,
       },
       {
         key: 'size',
@@ -722,6 +908,7 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         optionsFrom: (v) => seaSizesFor(v.mode || 'Container ship'),
         hint: 'Use Average when the size band is unknown.',
+        visibleWhen: WHEN_DESNZ,
       },
       { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
@@ -729,13 +916,15 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'weight',
     amountLabel: 'tkm',
     resolveFactorKey: (v) => {
+      if (isEpaFamily(v)) return epaFreightFactorKey('Waterborne Craft (short ton-mile)')
       if (v.mode === 'Container' || (!v.size && v.mode === 'Container ship')) return v.size ? seaFactorKey('Container ship', v.size) : 'freight_sea_tkm'
       if (v.mode === 'Bulk carrier' && !v.size) return 'freight_sea_bulk_tkm'
       if ((v.mode === 'RoRo' || v.mode === 'RoRo-Ferry') && !v.size) return 'freight_sea_roro_tkm'
       return seaFactorKey(v.mode || 'Container ship', v.size || 'Average')
     },
-    resolveUnit: () => 'tkm',
+    resolveUnit: (v) => (isEpaFamily(v) ? 'short ton-mile' : 'tkm'),
     resolveActivityAmount: (v) => {
+      if (isEpaFamily(v)) return epaShortTonMiles(v)
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
       const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
       return wt * dist
@@ -751,14 +940,22 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Air Freight',
     scope: 'Scope 3',
     group: 'input',
-    instructions: 'Use for time-critical plant parts, reagents, and high-value materials moved by air.',
+    instructions:
+      'Use for time-critical plant parts, reagents, and high-value materials moved by air. DESNZ is haul × with/without RF. EPA Hub Table 8 publishes one aircraft short ton-mile row (combustion only, no RF).',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'haul',
         label: 'Haul',
         type: 'select',
         options: [...AIR_HAULS],
         hint: 'DESNZ default air freight row is short-haul with radiative forcing.',
+        visibleWhen: WHEN_DESNZ,
       },
       { key: 'weight', label: 'Cargo weight', type: 'number', unitOptions: MASS_TONNE_UNITS },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
@@ -767,13 +964,18 @@ export const CATEGORIES: CategoryConfig[] = [
         label: 'Radiative forcing',
         type: 'select',
         options: [...RF_OPTIONS],
+        visibleWhen: WHEN_DESNZ,
       },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
-    resolveFactorKey: (v) => airFreightFactorKey(v.haul || 'Short-haul', v.rf || 'With RF (DESNZ default)'),
-    resolveUnit: () => 'tkm',
+    resolveFactorKey: (v) =>
+      isEpaFamily(v)
+        ? epaFreightFactorKey('Aircraft (short ton-mile)')
+        : airFreightFactorKey(v.haul || 'Short-haul', v.rf || 'With RF (DESNZ default)'),
+    resolveUnit: (v) => (isEpaFamily(v) ? 'short ton-mile' : 'tkm'),
     resolveActivityAmount: (v) => {
+      if (isEpaFamily(v)) return epaShortTonMiles(v)
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
       const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
       return wt * dist
@@ -790,8 +992,14 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'input',
     instructions:
-      'Enter construction and demolition waste, waste rock, tailings, and other site arisings by disposal route (landfill, recycling, or combustion / energy recovery). DESNZ construction landfill is 1.27043 kg CO₂e per tonne; recycling is 1.01398; average-construction combustion is 4.65358.',
+      'Enter construction and demolition waste, waste rock, tailings, and other site arisings by disposal route. DESNZ construction landfill is 1.27043 kg CO₂e per tonne. EPA Hub 2026 Table 9 is WARM (metric tons CO₂e per short ton, no avoided emissions) — a parallel US family, not a replacement for waste_landfill_kg.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'waste_type',
         label: 'Waste type',
@@ -807,25 +1015,37 @@ export const CATEGORIES: CategoryConfig[] = [
             options: WASTE_TYPES.filter((name) => !CONSTRUCTION_WASTE_TYPES.includes(name)),
           },
         ],
+        visibleWhen: WHEN_DESNZ,
+      },
+      {
+        key: 'epa_waste',
+        label: 'US material (EPA Hub Table 9 / WARM)',
+        type: 'select',
+        options: [...EPA_WASTE_MATERIALS],
+        visibleWhen: WHEN_EPA,
       },
       {
         key: 'route',
         label: 'Disposal route',
         type: 'select',
         optionsFrom: (v) => {
+          if (isEpaFamily(v)) return epaWasteRoutesFor(v.epa_waste || 'Mixed MSW')
           const extra = ['Landfill', 'Recycling', 'Energy recovery']
           const published = wasteRoutesFor(v.waste_type || '')
           return published.length ? published : extra
         },
-        hint: 'Only routes DESNZ publishes for this waste type are listed. Recycling maps to closed-loop when that row exists.',
+        hint: 'Only routes published for this material are listed.',
       },
       { key: 'amount', label: 'Amount', type: 'number' },
     ],
     amountField: 'amount',
     amountLabel: 't',
     unitOptions: MASS_TONNE_UNITS,
-    resolveFactorKey: (v) => wasteFactorKey(v.waste_type || 'Construction & demolition', v.route || 'Landfill'),
-    resolveUnit: (v) => v.unit || 't',
+    resolveFactorKey: (v) =>
+      isEpaFamily(v)
+        ? epaWasteFactorKey(v.epa_waste || 'Mixed MSW', v.route || 'Landfilled')
+        : wasteFactorKey(v.waste_type || 'Construction & demolition', v.route || 'Landfill'),
+    resolveUnit: (v) => (isEpaFamily(v) ? v.unit || 'short ton' : v.unit || 't'),
     resolveDetails: (v, amount) =>
       `${amount.toLocaleString()} ${v.unit || 't'} ${v.waste_type || 'site waste'} — ${v.route || 'disposal'}`,
   },
@@ -881,8 +1101,14 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'input',
     instructions:
-      'Workforce travel to remote job sites, mines, and camps by shuttle, van, or public transport. Enter one-way distance; return trips are included.',
+      'Workforce travel to remote job sites, mines, and camps by shuttle, van, or public transport. DESNZ is vehicle-km or passenger-km. EPA Hub Table 10 is the parallel US distance-based family. Enter one-way distance; return trips are included.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'mode',
         label: 'Transport type',
@@ -895,6 +1121,14 @@ export const CATEGORIES: CategoryConfig[] = [
           { label: 'Car by size', options: CAR_SIZES.map((row) => `Car — ${row}`) },
           { label: 'Motorbike', options: MOTORBIKE_SIZES.map((row) => `Motorbike — ${row}`) },
         ],
+        visibleWhen: WHEN_DESNZ,
+      },
+      {
+        key: 'epa_type',
+        label: 'US travel type (EPA Hub Table 10)',
+        type: 'select',
+        options: [...EPA_TRAVEL_OPTIONS],
+        visibleWhen: WHEN_EPA,
       },
       {
         key: 'van_class',
@@ -931,6 +1165,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'distance',
     amountLabel: 'km',
     resolveFactorKey: (v) => {
+      if (isEpaFamily(v)) return epaTravelFactorKey(v.epa_type || 'Passenger Car')
       if (v.mode === 'Shuttle bus') return 'crew_bus_pkm'
       if (v.mode === 'Rail' || v.mode === 'National rail') return 'crew_rail_pkm'
       if (v.mode?.startsWith('Car — ')) {
@@ -948,11 +1183,18 @@ export const CATEGORIES: CategoryConfig[] = [
       if (v.mode === 'Car') return 'commute_car_km'
       return 'crew_van_km'
     },
-    resolveUnit: (v) => v.distance_unit || 'km',
+    resolveUnit: (v) => (isEpaFamily(v) ? epaTravelUnit(v.epa_type || 'Passenger Car') : v.distance_unit || 'km'),
     resolveActivityAmount: (v) => {
       const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
       const trips = num(v, 'trips')
       const passengers = num(v, 'passengers') || 1
+      if (isEpaFamily(v)) {
+        const miles = dist / 1.60934
+        if (epaTravelUnit(v.epa_type || 'Passenger Car') === 'passenger-mile') {
+          return miles * trips * 2 * passengers
+        }
+        return miles * trips * 2
+      }
       if (v.mode === 'Shuttle bus' || v.mode === 'Rail' || (BUS_TYPES as readonly string[]).includes(v.mode) || (RAIL_TYPES as readonly string[]).includes(v.mode)) {
         return dist * trips * 2 * passengers
       }
@@ -988,7 +1230,8 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'select',
         optionsFrom: (v) => materialOriginsFor(v.material || 'Concrete'),
         optional: true,
-        hint: 'Primary material production is the DESNZ default. Closed-loop is recycled content from the same product system. Leave blank for EPD-required metals and cement.',
+        visibleWhen: (v) => !isEpdRequiredOption(v.material || ''),
+        hint: 'Primary material production is the DESNZ default. Closed-loop is recycled content from the same product system. Hidden for EPD-required metals and cement — paste the supplier EPD instead.',
       },
       { key: 'amount', label: 'Quantity', type: 'number' },
     ],
@@ -1030,13 +1273,21 @@ export const CATEGORIES: CategoryConfig[] = [
     name: 'Heat and steam',
     scope: 'Scope 2',
     group: 'scope3',
-    instructions: 'Purchased heat or steam supplied to site compounds, curing, processing plants, or workshops. UK sites use DESNZ district heat; US purchased steam can use the EPA Hub 2026 natural-gas steam row.',
+    instructions: 'Purchased heat or steam supplied to site compounds, curing, processing plants, or workshops. DESNZ district/onsite heat and EPA Hub Table 7 US steam are parallel families. Table 7 publishes one natural-gas 80% efficiency row.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'type',
         label: 'Supply type',
         type: 'select',
         options: ['Onsite heat and steam', 'District heat and steam', 'US purchased steam (EPA Hub)'],
+        visibleWhen: WHEN_DESNZ,
+        hint: 'US purchased steam remains so saved entries still resolve. Prefer the EPA family for a US inventory.',
       },
       { key: 'amount', label: 'Usage', type: 'number' },
     ],
@@ -1045,7 +1296,7 @@ export const CATEGORIES: CategoryConfig[] = [
     unitOptions: ELECTRICITY_UNITS,
     chainExtras: ['td'],
     resolveFactorKey: (v) =>
-      v.type?.includes('EPA') ? 'heat_steam_us_kwh' : 'heat_steam_kwh',
+      isEpaFamily(v) || (v.type || '').includes('EPA') ? 'heat_steam_us_kwh' : 'heat_steam_kwh',
     resolveUnit: (v) => v.unit || 'kWh',
     resolveDetails: (v, amount) =>
       `${amount.toLocaleString()} ${v.unit || 'kWh'} ${v.type || 'heat'}`,
@@ -1056,41 +1307,48 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Third-party haulage and plant moves (GHG Protocol Category 4). Use the same DESNZ Freighting goods classes as Road freight: HGV by GVW, laden %, refrigerated, or van class.',
+      'Third-party haulage and plant moves (GHG Protocol Category 4). DESNZ Freighting goods classes match Road freight. EPA Hub Table 8 is the parallel US distance-based family.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'family',
         label: 'Vehicle family',
         type: 'select',
         options: ['HGV', 'Van'],
+        visibleWhen: WHEN_DESNZ,
       },
       {
         key: 'hgv_class',
         label: 'HGV class',
         type: 'select',
         options: [...HGV_SIZE_OPTIONS],
-        visibleWhen: { field: 'family', equals: 'HGV' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'HGV' }],
       },
       {
         key: 'hgv_body',
         label: 'Refrigerated?',
         type: 'select',
         options: ['Non-refrigerated (all diesel)', 'Refrigerated (all diesel)'],
-        visibleWhen: { field: 'family', equals: 'HGV' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'HGV' }],
       },
       {
         key: 'laden',
         label: 'Laden percentage',
         type: 'select',
         options: [...LADEN_OPTIONS],
-        visibleWhen: { field: 'family', equals: 'HGV' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'HGV' }],
       },
       {
         key: 'van_class',
         label: 'Van class',
         type: 'select',
         options: [...VAN_CLASSES],
-        visibleWhen: { field: 'family', equals: 'Van' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'Van' }],
       },
       {
         key: 'van_fuel',
@@ -1101,13 +1359,21 @@ export const CATEGORIES: CategoryConfig[] = [
             v.van_class || 'Average (up to 3.5 tonnes)',
             isVehicleKmMetric(v.metric) ? 'km' : 'tkm',
           ),
-        visibleWhen: { field: 'family', equals: 'Van' },
+        visibleWhen: [WHEN_DESNZ, { field: 'family', equals: 'Van' }],
       },
       {
         key: 'metric',
         label: 'Activity metric',
         type: 'select',
         options: ['Tonne-kilometres (mass known)', 'Vehicle kilometres (mass unknown)'],
+        visibleWhen: WHEN_DESNZ,
+      },
+      {
+        key: 'epa_mode',
+        label: 'US freight type (EPA Hub Table 8)',
+        type: 'select',
+        options: [...EPA_FREIGHT_OPTIONS],
+        visibleWhen: WHEN_EPA,
       },
       {
         key: 'weight',
@@ -1115,23 +1381,43 @@ export const CATEGORIES: CategoryConfig[] = [
         type: 'number',
         unitOptions: MASS_TONNE_UNITS,
         optional: true,
-        visibleWhen: { field: 'metric', equals: ['Tonne-kilometres (mass known)', ''] },
+        visibleWhen: (v) =>
+          isEpaFamily(v)
+            ? epaFreightUnit(v.epa_mode || '') === 'short ton-mile'
+            : !(v.metric || '').includes('Vehicle'),
       },
       { key: 'distance', label: 'Distance', type: 'number', unitOptions: DISTANCE_KM_UNITS },
     ],
     amountField: 'weight',
     amountLabel: 'tkm',
     chainExtras: ['wtt'],
-    resolveFactorKey: (v) => roadFreightFactorKey(v),
-    resolveUnit: (v) => ((v.metric || '').includes('Vehicle') ? v.distance_unit || 'km' : 'tkm'),
+    resolveFactorKey: (v) =>
+      isEpaFamily(v)
+        ? epaFreightFactorKey(v.epa_mode || 'Medium- and Heavy-Duty Truck (short ton-mile)')
+        : roadFreightFactorKey(v),
+    resolveUnit: (v) => {
+      if (isEpaFamily(v)) return epaFreightUnit(v.epa_mode || 'Medium- and Heavy-Duty Truck (short ton-mile)')
+      return (v.metric || '').includes('Vehicle') ? v.distance_unit || 'km' : 'tkm'
+    },
     resolveActivityAmount: (v) => {
       const dist = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+      if (isEpaFamily(v)) {
+        const miles = dist / 1.60934
+        if (epaFreightUnit(v.epa_mode || '') === 'short ton-mile') {
+          const tonnes = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
+          return tonnes * 1.10231 * miles
+        }
+        return miles
+      }
       if ((v.metric || '').includes('Vehicle')) return dist
       const wt = num(v, 'weight') * (num(v, 'weight_unit_factor') || 1)
       return wt * dist
     },
     resolveDetails: (v) => {
       const du = v.distance_unit || 'km'
+      if (isEpaFamily(v)) {
+        return `${num(v, 'distance').toLocaleString()} ${du} — ${v.epa_mode || 'EPA freight'}`
+      }
       if ((v.metric || '').includes('Vehicle')) {
         return `${num(v, 'distance').toLocaleString()} ${du} vehicle-km — ${v.hgv_class || v.van_class || 'subcontractor'}`
       }
@@ -1145,8 +1431,14 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Staff flights, hotel stays, and taxi journeys (GHG Protocol Scope 3, Category 6). Flights and taxis are passenger-km: passengers × distance. Hotels are room-nights using the DESNZ country row — there is no invented “overseas average”.',
+      'Staff flights, hotel stays, and taxi journeys (GHG Protocol Scope 3, Category 6). DESNZ is passenger-km / vehicle-km / hotel nights. EPA Hub Table 10 is the US distance-based method (vehicle-mile or passenger-mile). Hotels stay on DESNZ country rows — EPA does not publish hotel nights.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'type',
         label: 'Travel type',
@@ -1189,6 +1481,14 @@ export const CATEGORIES: CategoryConfig[] = [
           { label: 'Cars (by market segment)', options: CAR_SEGMENTS.map((row) => `Car segment — ${row}`) },
           { label: 'Motorbike', options: MOTORBIKE_SIZES.map((row) => `Motorbike — ${row}`) },
         ],
+        visibleWhen: WHEN_DESNZ,
+      },
+      {
+        key: 'epa_type',
+        label: 'US travel type (EPA Hub Table 10)',
+        type: 'select',
+        options: [...EPA_TRAVEL_OPTIONS],
+        visibleWhen: WHEN_EPA,
       },
       {
         key: 'rf',
@@ -1197,6 +1497,7 @@ export const CATEGORIES: CategoryConfig[] = [
         options: [...RF_OPTIONS],
         optional: true,
         hint: 'DESNZ default is With RF. Ignored for non-flight rows.',
+        visibleWhen: (v) => !isEpaFamily(v) && /flight/i.test(v.type || ''),
       },
       {
         key: 'car_fuel',
@@ -1230,6 +1531,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'amount',
     amountLabel: 'pkm / nights',
     resolveFactorKey: (v) => {
+      if (isEpaFamily(v)) return epaTravelFactorKey(v.epa_type || 'Passenger Car')
       if (v.type === 'Hotel') return hotelFactorKey(v.hotel_country || 'UK')
       const rf = v.rf || 'With RF (DESNZ default)'
       const map: Record<string, string> = {
@@ -1274,6 +1576,7 @@ export const CATEGORIES: CategoryConfig[] = [
       return map[v.type] || 'flight_shorthaul_pkm'
     },
     resolveUnit: (v) => {
+      if (isEpaFamily(v)) return epaTravelUnit(v.epa_type || 'Passenger Car')
       if (v.type === 'Hotel') return 'nights'
       if (
         v.type?.startsWith('Car — ') ||
@@ -1286,6 +1589,12 @@ export const CATEGORIES: CategoryConfig[] = [
       return 'pkm'
     },
     resolveActivityAmount: (v, amount) => {
+      if (isEpaFamily(v)) {
+        const miles = amount / 1.60934
+        if (epaTravelUnit(v.epa_type || 'Passenger Car') === 'vehicle-mile') return miles
+        const passengers = num(v, 'passengers') || 1
+        return passengers * miles
+      }
       if (v.type === 'Hotel') return amount
       if (
         v.type?.startsWith('Car — ') ||
@@ -1310,8 +1619,14 @@ export const CATEGORIES: CategoryConfig[] = [
     scope: 'Scope 3',
     group: 'scope3',
     instructions:
-      'Emissions from employees travelling between home and work, including DESNZ homeworking hours (GHG Protocol Scope 3, Category 7). Enter one-way distance; return is included. Homeworking uses published kg CO₂e per FTE hour, not a commute distance.',
+      'Emissions from employees travelling between home and work, including DESNZ homeworking hours (GHG Protocol Scope 3, Category 7). Enter one-way distance; return is included. EPA Hub Table 10 is the US distance-based method. Homeworking stays on DESNZ hours.',
     fields: [
+      {
+        key: 'factor_family',
+        label: 'Factor family',
+        type: 'select',
+        options: [FAMILY_DESNZ, FAMILY_EPA],
+      },
       {
         key: 'mode',
         label: 'Commute mode',
@@ -1329,6 +1644,14 @@ export const CATEGORIES: CategoryConfig[] = [
           { label: 'Rail', options: [...RAIL_TYPES] },
           { label: 'Motorbike size', options: MOTORBIKE_SIZES.map((row) => `Motorbike — ${row}`) },
         ],
+        visibleWhen: WHEN_DESNZ,
+      },
+      {
+        key: 'epa_type',
+        label: 'US commute type (EPA Hub Table 10)',
+        type: 'select',
+        options: [...EPA_TRAVEL_OPTIONS],
+        visibleWhen: WHEN_EPA,
       },
       {
         key: 'car_fuel',
@@ -1378,6 +1701,7 @@ export const CATEGORIES: CategoryConfig[] = [
     amountField: 'distance',
     amountLabel: 'km',
     resolveFactorKey: (v) => {
+      if (isEpaFamily(v)) return epaTravelFactorKey(v.epa_type || 'Passenger Car')
       if (isHomeworkingMode(v.mode)) return homeworkingFactorKey(v.mode)
       if (v.mode === 'Car (diesel)') return 'car_diesel_km'
       if (v.mode === 'Car (petrol)') return 'car_petrol_km'
@@ -1405,8 +1729,17 @@ export const CATEGORIES: CategoryConfig[] = [
       }
       return map[v.mode] || 'commute_car_km'
     },
-    resolveUnit: (v) => (isHomeworkingMode(v.mode) ? 'hour' : v.distance_unit || 'km'),
+    resolveUnit: (v) => {
+      if (isEpaFamily(v)) return epaTravelUnit(v.epa_type || 'Passenger Car')
+      return isHomeworkingMode(v.mode) ? 'hour' : v.distance_unit || 'km'
+    },
     resolveActivityAmount: (v) => {
+      if (isEpaFamily(v)) {
+        const km = num(v, 'distance') * (num(v, 'distance_unit_factor') || 1)
+        const miles = km / 1.60934
+        const people = num(v, 'employees') * num(v, 'days') * 2
+        return miles * people
+      }
       if (isHomeworkingMode(v.mode)) {
         return num(v, 'employees') * num(v, 'days') * num(v, 'hours')
       }
@@ -1505,26 +1838,29 @@ export const CATEGORIES: CategoryConfig[] = [
           'Defra SIC-19 (kg CO₂e per £)',
           'Open CEDA by Watershed (kg CO₂e per $)',
         ],
-        hint: 'Defra is the UK average £ multiplier. CEDA is a sector EEIO in USD, with attribution “CEDA by Watershed”.',
+        hint: 'Defra is the UK average £ multiplier (the official SIC-19 table is not vendored here). CEDA is every UK GHG_t_Raw sector in USD, with attribution “CEDA by Watershed”.',
       },
       {
         key: 'type',
         label: 'Category',
         type: 'select',
         options: ['Purchased goods & services', 'Capital goods'],
+        visibleWhen: { field: 'spend_source', equals: [FAMILY_DEFRA, 'Defra SIC-19 (kg CO₂e per £)', ''] },
       },
       {
         key: 'ceda_sector',
         label: 'CEDA sector (UK)',
         type: 'select',
-        options: [...CEDA_SECTOR_OPTIONS],
-        hint: 'Used when the factor family is Open CEDA. Construction, mining, and logistics sectors from GHG_t_Raw United Kingdom.',
+        optionGroups: CEDA_SECTOR_GROUPS,
+        visibleWhen: { field: 'spend_source', equals: FAMILY_CEDA },
+        hint: 'All 400 Open CEDA 2025 United Kingdom GHG_t_Raw sectors. Never mixed with the Defra £ factor.',
       },
       {
         key: 'spend_currency',
         label: 'Spend currency',
         type: 'select',
         options: ['GBP', 'USD'],
+        visibleWhen: { field: 'spend_source', equals: FAMILY_CEDA },
         hint: 'CEDA factors are USD. GBP is converted using 0.765396 GBP per USD (CEDA 2025). Defra always uses £.',
       },
       { key: 'amount', label: 'Spend', type: 'number', hint: 'Pounds or dollars as selected — not thousands.' },
@@ -1590,6 +1926,13 @@ export function getCategory(id: string) {
 }
 
 export function unitOptionsFor(category: CategoryConfig, values: Record<string, string>): UnitOption[] | undefined {
+  if (category.id === 'waste' && isEpaFamily(values)) return SHORT_TON_UNITS
+  if ((category.id === 'site_fuel' || category.id === 'heavy_machinery') && isEpaFamily(values)) {
+    const unit = epaFuelUnit(values.epa_fuel || 'Diesel Fuel')
+    if (unit === 'scf') return SCF_UNITS
+    if (unit === 'short ton') return SHORT_TON_UNITS
+    return US_GALLON_UNITS
+  }
   if (category.id === 'fleet' && (values.method || '').startsWith('Distance')) {
     return DISTANCE_KM_UNITS
   }

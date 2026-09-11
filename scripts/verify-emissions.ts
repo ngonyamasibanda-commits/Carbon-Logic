@@ -432,6 +432,84 @@ if (gases) {
   )
 }
 
+const spendCategory = getCategory('purchased_goods')
+if (spendCategory && elec) {
+  check(
+    'US eGRID California subregion resolves a distinct EPA key',
+    elec.resolveFactorKey({
+      factor_family: 'EPA Hub 2026',
+      egrid_region: 'CAMX — WECC California',
+    }) === 'electricity_us_egrid_camx_kwh',
+    elec.resolveFactorKey({
+      factor_family: 'EPA Hub 2026',
+      egrid_region: 'CAMX — WECC California',
+    }),
+  )
+  check(
+    'legacy US eGRID average source still resolves electricity_us_egrid_kwh',
+    elec.resolveFactorKey({ source: 'Purchased electricity (US eGRID average)' }) === 'electricity_us_egrid_kwh',
+  )
+  check(
+    'CEDA oilseed farming is a published UK sector, not an average',
+    spendCategory.resolveFactorKey({
+      spend_source: 'Open CEDA by Watershed (kg CO₂e per $)',
+      ceda_sector: 'Oilseed farming',
+    }) === 'ceda_gbr_1111a0_usd',
+    spendCategory.resolveFactorKey({
+      spend_source: 'Open CEDA by Watershed (kg CO₂e per $)',
+      ceda_sector: 'Oilseed farming',
+    }),
+  )
+}
+
+const refrigerantCategory = getCategory('refrigerants')
+if (refrigerantCategory) {
+  check(
+    'EPA family R-407C uses the Hub AR6 blend row',
+    refrigerantCategory.resolveFactorKey({
+      factor_family: 'EPA Hub 2026 (IPCC AR6)',
+      epa_gas: 'R-407C',
+    }) === 'epa_gwp_r_407c_kg',
+    refrigerantCategory.resolveFactorKey({
+      factor_family: 'EPA Hub 2026 (IPCC AR6)',
+      epa_gas: 'R-407C',
+    }),
+  )
+  check(
+    'legacy gwp_set EPA R-410A still resolves r410a_epa_kg',
+    refrigerantCategory.resolveFactorKey({ gas: 'R-410A', gwp_set: 'EPA Hub 2026 (IPCC AR6)' }) === 'r410a_epa_kg',
+  )
+}
+
+const siteFuel = getCategory('site_fuel')
+if (siteFuel) {
+  check(
+    'EPA family Diesel Fuel uses diesel_us_gallon, not diesel_litre',
+    siteFuel.resolveFactorKey({ factor_family: 'EPA Hub 2026', epa_fuel: 'Diesel Fuel' }) === 'diesel_us_gallon',
+  )
+  check(
+    'DESNZ diesel litres stay on diesel_litre',
+    siteFuel.resolveFactorKey({ factor_family: 'DESNZ / UK 2026', fuel: 'Diesel / gas oil' }) === 'diesel_litre',
+    siteFuel.resolveFactorKey({ factor_family: 'DESNZ / UK 2026', fuel: 'Diesel / gas oil' }),
+  )
+}
+
+const heat = getCategory('heat_steam')
+if (heat) {
+  check(
+    'EPA heat family uses heat_steam_us_kwh',
+    heat.resolveFactorKey({ factor_family: 'EPA Hub 2026' }) === 'heat_steam_us_kwh',
+  )
+  check(
+    'legacy US purchased steam type still resolves heat_steam_us_kwh',
+    heat.resolveFactorKey({ type: 'US purchased steam (EPA Hub)' }) === 'heat_steam_us_kwh',
+  )
+  check(
+    'DESNZ heat stays on heat_steam_kwh',
+    heat.resolveFactorKey({ factor_family: 'DESNZ / UK 2026', type: 'District heat and steam' }) === 'heat_steam_kwh',
+  )
+}
+
 if (failed) {
   console.log(`\n${failed} failed, ${passed} passed`)
   process.exit(1)
