@@ -1,0 +1,54 @@
+[
+  {
+    "time": 0,
+    "title": "Welcome"
+  },
+  {
+    "time": 13.37,
+    "title": "Sign in"
+  },
+  {
+    "time": 28.9,
+    "title": "Dashboard"
+  },
+  {
+    "time": 48.75,
+    "title": "Facilities"
+  },
+  {
+    "time": 66.13,
+    "title": "Organisation"
+  },
+  {
+    "time": 83.67,
+    "title": "Data input"
+  },
+  {
+    "time": 98,
+    "title": "Log activity"
+  },
+  {
+    "time": 155.92,
+    "title": "Analysis"
+  },
+  {
+    "time": 169.08,
+    "title": "Inventory"
+  },
+  {
+    "time": 182.47,
+    "title": "Reports"
+  },
+  {
+    "time": 198.19,
+    "title": "Targets"
+  },
+  {
+    "time": 212.86,
+    "title": "Learning"
+  },
+  {
+    "time": 227.5,
+    "title": "You are ready"
+  }
+]

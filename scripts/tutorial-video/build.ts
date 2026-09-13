@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, writeFile, copyFile, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { captureFrames } from './capture'
@@ -68,9 +69,16 @@ async function waitForServer(url: string, timeoutMs = 90000) {
 }
 
 async function startVite() {
+  await run('bash', ['-lc', 'fuser -k 5173/tcp >/dev/null 2>&1 || true']).catch(() => undefined)
   const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173'], {
     cwd: ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
+    env: {
+      ...process.env,
+      VITE_SUPABASE_URL: 'https://placeholder.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'public-anon-key-for-tour-capture',
+    },
   })
   child.stdout?.on('data', (chunk) => process.stdout.write(chunk))
   child.stderr?.on('data', (chunk) => process.stderr.write(chunk))
@@ -82,13 +90,13 @@ async function synthesize() {
   await mkdir(AUDIO, { recursive: true })
   for (const scene of SCENES) {
     const file = path.join(AUDIO, `${scene.id}.mp3`)
-    await run('edge-tts', [
+    await run('python3', [
+      '-m',
+      'edge_tts',
       '--voice',
       VOICE,
-      '--rate',
-      '-8%',
-      '--pitch',
-      '-2Hz',
+      '--rate=-8%',
+      '--pitch=-2Hz',
       '--text',
       scene.voice,
       '--write-media',
@@ -209,28 +217,36 @@ async function copyArtifacts(finalFile: string) {
 
 async function ensureEdgeTts() {
   try {
-    await run('edge-tts', ['--version'])
+    await run('python3', ['-c', 'import edge_tts'])
   } catch {
     await run('python3', ['-m', 'pip', 'install', '--user', 'edge-tts'])
   }
 }
 
 export async function main() {
-  await rm(CACHE, { recursive: true, force: true })
   await mkdir(CACHE, { recursive: true })
   await ensureEdgeTts()
 
   let vite: ReturnType<typeof spawn> | null = null
   try {
-    vite = await startVite()
-    await captureFrames()
+    const missingFrames = SCENES.filter((scene) => !existsSync(path.join(FRAMES, `${scene.id}.png`)))
+    if (missingFrames.length > 0) {
+      vite = await startVite()
+      await captureFrames()
+    }
     await synthesize()
     const result = await renderClips()
     await copyArtifacts(result.finalFile)
     console.log(`Tutorial video ready: ${result.finalFile} (${result.duration.toFixed(1)}s)`)
     console.log(JSON.stringify(result.chapters, null, 2))
   } finally {
-    vite?.kill('SIGTERM')
+    if (vite?.pid) {
+      try {
+        process.kill(-vite.pid, 'SIGTERM')
+      } catch {
+        vite.kill('SIGTERM')
+      }
+    }
   }
 }
 

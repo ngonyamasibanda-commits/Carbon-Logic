@@ -42,6 +42,7 @@ export default function AdditionalData({ value, onChange }: Props) {
       <label className="block text-sm font-semibold text-ink">
         Site
         <select
+          aria-label="Assign to facility"
           value={value.site}
           onChange={(event) => update({ site: event.target.value })}
           className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"

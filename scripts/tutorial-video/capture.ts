@@ -68,17 +68,21 @@ async function fillFuelForm(page: Page, stage: 'empty' | 'working' | 'evidence' 
 
   await page.getByLabel('Fuel (DESNZ 2026)').selectOption('Diesel (average biofuel blend)')
   await page.waitForTimeout(250)
-  const amount = page.getByLabel('Fuel amount')
-  await amount.fill('12500')
-  await page.waitForTimeout(400)
+  const published = page.getByRole('combobox', { name: 'Published unit' })
+  if (await published.count()) {
+    await published.selectOption('litres')
+  }
+  await page.getByLabel('Fuel amount').fill('12500')
+  await page.waitForTimeout(500)
+  await page.getByText('Calculation working').waitFor({ timeout: 8000 })
 
   if (stage === 'working') {
     await highlight(page, ['form .rounded-md.border.border-brand\\/30', 'form ol'])
     return
   }
 
-  await page.getByLabel('Site', { exact: true }).selectOption({ label: 'Riverside Interchange' })
-  await page.locator('input[placeholder="SharePoint, Drive, or invoice URL"]').fill(
+  await page.getByLabel('Assign to facility').selectOption('Riverside Interchange')
+  await page.getByPlaceholder('SharePoint, Drive, or invoice URL').fill(
     'https://files.northridge.example/invoices/diesel-apr-2026.pdf',
   )
   const comment = page.locator('textarea')
@@ -181,6 +185,13 @@ export async function captureFrames() {
   await context.addInitScript(() => {
     sessionStorage.setItem('carbon-logic-product-tour', '1')
   })
+  await context.route('**/*supabase.co/**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({}),
+    })
+  })
   const page = await context.newPage()
 
   for (const scene of SCENES) {
@@ -192,6 +203,9 @@ export async function captureFrames() {
 
     await page.goto(`${BASE}${scene.route}`, { waitUntil: 'domcontentloaded', timeout: 60000 })
     await waitForApp(page)
+    if (scene.route === '/login') {
+      await page.getByRole('heading', { name: 'Sign in' }).waitFor({ timeout: 20000 })
+    }
 
     if (scene.id.startsWith('fuel-')) {
       await fillFuelForm(page, scene.id.replace('fuel-', '') as 'empty' | 'working' | 'evidence' | 'saved')
@@ -215,6 +229,11 @@ export async function captureFrames() {
     }
     if (scene.id === 'analysis') {
       await page.waitForTimeout(600)
+    }
+    if (scene.id === 'learn') {
+      await page.evaluate(() => {
+        document.querySelector('video')?.closest('article')?.remove()
+      })
     }
 
     await injectCaption(page, scene.chapter, scene.caption)

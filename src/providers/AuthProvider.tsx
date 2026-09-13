@@ -149,6 +149,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(data.session)
       setUser(data.session?.user ?? null)
       setBootstrapping(false)
+    }).catch(() => {
+      if (cancelled) return
+      setSession(null)
+      setUser(null)
+      setBootstrapping(false)
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
