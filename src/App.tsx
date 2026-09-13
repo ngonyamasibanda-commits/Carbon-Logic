@@ -2,6 +2,8 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import AppShell from './components/layout/AppShell'
 import AuthGate from './components/auth/AuthGate'
 import RequireRole from './components/auth/RequireRole'
+import DemoWorkspace from './demo/DemoWorkspace'
+import { isProductTourWorkspace } from './demo/tour-flag'
 import AccountPage from './pages/AccountPage'
 import AnalysisPage from './pages/AnalysisPage'
 import CategoryPage from './pages/CategoryPage'
@@ -17,6 +19,7 @@ import ReportsPage from './pages/ReportsPage'
 import SitesPage from './pages/SitesPage'
 import TargetsPage from './pages/TargetsPage'
 import TermsPage from './pages/TermsPage'
+import TourPage from './pages/TourPage'
 import AuthCallbackPage from './pages/auth/AuthCallbackPage'
 import LoginPage from './pages/auth/LoginPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
@@ -33,6 +36,13 @@ function SignedOutOnly({ children }: { children: React.ReactNode }) {
 }
 
 function ProtectedShell() {
+  if (isProductTourWorkspace()) {
+    return (
+      <DemoWorkspace>
+        <AppShell />
+      </DemoWorkspace>
+    )
+  }
   return (
     <AuthGate>
       <OrgProvider>
@@ -60,6 +70,7 @@ export default function App() {
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="/auth/reset" element={<ResetPasswordPage />} />
           <Route path="/terms" element={<TermsPage />} />
+          <Route path="/tour" element={<TourPage />} />
 
           <Route element={<ProtectedShell />}>
             <Route path="/" element={<DashboardPage />} />

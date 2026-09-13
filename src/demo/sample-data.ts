@@ -1,0 +1,298 @@
+import type { User } from '@supabase/supabase-js'
+import type { Membership, Organization, Profile } from '../lib/auth'
+import type { OrgProfile, Site } from '../lib/org'
+import type { EmissionEntry } from '../lib/types'
+
+export const TOUR_ORG_ID = 'demo-northridge'
+
+export const tourOrganization: Organization = {
+  id: TOUR_ORG_ID,
+  name: 'Northridge Construction',
+  slug: 'northridge-construction',
+  allowedEmailDomains: ['northridge.example'],
+  requireMfa: false,
+  sessionIdleMinutes: 30,
+  sessionAbsoluteHours: 12,
+}
+
+export const tourProfile: Profile = {
+  id: 'demo-user',
+  email: 'alex.morgan@northridge.example',
+  fullName: 'Alex Morgan',
+  jobTitle: 'Sustainability lead',
+}
+
+export const tourUser = {
+  id: 'demo-user',
+  email: tourProfile.email,
+  aud: 'authenticated',
+  created_at: '2025-01-12T09:00:00.000Z',
+  app_metadata: {},
+  user_metadata: { full_name: tourProfile.fullName },
+} as User
+
+export const tourMembership: Membership = {
+  id: 'demo-membership',
+  organizationId: TOUR_ORG_ID,
+  userId: tourUser.id,
+  role: 'owner',
+  createdAt: '2025-01-12T09:00:00.000Z',
+  organization: tourOrganization,
+}
+
+export const tourSites: Site[] = [
+  { id: 'site-riverside', name: 'Riverside Interchange', type: 'construction_site', region: 'Greater Manchester' },
+  { id: 'site-quarry', name: 'Peak Quarry', type: 'mine', region: 'Derbyshire' },
+  { id: 'site-depot', name: 'Midlands Depot', type: 'depot', region: 'Staffordshire' },
+]
+
+export const tourOrgProfile: OrgProfile = {
+  displayName: 'Northridge Construction',
+  organisation: 'Northridge Construction',
+  country: 'United Kingdom',
+  intensityMetric: 'tCO2e per £m turnover',
+  baselineYtdTco2e: 1840,
+  annualRevenue: 42_000_000,
+  employeeCount: 186,
+  reportingYear: 2026,
+  lockedYears: [],
+  residualMixKgPerKwh: 0.35,
+}
+
+function row(
+  id: string,
+  input: Omit<EmissionEntry, 'id' | 'created_at' | 'comment' | 'files' | 'organization_id'> & {
+    comment?: string
+    created_at?: string
+  },
+): EmissionEntry {
+  return {
+    comment: '',
+    files: [],
+    ...input,
+    id,
+    created_at: input.created_at ?? `${input.activity_date ?? '2026-03-01'}T10:00:00.000Z`,
+    organization_id: TOUR_ORG_ID,
+  }
+}
+
+export const tourEntries: EmissionEntry[] = [
+  row('e-fuel-26', {
+    category: 'site_fuel',
+    scope: 'Scope 1',
+    emissions_tco2e: 376.4,
+    details: '148,200 L of Diesel (average biofuel blend) | DESNZ 2026',
+    amount: 148200,
+    unit: 'L',
+    link: 'https://files.northridge.example/invoices/diesel-q1-2026.pdf',
+    site: 'Riverside Interchange',
+    tags: ['plant', 'Q1'],
+    customFields: [{ label: 'Project code', value: 'NR-RI-26' }],
+    activity_date: '2026-03-18',
+  }),
+  row('e-plant-26', {
+    category: 'heavy_machinery',
+    scope: 'Scope 1',
+    emissions_tco2e: 188.1,
+    details: 'Excavators and haul trucks — gas oil',
+    amount: 72000,
+    unit: 'L',
+    link: 'https://files.northridge.example/fuel-cards/plant-mar-2026.csv',
+    site: 'Peak Quarry',
+    tags: ['plant'],
+    customFields: [],
+    activity_date: '2026-03-12',
+  }),
+  row('e-fleet-26', {
+    category: 'fleet',
+    scope: 'Scope 1',
+    emissions_tco2e: 91.6,
+    details: 'Owned vans and cars',
+    amount: 41200,
+    unit: 'L',
+    link: 'https://files.northridge.example/fleet/fuel-cards-2026.pdf',
+    site: 'Midlands Depot',
+    tags: ['fleet'],
+    customFields: [],
+    activity_date: '2026-04-02',
+  }),
+  row('e-elec-26', {
+    category: 'site_electricity',
+    scope: 'Scope 2',
+    emissions_tco2e: 78.58,
+    details: 'Purchased UK grid electricity',
+    amount: 600000,
+    unit: 'kWh',
+    link: 'https://files.northridge.example/energy/riverside-mar-2026.pdf',
+    site: 'Riverside Interchange',
+    tags: ['energy'],
+    customFields: [
+      {
+        label: '_scope2',
+        value: JSON.stringify({
+          locationTco2e: 78.58,
+          marketTco2e: 12.4,
+          instrument: 'rego',
+          marketFactorKg: 0,
+          kwh: 600000,
+        }),
+      },
+    ],
+    activity_date: '2026-03-31',
+    scope2: {
+      locationTco2e: 78.58,
+      marketTco2e: 12.4,
+      instrument: 'rego',
+      marketFactorKg: 0,
+      kwh: 600000,
+    },
+  }),
+  row('e-freight-26', {
+    category: 'road_freight',
+    scope: 'Scope 3',
+    emissions_tco2e: 264.8,
+    details: 'All-laden HGV — 1.84 million tkm',
+    amount: 1840000,
+    unit: 'tkm',
+    link: 'https://files.northridge.example/logistics/haulage-q1.csv',
+    site: 'Midlands Depot',
+    tags: ['haulage', 'Q1'],
+    customFields: [],
+    activity_date: '2026-03-28',
+  }),
+  row('e-materials-26', {
+    category: 'bulk_materials',
+    scope: 'Scope 3',
+    emissions_tco2e: 512.3,
+    details: 'Ready-mix concrete and steel with supplier EPDs',
+    amount: 4280,
+    unit: 't',
+    link: 'https://files.northridge.example/epd/concrete-a1a3.pdf',
+    site: 'Riverside Interchange',
+    tags: ['materials'],
+    customFields: [],
+    activity_date: '2026-02-20',
+  }),
+  row('e-waste-26', {
+    category: 'waste',
+    scope: 'Scope 3',
+    emissions_tco2e: 38.9,
+    details: 'Construction and demolition waste — landfill and recycled',
+    amount: 860,
+    unit: 't',
+    link: 'https://files.northridge.example/waste/skip-tickets-2026.pdf',
+    site: 'Riverside Interchange',
+    tags: ['waste'],
+    customFields: [],
+    activity_date: '2026-04-08',
+  }),
+  row('e-commute-26', {
+    category: 'employee_commuting',
+    scope: 'Scope 3',
+    emissions_tco2e: 29.4,
+    details: 'Staff commuting survey',
+    amount: 186,
+    unit: 'people',
+    link: 'https://files.northridge.example/hr/commute-survey-2026.xlsx',
+    site: 'Midlands Depot',
+    tags: ['people'],
+    customFields: [],
+    activity_date: '2026-01-31',
+  }),
+  row('e-travel-26', {
+    category: 'business_travel',
+    scope: 'Scope 3',
+    emissions_tco2e: 16.2,
+    details: 'Rail and short-haul flights',
+    amount: 42800,
+    unit: 'pkm',
+    link: 'https://files.northridge.example/travel/q1-bookings.csv',
+    site: 'Midlands Depot',
+    tags: ['travel'],
+    customFields: [],
+    activity_date: '2026-03-05',
+  }),
+  row('e-fuel-25', {
+    category: 'site_fuel',
+    scope: 'Scope 1',
+    emissions_tco2e: 412.8,
+    details: '162,400 L of Diesel (average biofuel blend)',
+    amount: 162400,
+    unit: 'L',
+    link: 'https://files.northridge.example/invoices/diesel-2025.pdf',
+    site: 'Riverside Interchange',
+    tags: ['plant'],
+    customFields: [],
+    activity_date: '2025-09-18',
+  }),
+  row('e-plant-25', {
+    category: 'heavy_machinery',
+    scope: 'Scope 1',
+    emissions_tco2e: 201.4,
+    details: 'Plant gas oil',
+    amount: 77400,
+    unit: 'L',
+    link: 'https://files.northridge.example/fuel-cards/plant-2025.csv',
+    site: 'Peak Quarry',
+    tags: ['plant'],
+    customFields: [],
+    activity_date: '2025-08-12',
+  }),
+  row('e-elec-25', {
+    category: 'site_electricity',
+    scope: 'Scope 2',
+    emissions_tco2e: 86.2,
+    details: 'Purchased UK grid electricity',
+    amount: 658000,
+    unit: 'kWh',
+    link: 'https://files.northridge.example/energy/2025.pdf',
+    site: 'Riverside Interchange',
+    tags: ['energy'],
+    customFields: [
+      {
+        label: '_scope2',
+        value: JSON.stringify({
+          locationTco2e: 86.2,
+          marketTco2e: 86.2,
+          instrument: 'residual-mix',
+          marketFactorKg: 0.35,
+          kwh: 658000,
+        }),
+      },
+    ],
+    activity_date: '2025-12-31',
+    scope2: {
+      locationTco2e: 86.2,
+      marketTco2e: 86.2,
+      instrument: 'residual-mix',
+      marketFactorKg: 0.35,
+      kwh: 658000,
+    },
+  }),
+  row('e-freight-25', {
+    category: 'road_freight',
+    scope: 'Scope 3',
+    emissions_tco2e: 291.5,
+    details: 'All-laden HGV',
+    amount: 2010000,
+    unit: 'tkm',
+    link: 'https://files.northridge.example/logistics/2025.csv',
+    site: 'Midlands Depot',
+    tags: ['haulage'],
+    customFields: [],
+    activity_date: '2025-11-02',
+  }),
+  row('e-materials-25', {
+    category: 'bulk_materials',
+    scope: 'Scope 3',
+    emissions_tco2e: 548.7,
+    details: 'Concrete and steel',
+    amount: 4610,
+    unit: 't',
+    link: 'https://files.northridge.example/epd/2025.pdf',
+    site: 'Riverside Interchange',
+    tags: ['materials'],
+    customFields: [],
+    activity_date: '2025-06-14',
+  }),
+]

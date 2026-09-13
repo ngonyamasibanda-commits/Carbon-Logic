@@ -12,7 +12,7 @@ import {
 } from '../lib/org'
 import { useAuth } from '../lib/auth-context'
 
-type OrgContextValue = {
+export type OrgContextValue = {
   sites: Site[]
   profile: OrgProfile
   loading: boolean
@@ -23,7 +23,7 @@ type OrgContextValue = {
   setYearLock: (year: number, locked: boolean, reason?: string) => Promise<{ error: string | null }>
 }
 
-const OrgContext = createContext<OrgContextValue | null>(null)
+export const OrgContext = createContext<OrgContextValue | null>(null)
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const { organization } = useAuth()

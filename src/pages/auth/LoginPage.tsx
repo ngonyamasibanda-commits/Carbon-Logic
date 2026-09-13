@@ -169,6 +169,10 @@ export default function LoginPage() {
             <button type="button" onClick={() => switchMode('signup')} className="font-medium text-brand hover:underline">
               Create one
             </button>
+            <span className="mx-2 text-line">·</span>
+            <a href="/tour" className="font-medium text-brand hover:underline">
+              Watch the 4-minute tour
+            </a>
           </>
         )
       }
