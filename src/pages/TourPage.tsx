@@ -4,18 +4,18 @@ import { LogoLockup } from '../components/brand/Logo'
 
 const FALLBACK_CHAPTERS = [
   { time: 0, title: 'Welcome' },
-  { time: 12.99, title: 'Sign in' },
-  { time: 27.31, title: 'Dashboard' },
-  { time: 47.79, title: 'Facilities' },
-  { time: 63.28, title: 'Organisation' },
-  { time: 79.15, title: 'Data input' },
-  { time: 88.72, title: 'Log activity' },
-  { time: 113.69, title: 'Analysis' },
-  { time: 123.34, title: 'Inventory' },
-  { time: 136.58, title: 'Reports' },
-  { time: 151.71, title: 'Targets' },
-  { time: 165.42, title: 'Learning' },
-  { time: 179.11, title: 'You are ready' },
+  { time: 13, title: 'Sign in' },
+  { time: 27.3, title: 'Dashboard' },
+  { time: 47.8, title: 'Facilities' },
+  { time: 63.3, title: 'Organisation' },
+  { time: 79.17, title: 'Data input' },
+  { time: 88.73, title: 'Log activity' },
+  { time: 113.7, title: 'Analysis' },
+  { time: 123.37, title: 'Inventory' },
+  { time: 136.6, title: 'Reports' },
+  { time: 151.73, title: 'Targets' },
+  { time: 165.47, title: 'Learning' },
+  { time: 179.17, title: 'You are ready' },
 ]
 
 export default function TourPage() {
