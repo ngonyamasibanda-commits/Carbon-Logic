@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process'
-import { mkdir, writeFile, copyFile, rm, readFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, writeFile, copyFile, rm } from 'node:fs/promises'
 import path from 'node:path'
-import { captureTour, type SceneTiming } from './capture'
+import { captureTour } from './capture'
 import { SCENES } from './scenes'
 
 const ROOT = path.resolve('.')
@@ -119,90 +120,114 @@ async function synthesize() {
   return durations
 }
 
-async function muxClips(rawPath: string, timings: SceneTiming[]) {
+async function muxClips() {
   await mkdir(CLIPS, { recursive: true })
-  const list: string[] = []
+  const wavDir = path.join(CACHE, 'wav')
+  await mkdir(wavDir, { recursive: true })
+  const videoList: string[] = []
+  const wavList: string[] = []
   const chapters: { time: number; title: string }[] = []
   let cursor = 0
 
   for (const scene of SCENES) {
-    const timing = timings.find((item) => item.id === scene.id)
-    if (!timing) throw new Error(`Missing timing for ${scene.id}`)
-    const audio = path.join(AUDIO, `${scene.id}.mp3`)
-    const clip = path.join(CLIPS, `${scene.id}.mp4`)
-    const audioSeconds = await probeDuration(audio)
-    const start = Math.max(timing.start, 0)
-    const end = Math.max(timing.end, start + 0.8)
-    const duration = audioSeconds + 0.25
+    const source = path.join(CLIPS, `${scene.id}.mp4`)
+    const mp3 = path.join(AUDIO, `${scene.id}.mp3`)
+    const videoOnly = path.join(wavDir, `${scene.id}.v.mp4`)
+    const wav = path.join(wavDir, `${scene.id}.wav`)
+    const clipSeconds = await probeDuration(source)
     if (!chapters.some((chapter) => chapter.title === scene.chapter)) {
       chapters.push({ time: Number(cursor.toFixed(2)), title: scene.chapter })
     }
-    cursor += duration
+    cursor += clipSeconds
 
+    await run('ffmpeg', ['-y', '-i', source, '-an', '-c:v', 'copy', videoOnly])
     await run('ffmpeg', [
       '-y',
-      '-ss',
-      start.toFixed(3),
-      '-to',
-      end.toFixed(3),
       '-i',
-      rawPath,
-      '-i',
-      audio,
-      '-filter_complex',
-      [
-        `[0:v]fps=30,scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,`,
-        `pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,`,
-        `tpad=stop_mode=clone:stop=-1[v]`,
-      ].join(''),
-      '-map',
-      '[v]',
-      '-map',
-      '1:a',
-      '-c:v',
-      'libx264',
-      '-preset',
-      'medium',
-      '-crf',
-      '18',
-      '-c:a',
-      'aac',
-      '-b:a',
-      '192k',
+      mp3,
+      '-af',
+      `aformat=sample_fmts=s16:sample_rates=48000:channel_layouts=stereo,apad=whole_dur=${clipSeconds.toFixed(6)}`,
+      '-t',
+      clipSeconds.toFixed(6),
       '-ar',
       '48000',
       '-ac',
       '2',
-      '-t',
-      duration.toFixed(3),
-      '-movflags',
-      '+faststart',
-      clip,
+      '-c:a',
+      'pcm_s16le',
+      wav,
     ])
-    list.push(`file '${clip}'`)
+    videoList.push(`file '${videoOnly}'`)
+    wavList.push(`file '${wav}'`)
   }
 
-  const concatList = path.join(CACHE, 'concat.txt')
-  await writeFile(concatList, `${list.join('\n')}\n`)
-  const joined = path.join(CACHE, 'joined.mp4')
-  await run('ffmpeg', ['-y', '-f', 'concat', '-safe', '0', '-i', concatList, '-c', 'copy', joined])
+  const videoConcat = path.join(wavDir, 'video.txt')
+  const wavConcat = path.join(wavDir, 'audio.txt')
+  const soundtrack = path.join(wavDir, 'soundtrack.wav')
+  const joinedVideo = path.join(wavDir, 'video.mp4')
+  await writeFile(videoConcat, `${videoList.join('\n')}\n`)
+  await writeFile(wavConcat, `${wavList.join('\n')}\n`)
+
+  await run('ffmpeg', [
+    '-y',
+    '-f',
+    'concat',
+    '-safe',
+    '0',
+    '-i',
+    wavConcat,
+    '-c:a',
+    'pcm_s16le',
+    soundtrack,
+  ])
+  await run('ffmpeg', [
+    '-y',
+    '-f',
+    'concat',
+    '-safe',
+    '0',
+    '-i',
+    videoConcat,
+    '-an',
+    '-c:v',
+    'copy',
+    joinedVideo,
+  ])
 
   await mkdir(PUBLIC_DIR, { recursive: true })
   const finalFile = path.join(PUBLIC_DIR, 'how-to-use-carbon-logic.mp4')
   await run('ffmpeg', [
     '-y',
+    '-fflags',
+    '+genpts',
     '-i',
-    joined,
+    joinedVideo,
+    '-i',
+    soundtrack,
+    '-map',
+    '0:v:0',
+    '-map',
+    '1:a:0',
     '-c:v',
     'libx264',
     '-preset',
     'slow',
     '-crf',
     '18',
+    '-vsync',
+    'cfr',
+    '-r',
+    '30',
     '-c:a',
     'aac',
     '-b:a',
-    '192k',
+    '256k',
+    '-ar',
+    '48000',
+    '-ac',
+    '2',
+    '-af',
+    'aresample=async=1:first_pts=0',
     '-movflags',
     '+faststart',
     finalFile,
@@ -225,29 +250,36 @@ async function muxClips(rawPath: string, timings: SceneTiming[]) {
 
 async function copyArtifacts(finalFile: string) {
   await mkdir(ARTIFACTS, { recursive: true })
-  await copyFile(finalFile, path.join(ARTIFACTS, 'carbon_logic_tour_actions.mp4'))
+  await copyFile(finalFile, path.join(ARTIFACTS, 'carbon_logic_tour_smooth_audio.mp4'))
   await copyFile(
     path.join(PUBLIC_DIR, 'how-to-use-carbon-logic.jpg'),
-    path.join(ARTIFACTS, 'carbon_logic_tour_actions_poster.jpg'),
+    path.join(ARTIFACTS, 'carbon_logic_tour_smooth_audio_poster.jpg'),
+  )
+}
+
+function canReuseCapture() {
+  return SCENES.every(
+    (scene) =>
+      existsSync(path.join(CLIPS, `${scene.id}.mp4`)) && existsSync(path.join(AUDIO, `${scene.id}.mp3`)),
   )
 }
 
 export async function main() {
-  await rm(CACHE, { recursive: true, force: true })
-  await mkdir(CACHE, { recursive: true })
+  const reuse = process.env.TOUR_FORCE_CAPTURE !== '1' && canReuseCapture()
+  if (!reuse) {
+    await rm(CACHE, { recursive: true, force: true })
+    await mkdir(CACHE, { recursive: true })
+  }
   await ensureEdgeTts()
 
   let vite: ReturnType<typeof spawn> | null = null
   try {
-    const durations = await synthesize()
-    vite = await startVite()
-    const recorded = await captureTour(durations)
-    const meta = JSON.parse(await readFile(path.join(CACHE, 'timings.json'), 'utf8')) as {
-      rawPath: string
-      timings: SceneTiming[]
+    if (!reuse) {
+      const durations = await synthesize()
+      vite = await startVite()
+      await captureTour(durations)
     }
-    const rawPath = recorded.rawPath || meta.rawPath
-    const result = await muxClips(rawPath, recorded.timings)
+    const result = await muxClips()
     await copyArtifacts(result.finalFile)
     console.log(`Tutorial video ready: ${result.finalFile} (${result.duration.toFixed(1)}s)`)
     console.log(JSON.stringify(result.chapters, null, 2))
