@@ -4,18 +4,18 @@ import { LogoLockup } from '../components/brand/Logo'
 
 const FALLBACK_CHAPTERS = [
   { time: 0, title: 'Welcome' },
-  { time: 13.37, title: 'Sign in' },
-  { time: 28.9, title: 'Dashboard' },
-  { time: 48.75, title: 'Facilities' },
-  { time: 66.13, title: 'Organisation' },
-  { time: 83.67, title: 'Data input' },
-  { time: 98, title: 'Log activity' },
-  { time: 155.92, title: 'Analysis' },
-  { time: 169.08, title: 'Inventory' },
-  { time: 182.47, title: 'Reports' },
-  { time: 198.19, title: 'Targets' },
-  { time: 212.86, title: 'Learning' },
-  { time: 227.5, title: 'You are ready' },
+  { time: 12.99, title: 'Sign in' },
+  { time: 27.31, title: 'Dashboard' },
+  { time: 47.79, title: 'Facilities' },
+  { time: 63.28, title: 'Organisation' },
+  { time: 79.15, title: 'Data input' },
+  { time: 88.72, title: 'Log activity' },
+  { time: 113.69, title: 'Analysis' },
+  { time: 123.34, title: 'Inventory' },
+  { time: 136.58, title: 'Reports' },
+  { time: 151.71, title: 'Targets' },
+  { time: 165.42, title: 'Learning' },
+  { time: 179.11, title: 'You are ready' },
 ]
 
 export default function TourPage() {
@@ -70,7 +70,7 @@ export default function TourPage() {
 
       <main className="mx-auto max-w-6xl px-6 pb-16">
         <p className="text-[13px] font-semibold uppercase tracking-[0.22em] text-[#6cbe2c]">
-          Product tour · 4 minutes
+          Product tour · 3 minutes
         </p>
         <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
           How to use Carbon Logic

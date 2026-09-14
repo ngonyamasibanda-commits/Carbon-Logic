@@ -171,7 +171,7 @@ export default function LoginPage() {
             </button>
             <span className="mx-2 text-line">·</span>
             <a href="/tour" className="font-medium text-brand hover:underline">
-              Watch the 4-minute tour
+              Watch the product tour
             </a>
           </>
         )

@@ -63,7 +63,7 @@ export default function LearningHubPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent-dark">Product tour</p>
           <h2 className="mt-1 font-semibold text-ink">Watch how Carbon Logic works</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            A four-minute walkthrough of the real screens: sign in, facilities, logging activity with
+            A three-minute walkthrough of the real screens: sign in, facilities, logging activity with
             evidence, analysis, and the SECR / PPN report pack.
           </p>
         </div>

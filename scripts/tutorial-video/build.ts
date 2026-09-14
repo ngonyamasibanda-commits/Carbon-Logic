@@ -1,18 +1,16 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { mkdir, writeFile, copyFile, rm } from 'node:fs/promises'
+import { mkdir, writeFile, copyFile, rm, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { captureFrames } from './capture'
+import { captureTour, type SceneTiming } from './capture'
 import { SCENES } from './scenes'
 
 const ROOT = path.resolve('.')
 const CACHE = path.resolve('scripts/tutorial-video/.cache')
 const AUDIO = path.join(CACHE, 'audio')
 const CLIPS = path.join(CACHE, 'clips')
-const FRAMES = path.join(CACHE, 'frames')
 const PUBLIC_DIR = path.resolve('public/tutorial')
 const ARTIFACTS = '/opt/cursor/artifacts'
-const VOICE = 'en-GB-SoniaNeural'
+const VOICE = 'en-US-AndrewMultilingualNeural'
 
 function run(command: string, args: string[], opts: { cwd?: string } = {}) {
   return new Promise<void>((resolve, reject) => {
@@ -69,8 +67,14 @@ async function waitForServer(url: string, timeoutMs = 90000) {
 }
 
 async function startVite() {
-  await run('bash', ['-lc', 'fuser -k 5173/tcp >/dev/null 2>&1 || true']).catch(() => undefined)
-  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173'], {
+  await run('bash', [
+    '-lc',
+    'fuser -k 5173/tcp >/dev/null 2>&1 || true; lsof -ti tcp:5173 | xargs -r kill -9 >/dev/null 2>&1 || true; sleep 0.5',
+  ]).catch(() => undefined)
+  const child = spawn(
+    'npm',
+    ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173', '--strictPort'],
+    {
     cwd: ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,
@@ -86,8 +90,17 @@ async function startVite() {
   return child
 }
 
+async function ensureEdgeTts() {
+  try {
+    await run('python3', ['-c', 'import edge_tts'])
+  } catch {
+    await run('python3', ['-m', 'pip', 'install', '--user', 'edge-tts'])
+  }
+}
+
 async function synthesize() {
   await mkdir(AUDIO, { recursive: true })
+  const durations: Record<string, number> = {}
   for (const scene of SCENES) {
     const file = path.join(AUDIO, `${scene.id}.mp3`)
     await run('python3', [
@@ -95,30 +108,32 @@ async function synthesize() {
       'edge_tts',
       '--voice',
       VOICE,
-      '--rate=-8%',
-      '--pitch=-2Hz',
+      '--rate=-4%',
       '--text',
       scene.voice,
       '--write-media',
       file,
     ])
+    durations[scene.id] = await probeDuration(file)
   }
+  return durations
 }
 
-async function renderClips() {
+async function muxClips(rawPath: string, timings: SceneTiming[]) {
   await mkdir(CLIPS, { recursive: true })
+  const list: string[] = []
   const chapters: { time: number; title: string }[] = []
   let cursor = 0
-  const list: string[] = []
 
   for (const scene of SCENES) {
+    const timing = timings.find((item) => item.id === scene.id)
+    if (!timing) throw new Error(`Missing timing for ${scene.id}`)
     const audio = path.join(AUDIO, `${scene.id}.mp3`)
-    const frame = path.join(FRAMES, `${scene.id}.png`)
     const clip = path.join(CLIPS, `${scene.id}.mp4`)
     const audioSeconds = await probeDuration(audio)
-    const duration = Math.max(audioSeconds + 0.65, 4)
-    const frames = Math.round(duration * 30)
-    const fadeOut = Math.max(duration - 0.32, 0.4)
+    const start = Math.max(timing.start, 0)
+    const end = Math.max(timing.end, start + 0.8)
+    const duration = audioSeconds + 0.25
     if (!chapters.some((chapter) => chapter.title === scene.chapter)) {
       chapters.push({ time: Number(cursor.toFixed(2)), title: scene.chapter })
     }
@@ -126,19 +141,19 @@ async function renderClips() {
 
     await run('ffmpeg', [
       '-y',
-      '-loop',
-      '1',
+      '-ss',
+      start.toFixed(3),
+      '-to',
+      end.toFixed(3),
       '-i',
-      frame,
+      rawPath,
       '-i',
       audio,
       '-filter_complex',
       [
-        `[0:v]scale=1920:1080:flags=lanczos,`,
-        `zoompan=z='min(1.07,1+0.00032*on)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=1920x1080:fps=30,`,
-        `format=yuv420p,`,
-        `fade=t=in:st=0:d=0.28,`,
-        `fade=t=out:st=${fadeOut.toFixed(2)}:d=0.28[v]`,
+        `[0:v]fps=30,scale=1920:1080:flags=lanczos:force_original_aspect_ratio=decrease,`,
+        `pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p,`,
+        `tpad=stop_mode=clone:stop=-1[v]`,
       ].join(''),
       '-map',
       '[v]',
@@ -158,7 +173,8 @@ async function renderClips() {
       '48000',
       '-ac',
       '2',
-      '-shortest',
+      '-t',
+      duration.toFixed(3),
       '-movflags',
       '+faststart',
       clip,
@@ -182,21 +198,23 @@ async function renderClips() {
     '-preset',
     'slow',
     '-crf',
-    '20',
+    '18',
     '-c:a',
     'aac',
     '-b:a',
-    '160k',
+    '192k',
     '-movflags',
     '+faststart',
     finalFile,
   ])
   await run('ffmpeg', [
     '-y',
+    '-ss',
+    '0.4',
     '-i',
-    path.join(FRAMES, 'title.png'),
-    '-vf',
-    'scale=1920:1080:flags=lanczos',
+    finalFile,
+    '-frames:v',
+    '1',
     '-q:v',
     '3',
     path.join(PUBLIC_DIR, 'how-to-use-carbon-logic.jpg'),
@@ -207,35 +225,29 @@ async function renderClips() {
 
 async function copyArtifacts(finalFile: string) {
   await mkdir(ARTIFACTS, { recursive: true })
-  const dest = path.join(ARTIFACTS, 'how_to_use_carbon_logic.mp4')
-  await copyFile(finalFile, dest)
+  await copyFile(finalFile, path.join(ARTIFACTS, 'carbon_logic_tour_actions.mp4'))
   await copyFile(
     path.join(PUBLIC_DIR, 'how-to-use-carbon-logic.jpg'),
-    path.join(ARTIFACTS, 'how_to_use_carbon_logic_poster.jpg'),
+    path.join(ARTIFACTS, 'carbon_logic_tour_actions_poster.jpg'),
   )
 }
 
-async function ensureEdgeTts() {
-  try {
-    await run('python3', ['-c', 'import edge_tts'])
-  } catch {
-    await run('python3', ['-m', 'pip', 'install', '--user', 'edge-tts'])
-  }
-}
-
 export async function main() {
+  await rm(CACHE, { recursive: true, force: true })
   await mkdir(CACHE, { recursive: true })
   await ensureEdgeTts()
 
   let vite: ReturnType<typeof spawn> | null = null
   try {
-    const missingFrames = SCENES.filter((scene) => !existsSync(path.join(FRAMES, `${scene.id}.png`)))
-    if (missingFrames.length > 0) {
-      vite = await startVite()
-      await captureFrames()
+    const durations = await synthesize()
+    vite = await startVite()
+    const recorded = await captureTour(durations)
+    const meta = JSON.parse(await readFile(path.join(CACHE, 'timings.json'), 'utf8')) as {
+      rawPath: string
+      timings: SceneTiming[]
     }
-    await synthesize()
-    const result = await renderClips()
+    const rawPath = recorded.rawPath || meta.rawPath
+    const result = await muxClips(rawPath, recorded.timings)
     await copyArtifacts(result.finalFile)
     console.log(`Tutorial video ready: ${result.finalFile} (${result.duration.toFixed(1)}s)`)
     console.log(JSON.stringify(result.chapters, null, 2))
