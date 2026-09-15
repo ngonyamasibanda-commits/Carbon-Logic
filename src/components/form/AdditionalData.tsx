@@ -1,4 +1,11 @@
-import { Paperclip, Plus, Tag, X } from 'lucide-react'
+import { Paperclip, Plus, Tag, Upload, X } from 'lucide-react'
+import {
+  attachedFromFile,
+  EVIDENCE_ACCEPT,
+  formatFileSize,
+  MAX_EVIDENCE_FILES,
+} from '../../lib/evidence'
+import { useToast } from '../../lib/toast-context'
 import type { AdditionalState } from '../../lib/types'
 import { useOrg } from '../../providers/OrgProvider'
 
@@ -9,6 +16,7 @@ type Props = {
 
 export default function AdditionalData({ value, onChange }: Props) {
   const { sites } = useOrg()
+  const toast = useToast()
 
   function update(partial: Partial<AdditionalState>) {
     onChange({ ...value, ...partial })
@@ -18,6 +26,29 @@ export default function AdditionalData({ value, onChange }: Props) {
     const tag = raw.trim()
     if (!tag || value.tags.includes(tag)) return
     update({ tags: [...value.tags, tag] })
+  }
+
+  async function onFiles(list: FileList | null) {
+    if (!list?.length) return
+    const room = MAX_EVIDENCE_FILES - value.files.length
+    if (room <= 0) {
+      toast.error(`You can attach up to ${MAX_EVIDENCE_FILES} files on one activity.`)
+      return
+    }
+    const incoming = [...list].slice(0, room)
+    const attached = [...value.files]
+    for (const file of incoming) {
+      try {
+        attached.push(await attachedFromFile(file))
+        toast.success(`${file.name} attached.`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : `Could not attach ${file.name}.`)
+      }
+    }
+    if (list.length > room) {
+      toast.info(`Only the first ${room} file${room === 1 ? '' : 's'} were added (maximum ${MAX_EVIDENCE_FILES}).`)
+    }
+    update({ files: attached })
   }
 
   return (
@@ -55,8 +86,55 @@ export default function AdditionalData({ value, onChange }: Props) {
         </select>
       </label>
 
+      <div className="rounded-md border border-brand/30 bg-brand-soft/40 px-3 py-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-brand-dark">
+          <Paperclip size={14} />
+          Evidence files
+        </div>
+        <p className="mt-2 text-xs leading-5 text-muted">
+          Upload invoices, delivery notes, or EPDs (PDF or image, up to 8 MB each). Completeness on
+          the dashboard counts rows that have a file or a link.
+        </p>
+        {value.files.length > 0 ? (
+          <ul className="mt-2 space-y-1">
+            {value.files.map((file) => (
+              <li
+                key={file.id}
+                className="flex items-center justify-between gap-2 rounded border border-brand/20 bg-white px-2 py-1.5 text-xs"
+              >
+                <span className="min-w-0 truncate font-medium text-ink" title={file.name}>
+                  {file.name}
+                  <span className="ml-1 font-normal text-muted">({formatFileSize(file.size)})</span>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => update({ files: value.files.filter((item) => item.id !== file.id) })}
+                >
+                  <X size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-brand/30 bg-white px-2.5 py-1.5 text-xs font-medium text-brand">
+          <Upload size={12} />
+          {value.files.length ? 'Add another file' : 'Upload document'}
+          <input
+            type="file"
+            accept={EVIDENCE_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              void onFiles(event.target.files)
+              event.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+
       <label className="block text-sm font-semibold text-ink">
-        Evidence link
+        Evidence link (optional)
         <input
           value={value.link}
           onChange={(event) => update({ link: event.target.value })}
@@ -74,18 +152,6 @@ export default function AdditionalData({ value, onChange }: Props) {
           className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
         />
       </label>
-
-      <div className="rounded-md border border-brand/30 bg-brand-soft/40 px-3 py-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-brand-dark">
-          <Paperclip size={14} />
-          Evidence files
-        </div>
-        <p className="mt-2 text-xs leading-5 text-muted">
-          Files are not uploaded here. Paste a SharePoint, Google Drive, or document-system link so
-          every colleague and your auditor can open the same evidence. Completeness on the dashboard
-          tracks how many rows have a link.
-        </p>
-      </div>
 
       <div className="rounded-md border border-brand/30 px-3 py-3">
         <div className="text-sm font-semibold text-brand-dark">Custom Fields</div>

@@ -7,6 +7,7 @@ import { factorsToCsv, monthsStale, parseFactorSpreadsheet } from '../lib/factor
 import { safeHttpUrl } from '../lib/safe'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from '../lib/types'
 import { useEntries } from '../lib/entries-context'
+import { useToast } from '../lib/toast-context'
 import Callout from '../components/ui/Callout'
 
 const SCOPES: Array<Scope | 'Custom'> = ['Scope 1', 'Scope 2', 'Scope 3', 'Custom']
@@ -41,6 +42,7 @@ const emptyForm = (): EmissionFactor => ({
 
 export default function FactorsPage() {
   const { factors, saveFactors } = useEntries()
+  const toast = useToast()
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<EmissionFactor | null>(null)
   const [form, setForm] = useState<EmissionFactor>(emptyForm)
@@ -61,15 +63,18 @@ export default function FactorsPage() {
 
   const staleCount = rows.filter((factor) => monthsStale(factor) || factor.isPlaceholder).length
 
-  async function persist(next: EmissionFactor[]) {
+  async function persist(next: EmissionFactor[], message?: string) {
     await saveFactors(next)
-    setStatus(`Saved ${next.length} emission factors.`)
+    const text = message ?? `Saved ${next.length} emission factors.`
+    setStatus(text)
+    toast.success(text)
   }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
     if (!form.key.trim() || !Number.isFinite(form.conversionValue)) {
       setStatus('Key and conversion value are required.')
+      toast.error('Key and conversion value are required.')
       return
     }
     const next = new Map(factors)
@@ -87,18 +92,19 @@ export default function FactorsPage() {
     if (!file) return
     if (/\.xlsx?$/i.test(file.name)) {
       setStatus('Save the workbook as CSV or TSV first. Excel binary files cannot be imported directly.')
+      toast.error('Save the workbook as CSV or TSV first. Excel binary files cannot be imported directly.')
       return
     }
     const text = await file.text()
     const imported = parseFactorSpreadsheet(text)
     if (imported.length === 0) {
       setStatus('No valid rows found. Use columns key (or activity_type) and conversion_value (or co2e_factor).')
+      toast.error('No valid rows found in that spreadsheet.')
       return
     }
     const next = new Map(factors)
     for (const factor of imported) next.set(factor.key, factor)
-    await persist([...next.values()])
-    setStatus(`Imported ${imported.length} rows from ${file.name}.`)
+    await persist([...next.values()], `Imported ${imported.length} rows from ${file.name}.`)
   }
 
   function startEdit(factor: EmissionFactor) {

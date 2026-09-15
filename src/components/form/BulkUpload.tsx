@@ -7,6 +7,7 @@ import { downloadText } from '../../lib/export'
 import type { CategoryConfig, EmissionEntry } from '../../lib/types'
 import { emptyAdditional } from '../../lib/types'
 import { useEntries } from '../../lib/entries-context'
+import { useToast } from '../../lib/toast-context'
 
 type Props = {
   category: CategoryConfig
@@ -15,6 +16,7 @@ type Props = {
 
 export default function BulkUpload({ category, onClose }: Props) {
   const { factors, addEntry } = useEntries()
+  const toast = useToast()
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
@@ -40,6 +42,7 @@ export default function BulkUpload({ category, onClose }: Props) {
     const rows = parseCsv(text)
     if (rows.length === 0) {
       setError('No data rows found. Use the template and include a header row.')
+      toast.error('No data rows found. Use the template and include a header row.')
       return
     }
 
@@ -102,7 +105,10 @@ export default function BulkUpload({ category, onClose }: Props) {
     }
 
     setImporting(false)
-    setStatus(`${imported} rows imported, ${skipped} skipped.`)
+    const summary = `${imported} rows imported, ${skipped} skipped.`
+    setStatus(summary)
+    if (imported > 0) toast.success(summary)
+    else toast.error(summary)
     if (failures.length) setError(failures.slice(0, 5).join(' · '))
   }
 

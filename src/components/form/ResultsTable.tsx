@@ -1,10 +1,12 @@
-import { Trash2 } from 'lucide-react'
+import { Paperclip, Trash2 } from 'lucide-react'
 import { getCategory } from '../../lib/categories'
 import { entryActivityDate } from '../../lib/entry-date'
+import { downloadEvidenceFile, filesForEntry, formatFileSize } from '../../lib/evidence'
 import { formatTco2e } from '../../lib/format'
 import { entryYearIsLocked } from '../../lib/period-lock'
 import { safeHttpUrl } from '../../lib/safe'
 import { parseScope2Meta } from '../../lib/scope2'
+import { useToast } from '../../lib/toast-context'
 import type { EmissionEntry } from '../../lib/types'
 
 type Props = {
@@ -21,6 +23,7 @@ function formatDate(value: string) {
 }
 
 export default function ResultsTable({ entries, onDelete, lockedYears = [], canDelete = true }: Props) {
+  const toast = useToast()
   return (
     <section className="mt-8">
       <h2 className="mb-3 text-xl font-bold text-ink">Results</h2>
@@ -48,6 +51,7 @@ export default function ResultsTable({ entries, onDelete, lockedYears = [], canD
               entries.map((entry) => {
                 const category = getCategory(entry.category)
                 const evidence = safeHttpUrl(entry.link)
+                const files = filesForEntry(entry)
                 const locked = entryYearIsLocked(lockedYears, entry)
                 const scope2 = entry.scope2 ?? parseScope2Meta(entry.customFields)
                 return (
@@ -73,9 +77,26 @@ export default function ResultsTable({ entries, onDelete, lockedYears = [], canD
                       <div className="mt-1 text-violet-700">{entry.tags.join(', ') || ''}</div>
                       {evidence ? (
                         <a href={evidence} target="_blank" rel="noreferrer" className="mt-1 inline-block text-sky-700 hover:underline">
-                          Evidence
+                          Evidence link
                         </a>
                       ) : null}
+                      {files.map((file) => (
+                        <button
+                          key={file.id}
+                          type="button"
+                          className="mt-1 flex items-center gap-1 text-sky-700 hover:underline"
+                          onClick={() => {
+                            void downloadEvidenceFile(file).catch((err) =>
+                              toast.error(err instanceof Error ? err.message : `Could not open ${file.name}.`),
+                            )
+                          }}
+                        >
+                          <Paperclip size={11} />
+                          <span className="truncate" title={`${file.name} (${formatFileSize(file.size)})`}>
+                            {file.name}
+                          </span>
+                        </button>
+                      ))}
                     </td>
                     <td className="px-4 py-3 text-muted">{entry.comment || '—'}</td>
                     <td className="px-4 py-3">

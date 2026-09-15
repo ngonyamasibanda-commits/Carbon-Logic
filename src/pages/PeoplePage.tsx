@@ -22,10 +22,12 @@ import {
   type PendingInvitation,
 } from '../lib/auth'
 import { useAuth } from '../lib/auth-context'
+import { useToast } from '../lib/toast-context'
 
 export default function PeoplePage() {
   const { organization, role, user, memberships, canCreateOrganizations, switchOrganization, reloadWorkspace, deleteOrganization } =
     useAuth()
+  const toast = useToast()
   const [members, setMembers] = useState<OrgMember[]>([])
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])
   const [audit, setAudit] = useState<AuditEvent[]>([])
@@ -88,9 +90,12 @@ export default function PeoplePage() {
     setError(null)
     setNotice(null)
     const { error: rpcError } = await setMemberRole(membershipId, nextRole)
-    if (rpcError) setError(rpcError)
-    else {
+    if (rpcError) {
+      setError(rpcError)
+      toast.error(rpcError)
+    } else {
       setNotice('Access updated.')
+      toast.success('Access updated.')
       await load()
       await reloadWorkspace()
     }
@@ -104,9 +109,12 @@ export default function PeoplePage() {
     setError(null)
     setNotice(null)
     const { error: rpcError } = await removeOrgMember(membershipId)
-    if (rpcError) setError(rpcError)
-    else {
+    if (rpcError) {
+      setError(rpcError)
+      toast.error(rpcError)
+    } else {
       setNotice(isSelf ? 'You left the organisation.' : `${email} was removed.`)
+      toast.success(isSelf ? 'You left the organisation.' : `${email} was removed.`)
       await load()
       await reloadWorkspace()
     }
@@ -417,6 +425,7 @@ function InviteCard({
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     if (!grantableRoles.includes(role)) {
@@ -435,19 +444,21 @@ function InviteCard({
       const result = await inviteMember(organizationId, email, role)
       if (result.error) {
         setError(result.error)
+        toast.error(result.error)
         return
       }
       const invitedEmail = email.trim().toLowerCase()
       if (result.addedImmediately) {
-        setNotice(
-          `${invitedEmail} already had an account and now has ${ROLE_LABELS[role]} access to ${organizationName}. No email was sent.`,
-        )
+        const message = `${invitedEmail} already had an account and now has ${ROLE_LABELS[role]} access to ${organizationName}. No email was sent.`
+        setNotice(message)
+        toast.success(message)
       } else {
         const url = inviteSignupUrl(invitedEmail)
         setShareUrl(url)
         setNotice(
           `${invitedEmail} is invited to ${organizationName} as ${ROLE_LABELS[role]}. Carbon Logic does not email them. Copy the signup link and send it yourself — they must create an account with that exact email.`,
         )
+        toast.success(`${invitedEmail} is invited. Copy the signup link and send it yourself.`)
       }
       setEmail('')
       await onInvited()

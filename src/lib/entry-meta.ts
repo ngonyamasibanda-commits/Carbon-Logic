@@ -1,3 +1,4 @@
+import { filesForEntry } from './evidence'
 import type { CustomField, EmissionEntry } from './types'
 import { readJson, writeJson } from './browser-storage'
 
@@ -44,6 +45,6 @@ export function applyMeta(entry: EmissionEntry): EmissionEntry {
     site: entry.site || meta.site,
     tags: entry.tags.length ? entry.tags : meta.tags,
     customFields: entry.customFields.length ? entry.customFields : meta.customFields,
-    files: [],
+    files: filesForEntry(entry),
   }
 }

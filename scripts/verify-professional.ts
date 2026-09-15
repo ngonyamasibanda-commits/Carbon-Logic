@@ -45,7 +45,7 @@ function entry(partial: Partial<EmissionEntry>): EmissionEntry {
     site: partial.site ?? 'Site A',
     tags: partial.tags ?? [],
     customFields: partial.customFields ?? [],
-    files: [],
+    files: partial.files ?? [],
     activity_date: partial.activity_date ?? '2026-06-01',
     scope2: partial.scope2,
   }
@@ -154,6 +154,24 @@ const complete = completenessForYear({
 })
 check('completeness scores a populated organisation above zero', complete.score > 0.4)
 check('evidence share counts http links', complete.evidenceShare === 1)
+
+const fileOnly = completenessForYear({
+  entries: [
+    entry({
+      id: 'upload',
+      activity_date: '2026-04-01',
+      files: [{ id: 'f1', name: 'invoice.pdf', size: 2048, type: 'application/pdf', dataUrl: '' }],
+    }),
+  ],
+  sites: [{ id: 's', name: 'Site A', type: 'construction_site', region: 'UK' }],
+  profile,
+  year: 2026,
+})
+check('evidence share counts uploaded files without a link', fileOnly.evidenceShare === 1)
+check(
+  'workspace lists evidence file uploads as included',
+  PROFESSIONAL_PLAN.includes.some((item) => /evidence file/i.test(item)),
+)
 
 const csv = auditorPackCsv([electricity], {
   organizationName: 'Acme',

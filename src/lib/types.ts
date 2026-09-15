@@ -114,10 +114,12 @@ export type CustomField = {
 }
 
 export type AttachedFile = {
+  id: string
   name: string
   size: number
   type: string
   dataUrl: string
+  storagePath?: string
 }
 
 export type EmissionEntry = {

@@ -2,10 +2,12 @@ import { useState, type FormEvent } from 'react'
 import { Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useOrg } from '../providers/OrgProvider'
+import { useToast } from '../lib/toast-context'
 import type { Site } from '../lib/org'
 
 export default function SitesPage() {
   const { sites, addSite, removeSite, loading, error } = useOrg()
+  const toast = useToast()
   const [siteForm, setSiteForm] = useState({ name: '', type: 'construction_site', region: 'United Kingdom' })
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -23,9 +25,11 @@ export default function SitesPage() {
     setBusy(false)
     if (result.error) {
       setFormError(result.error)
+      toast.error(result.error)
       return
     }
     setSiteForm({ name: '', type: 'construction_site', region: 'United Kingdom' })
+    toast.success(`${siteForm.name.trim()} added to facilities.`)
   }
 
   return (
@@ -119,7 +123,12 @@ export default function SitesPage() {
                     <button
                       type="button"
                       className="text-red-600"
-                      onClick={() => void removeSite(site.id)}
+                      onClick={() => {
+                        void removeSite(site.id).then((result) => {
+                          if (result.error) toast.error(result.error)
+                          else toast.success(`${site.name} removed.`)
+                        })
+                      }}
                     >
                       Remove
                     </button>

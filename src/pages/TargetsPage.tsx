@@ -23,6 +23,7 @@ import {
 import { loadSbtiConfig, loadSbtiConfigCloud, saveSbtiConfig } from '../lib/targets-store'
 import { useEntries } from '../lib/entries-context'
 import { useAuth } from '../lib/auth-context'
+import { useToast } from '../lib/toast-context'
 import { formatNumber, formatPercent, formatTco2e } from '../lib/format'
 
 const NAVY = '#02234e'
@@ -35,6 +36,7 @@ const t = (value: number) => formatNumber(value)
 export default function TargetsPage() {
   const { entries } = useEntries()
   const { organization } = useAuth()
+  const toast = useToast()
   const organisationName = organization?.name ?? 'Your organisation'
   const [config, setConfig] = useState<SbtiConfig>(() => loadSbtiConfig(organization?.id))
   const [status, setStatus] = useState<string | null>(null)
@@ -75,12 +77,15 @@ export default function TargetsPage() {
 
   function persist() {
     saveSbtiConfig(config, organization?.id)
-    setStatus('Target saved for this organisation. Every colleague will see it.')
+    const message = 'Target saved for this organisation. Every colleague will see it.'
+    setStatus(message)
+    toast.success(message)
   }
 
   async function copyLanguage() {
     await navigator.clipboard.writeText(result.targetLanguage.join('\n\n'))
     setCopied(true)
+    toast.success('Target language copied to the clipboard.')
     window.setTimeout(() => setCopied(false), 2000)
   }
 

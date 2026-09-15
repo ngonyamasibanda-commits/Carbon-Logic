@@ -2,6 +2,7 @@ import { CATEGORIES } from './categories'
 import { entryActivityYear } from './entry-date'
 import type { OrgProfile, Site } from './org'
 import { parseScope2Meta } from './scope2'
+import { hasEvidence } from './evidence'
 import type { EmissionEntry } from './types'
 
 /** Categories that usually dominate a contractor, miner, or logistics inventory. */
@@ -41,7 +42,7 @@ export function completenessForYear(input: {
   const logged = new Set(yearEntries.map((entry) => entry.category))
   const materialTotal = MATERIAL_CATEGORY_IDS.length
   const materialLogged = MATERIAL_CATEGORY_IDS.filter((id) => logged.has(id)).length
-  const withEvidence = yearEntries.filter((entry) => Boolean(entry.link.trim())).length
+  const withEvidence = yearEntries.filter((entry) => hasEvidence(entry)).length
   const withSite = yearEntries.filter((entry) => Boolean(entry.site.trim())).length
   const evidenceShare = yearEntries.length > 0 ? withEvidence / yearEntries.length : 0
   const siteShare = yearEntries.length > 0 ? withSite / yearEntries.length : 0
@@ -94,9 +95,9 @@ export function completenessForYear(input: {
     },
     {
       id: 'evidence',
-      label: 'Attach evidence links (half of rows)',
+      label: 'Attach evidence (half of rows)',
       done: evidenceShare >= 0.5,
-      hint: 'Paste a SharePoint or Drive URL on each activity so an auditor can follow the file.',
+      hint: 'Upload an invoice or delivery note, or paste a SharePoint / Drive URL, so an auditor can follow the file.',
     },
     {
       id: 'sites',

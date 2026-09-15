@@ -17,6 +17,8 @@ import { CATEGORY_ICONS } from '../../lib/icons'
 import { useEntries } from '../../lib/entries-context'
 import { useAuth } from '../../lib/auth-context'
 import { emptyAdditional, type AdditionalState, type CategoryConfig } from '../../lib/types'
+import { customFieldsWithEvidence } from '../../lib/evidence'
+import { useToast } from '../../lib/toast-context'
 import AdditionalData from './AdditionalData'
 import BulkUpload from './BulkUpload'
 import ResultsTable from './ResultsTable'
@@ -38,6 +40,7 @@ export default function CategoryForm({ category }: Props) {
   const { entries, factors, addEntry, removeEntry, saveFactors } = useEntries()
   const { can } = useAuth()
   const { profile } = useOrg()
+  const toast = useToast()
   const canWrite = can('entries:write')
   const canWriteFactors = can('factors:write')
   const navigate = useNavigate()
@@ -143,12 +146,18 @@ export default function CategoryForm({ category }: Props) {
           ? 'This material needs an EPD or user factor. Enter the A1–A3 GWP below, or import an EPD spreadsheet on Emission factors.'
           : `Factor needed for ${factorKey}. Add it to emission_factors (value, unit, source) before this activity can be calculated.`,
       )
+      toast.error(
+        needsEpd
+          ? 'This material needs an EPD or user factor before it can be added.'
+          : `Factor needed for ${factorKey}.`,
+      )
       return
     }
 
     const working = workingFromForm(category, values, factor)
     if (working.error || !Number.isFinite(working.tco2e) || working.tco2e < 0 || working.activityAmount <= 0) {
       setError(working.error ?? 'Enter a valid activity amount greater than zero.')
+      toast.error(working.error ?? 'Enter a valid activity amount greater than zero.')
       return
     }
     const activityAmount = working.activityAmount
@@ -158,6 +167,7 @@ export default function CategoryForm({ category }: Props) {
       setError(
         `Reporting year ${activityYear} is closed. An administrator can reopen it from Organisation settings.`,
       )
+      toast.error(`Reporting year ${activityYear} is closed.`)
       return
     }
 
@@ -190,6 +200,15 @@ export default function CategoryForm({ category }: Props) {
     }
 
     setSubmitting(true)
+    const extraFields = (custom = additional.customFields) => ({
+      link: additional.link,
+      comment: additional.comment,
+      site: additional.site,
+      tags: additional.tags,
+      customFields: customFieldsWithEvidence(custom, additional.files),
+      files: additional.files,
+      activity_date: additional.activity_date,
+    })
     try {
       if (
         needsEpd &&
@@ -211,13 +230,7 @@ export default function CategoryForm({ category }: Props) {
         } | ${working.formula} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})${detailsExtra}`,
         amount: activityAmount,
         unit: category.resolveUnit(values),
-        link: additional.link,
-        comment: additional.comment,
-        site: additional.site,
-        tags: additional.tags,
-        customFields,
-        files: [],
-        activity_date: additional.activity_date,
+        ...extraFields(customFields),
       })
       const extras: string[] = []
       if (values.include_td === '1' && factor.tdKey) {
@@ -231,13 +244,7 @@ export default function CategoryForm({ category }: Props) {
             details: `T&D chain for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${td.name}`,
             amount: activityAmount,
             unit: td.unit,
-            link: additional.link,
-            comment: additional.comment,
-            site: additional.site,
-            tags: additional.tags,
-            customFields: additional.customFields,
-            files: [],
-            activity_date: additional.activity_date,
+            ...extraFields(),
           })
           extras.push(`T&D ${formatTco2e(extra.tco2e, true)}`)
         }
@@ -253,13 +260,7 @@ export default function CategoryForm({ category }: Props) {
             details: `WTT chain for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${wtt.name}`,
             amount: activityAmount,
             unit: wtt.unit,
-            link: additional.link,
-            comment: additional.comment,
-            site: additional.site,
-            tags: additional.tags,
-            customFields: additional.customFields,
-            files: [],
-            activity_date: additional.activity_date,
+            ...extraFields(),
           })
           extras.push(`WTT ${formatTco2e(extra.tco2e, true)}`)
         }
@@ -275,13 +276,7 @@ export default function CategoryForm({ category }: Props) {
             details: `UK electricity for EVs (Scope 2) for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${ev.name}`,
             amount: activityAmount,
             unit: ev.unit,
-            link: additional.link,
-            comment: additional.comment,
-            site: additional.site,
-            tags: additional.tags,
-            customFields: additional.customFields,
-            files: [],
-            activity_date: additional.activity_date,
+            ...extraFields(),
           })
           extras.push(`EV electricity ${formatTco2e(extra.tco2e, true)}`)
         }
@@ -297,13 +292,7 @@ export default function CategoryForm({ category }: Props) {
             details: `UK electricity T&D for EVs for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${evTd.name}`,
             amount: activityAmount,
             unit: evTd.unit,
-            link: additional.link,
-            comment: additional.comment,
-            site: additional.site,
-            tags: additional.tags,
-            customFields: additional.customFields,
-            files: [],
-            activity_date: additional.activity_date,
+            ...extraFields(),
           })
           extras.push(`EV T&D ${formatTco2e(extra.tco2e, true)}`)
         }
@@ -319,24 +308,20 @@ export default function CategoryForm({ category }: Props) {
             details: `Water treatment chain for ${category.resolveDetails(values, activityAmount)} | ${extra.formula} | Factor: ${treatment.name}`,
             amount: activityAmount,
             unit: treatment.unit,
-            link: additional.link,
-            comment: additional.comment,
-            site: additional.site,
-            tags: additional.tags,
-            customFields: additional.customFields,
-            files: [],
-            activity_date: additional.activity_date,
+            ...extraFields(),
           })
           extras.push(`treatment ${formatTco2e(extra.tco2e, true)}`)
         }
       }
-      setMessage(
-        `Added ${formatTco2e(emissions, true)} to your footprint${extras.length ? `; also ${extras.join(', ')}` : ''}.`,
-      )
+      const summary = `Added ${formatTco2e(emissions, true)} to your footprint${extras.length ? `; also ${extras.join(', ')}` : ''}.`
+      setMessage(summary)
+      toast.success(summary)
       setValues(defaultValues)
       setAdditional(emptyAdditional())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save entry.')
+      const text = err instanceof Error ? err.message : 'Could not save entry.'
+      setError(text)
+      toast.error(text)
     } finally {
       setSubmitting(false)
     }
@@ -709,7 +694,12 @@ export default function CategoryForm({ category }: Props) {
         entries={categoryEntries}
         lockedYears={profile.lockedYears}
         canDelete={canWrite}
-        onDelete={(id) => void removeEntry(id)}
+        onDelete={(id) => {
+          void removeEntry(id).then(
+            () => toast.success('Activity removed from the footprint.'),
+            (err) => toast.error(err instanceof Error ? err.message : 'Could not delete that activity.'),
+          )
+        }}
       />
     </div>
   )
