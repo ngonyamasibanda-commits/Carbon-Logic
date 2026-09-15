@@ -58,6 +58,27 @@ export default function LearningHubPage() {
           Guides for construction, mining, and logistics carbon accounting. Covers GHG Protocol, SECR, PAS 2080, SBTi, and practical tips.
         </p>
       </div>
+      <article className="overflow-hidden rounded-xl border border-line bg-white">
+        <div className="px-5 pt-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent-dark">Product tour</p>
+          <h2 className="mt-1 font-semibold text-ink">Watch how Carbon Logic works</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            A three-minute walkthrough of the real screens: sign in, facilities, logging activity with
+            evidence, analysis, and the SECR / PPN report pack.
+          </p>
+        </div>
+        <div className="p-5 pt-4">
+          <video
+            className="aspect-video w-full rounded-lg border border-line bg-black"
+            controls
+            preload="metadata"
+            playsInline
+            poster="/tutorial/how-to-use-carbon-logic.jpg"
+          >
+            <source src="/tutorial/how-to-use-carbon-logic.mp4" type="video/mp4" />
+          </video>
+        </div>
+      </article>
       {ARTICLES.map((article) => (
         <article key={article.title} className="rounded-xl border border-line bg-white p-5">
           <h2 className="font-semibold text-ink">{article.title}</h2>
