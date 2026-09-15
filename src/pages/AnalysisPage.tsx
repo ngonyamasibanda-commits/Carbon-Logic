@@ -24,6 +24,7 @@ import { useAuth } from '../lib/auth-context'
 import { formatNumber, formatPercent, formatTco2e, roundDisplay } from '../lib/format'
 import { useOrg } from '../providers/OrgProvider'
 import { summarizeScope2 } from '../lib/scope2'
+import { useToast } from '../lib/toast-context'
 
 const SCOPE_COLORS: Record<string, string> = {
   'Scope 1': '#02234e',
@@ -38,6 +39,7 @@ export default function AnalysisPage() {
   const { entries } = useEntries()
   const { sites, profile, updateProfile } = useOrg()
   const { organization } = useAuth()
+  const toast = useToast()
   const [mode, setMode] = useState<'scope' | 'source'>('scope')
   const [openScopes, setOpenScopes] = useState<Record<string, boolean>>({
     'Scope 1': true,
@@ -63,7 +65,12 @@ export default function AnalysisPage() {
     const value = Number(revenueDraft)
     if (Number.isFinite(value) && value > 0) {
       setRevenue(value)
-      void updateProfile({ ...profile, annualRevenue: value })
+      void updateProfile({ ...profile, annualRevenue: value }).then((result) => {
+        if (result.error) toast.error(result.error)
+        else toast.success('Annual turnover saved.')
+      })
+    } else {
+      toast.error('Enter a turnover greater than zero.')
     }
   }
 

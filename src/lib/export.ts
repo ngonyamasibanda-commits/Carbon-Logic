@@ -6,6 +6,7 @@ import type { OrgProfile } from './org'
 import { escapeHtml } from './safe'
 import { parseScope2Meta, summarizeScope2 } from './scope2'
 import { formatCsvNumber, formatNumber, formatPercent, formatTco2e } from './format'
+import { filesForEntry, hasEvidence } from './evidence'
 import type { EmissionEntry } from './types'
 
 function csvEscape(value: string) {
@@ -44,8 +45,8 @@ export function entriesToCsv(entries: EmissionEntry[]) {
       entry.details,
       entry.comment,
       entry.tags.join('; '),
-      entry.link,
-      entry.link.trim() ? 'Yes' : 'No',
+      [entry.link, ...filesForEntry(entry).map((file) => file.name)].filter(Boolean).join('; '),
+      hasEvidence(entry) ? 'Yes' : 'No',
       scope2 ? formatCsvNumber(scope2.locationTco2e) : '',
       scope2 ? formatCsvNumber(scope2.marketTco2e) : '',
       scope2?.instrument ?? '',

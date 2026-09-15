@@ -175,6 +175,23 @@ async function main() {
     readFileSync(join(root, 'supabase/fix_inventory_governance.sql'), 'utf8') === governance,
   )
 
+  const evidence = readFileSync(join(root, 'supabase/migrations/0008_evidence_storage.sql'), 'utf8')
+  await db.exec(evidence)
+  check('evidence storage migration applies cleanly without a Storage schema', true)
+  await db.exec(evidence)
+  check('evidence storage migration is idempotent (second run is clean)', true)
+  check(
+    'fix_evidence_storage.sql matches migration 0008',
+    readFileSync(join(root, 'supabase/fix_evidence_storage.sql'), 'utf8') === evidence,
+  )
+  const orgFromPath = await db.query<{ evidence_org_from_path: string | null }>(
+    `select public.evidence_org_from_path('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/file/invoice.pdf')`,
+  )
+  check(
+    'evidence path helper reads the organisation id',
+    orgFromPath.rows[0]?.evidence_org_from_path === 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  )
+
   const liveFix = readFileSync(join(root, 'supabase/fix_live_database.sql'), 'utf8')
   const liveFixMarker = '-- >>> BEGIN MIGRATIONS\n'
   const markerAt = liveFix.indexOf(liveFixMarker)

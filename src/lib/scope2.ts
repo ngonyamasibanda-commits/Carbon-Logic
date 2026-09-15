@@ -52,7 +52,7 @@ export function parseScope2Meta(fields: CustomField[] | undefined): Scope2Meta |
 }
 
 export function customFieldsWithScope2(fields: CustomField[] | undefined, meta: Scope2Meta | undefined): CustomField[] {
-  const rest = (fields ?? []).filter((field) => field.label !== SCOPE2_META_LABEL && !field.label.startsWith('_'))
+  const rest = (fields ?? []).filter((field) => field.label !== SCOPE2_META_LABEL)
   if (!meta) return rest
   return [...rest, { label: SCOPE2_META_LABEL, value: JSON.stringify(meta) }]
 }

@@ -23,6 +23,7 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import { AuthProvider } from './providers/AuthProvider'
 import { EntriesProvider } from './providers/EntriesProvider'
 import { OrgProvider } from './providers/OrgProvider'
+import { ToastProvider } from './providers/ToastProvider'
 import { useAuth } from './lib/auth-context'
 
 function SignedOutOnly({ children }: { children: React.ReactNode }) {
@@ -47,8 +48,9 @@ function ProtectedShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
           <Route
             path="/login"
             element={
@@ -87,7 +89,8 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

@@ -10,6 +10,7 @@ import {
 } from '../lib/entries'
 import { FACTOR_CATALOG } from '../lib/factor-catalog'
 import { persistFactors } from '../lib/factors-store'
+import { customFieldsWithEvidence, stashEvidenceBlobs, uploadEvidenceFiles } from '../lib/evidence'
 import { EntriesContext } from '../lib/entries-context'
 import { isLocalOrganizationId, recordAuditEvent } from '../lib/auth'
 import { useAuth } from '../lib/auth-context'
@@ -76,7 +77,16 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     async (input: Omit<EmissionEntry, 'id' | 'created_at'>) => {
       if (!tenant) throw new Error('No active organisation')
       assertYearUnlocked(profile.lockedYears, input.activity_date)
-      const saved = await saveEntry(tenant, input)
+      const uploaded = await uploadEvidenceFiles(
+        isLocalOrganizationId(tenant.organizationId) ? undefined : tenant.organizationId,
+        input.files ?? [],
+      )
+      await stashEvidenceBlobs(uploaded)
+      const saved = await saveEntry(tenant, {
+        ...input,
+        files: uploaded,
+        customFields: customFieldsWithEvidence(input.customFields, uploaded),
+      })
       setEntries((prev) => [saved, ...prev])
       if (!isLocalOrganizationId(tenant.organizationId)) {
         void recordAuditEvent(tenant.organizationId, 'inventory.entry_created', 'emission_entry', saved.id, {

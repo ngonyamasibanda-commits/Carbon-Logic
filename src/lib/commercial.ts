@@ -12,9 +12,9 @@ export const PROFESSIONAL_PLAN = {
     'SBTi near-term and net-zero modeller',
     'Audit log of access changes and inventory writes',
     'CSV and printable PDF exports for auditors and customers',
+    'Evidence file uploads on each activity (invoices, delivery notes, EPDs)',
   ],
   notIncluded: [
     'Third-party verification or limited-assurance opinion',
-    'File hosting for invoices (use a SharePoint or Drive evidence link)',
   ],
 } as const

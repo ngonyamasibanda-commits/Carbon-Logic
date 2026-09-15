@@ -2,11 +2,13 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Lock, Unlock } from 'lucide-react'
 import { PROFESSIONAL_PLAN } from '../lib/commercial'
 import { useAuth } from '../lib/auth-context'
+import { useToast } from '../lib/toast-context'
 import { useOrg } from '../providers/OrgProvider'
 
 export default function OrganisationPage() {
   const { organization, can } = useAuth()
   const { profile, updateProfile, setYearLock, error } = useOrg()
+  const toast = useToast()
   const canEdit = can('settings:write')
   const [draft, setDraft] = useState(profile)
   const [status, setStatus] = useState<string | null>(null)
@@ -32,7 +34,17 @@ export default function OrganisationPage() {
       residualMixKgPerKwh: Number(draft.residualMixKgPerKwh) || 0,
       reportingYear: Number(draft.reportingYear) || new Date().getFullYear(),
     })
-    setStatus(result.error ?? 'Organisation settings saved.')
+    if (result.error) {
+      setStatus(result.error)
+      toast.error(result.error)
+    } else {
+      setStatus('Organisation settings saved.')
+      toast.success(
+        draft.baselineYtdTco2e
+          ? `Settings saved, including a ${draft.baselineYtdTco2e} tCO₂e baseline.`
+          : 'Organisation settings saved.',
+      )
+    }
   }
 
   async function toggleLock() {
@@ -40,10 +52,14 @@ export default function OrganisationPage() {
     setStatus(null)
     const result = await setYearLock(year, !closed, lockReason)
     setLockBusy(false)
-    setStatus(
+    const message =
       result.error ??
-        (closed ? `${year} is open again for editing.` : `${year} is closed. Activities in that year can no longer be changed.`),
-    )
+      (closed
+        ? `${year} is open again for editing.`
+        : `${year} is closed. Activities in that year can no longer be changed.`)
+    setStatus(message)
+    if (result.error) toast.error(result.error)
+    else toast.success(message)
   }
 
   return (

@@ -153,6 +153,26 @@ function main() {
     rpcString?.id === '89' && rpcString.details === 'json string',
   )
 
+  const withFiles = parseRpcRow({
+    id: 90,
+    category: 'fuels',
+    scope: 'Scope 1',
+    emissions_tco2e: 1,
+    details: 'with invoice',
+    created_at: '2026-01-01T00:00:00.000Z',
+    organization_id: 'org-a',
+    custom_fields: [
+      {
+        label: '_evidence_files',
+        value: JSON.stringify([{ id: 'f1', name: 'invoice.pdf', size: 12, type: 'application/pdf' }]),
+      },
+    ],
+  })
+  check(
+    'uploaded evidence file names survive an organisation RPC row',
+    withFiles?.files[0]?.name === 'invoice.pdf',
+  )
+
   console.log(`\n${passed} passed, ${failed} failed\n`)
   if (failed > 0) process.exit(1)
 }

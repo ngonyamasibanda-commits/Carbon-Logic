@@ -4,6 +4,7 @@ import { Alert, FormField, inputClass } from '../components/auth/AuthLayout'
 import MfaEnrollment from '../components/auth/MfaEnrollment'
 import { assessPassword, MIN_PASSWORD_LENGTH, recordAuditEvent } from '../lib/auth'
 import { useAuth } from '../lib/auth-context'
+import { useToast } from '../lib/toast-context'
 import { supabase } from '../lib/supabase'
 
 export default function AccountPage() {
@@ -78,6 +79,7 @@ function ProfileCard({
   const [title, setTitle] = useState(jobTitle)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const toast = useToast()
 
   useEffect(() => {
     setName(fullName)
@@ -94,6 +96,8 @@ function ProfileCard({
         .update({ full_name: name.trim(), job_title: title.trim() })
         .eq('id', userId)
       setStatus(error ? 'Could not save the profile. Try again.' : 'Profile saved.')
+      if (error) toast.error('Could not save the profile. Try again.')
+      else toast.success('Profile saved.')
       if (!error) await onSaved()
     } finally {
       setBusy(false)

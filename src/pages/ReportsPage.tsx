@@ -120,8 +120,9 @@ export default function ReportsPage() {
       <section className="rounded-xl border border-line bg-white p-5 text-sm">
         <h2 className="text-lg font-semibold text-ink">Auditor files</h2>
         <p className="mt-1 text-muted">
-          CSV of every activity in {year}, including evidence links and dual Scope 2 working. Share
-          this with your appointed verifier — Carbon Logic does not issue an assurance opinion.
+          CSV of every activity in {year}, including uploaded evidence files, evidence links, and
+          dual Scope 2 working. Share this with your appointed verifier — Carbon Logic does not
+          issue an assurance opinion.
         </p>
         <div className="mt-3 flex flex-wrap gap-4">
           <button

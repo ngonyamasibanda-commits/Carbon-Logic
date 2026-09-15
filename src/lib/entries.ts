@@ -1,6 +1,7 @@
 import { isLocalOrganizationId } from './auth'
 import { readJson, writeJson } from './browser-storage'
 import { applyMeta, deleteEntryMeta, setEntryMeta } from './entry-meta'
+import { customFieldsWithEvidence, fileMeta, filesForEntry, stashEvidenceBlobs } from './evidence'
 import { parseScope2Meta } from './scope2'
 import {
   PermissionDeniedError,
@@ -28,17 +29,23 @@ export { CloudSaveError, PermissionDeniedError, RateLimitError } from './securit
 type PostgrestLikeError = { message?: string; code?: string } | null
 
 function extrasFrom(row: Partial<EmissionEntry>) {
+  const files = filesForEntry({ files: row.files, customFields: row.customFields }).map(fileMeta)
   return {
     site: row.site ?? '',
     tags: row.tags ?? [],
-    customFields: row.customFields ?? [],
-    files: [] as EmissionEntry['files'],
+    customFields: customFieldsWithEvidence(row.customFields ?? [], files),
+    files,
     activity_date: row.activity_date,
   }
 }
 
 function lightEntry(entry: EmissionEntry): EmissionEntry {
-  return { ...entry, files: [] }
+  const files = filesForEntry(entry).map(fileMeta)
+  return {
+    ...entry,
+    files,
+    customFields: customFieldsWithEvidence(entry.customFields, files),
+  }
 }
 
 function fromRow(row: Record<string, unknown>): EmissionEntry {
@@ -63,7 +70,7 @@ function fromRow(row: Record<string, unknown>): EmissionEntry {
     site: String(row.site ?? ''),
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
     customFields,
-    files: [],
+    files: filesForEntry({ customFields }),
     activity_date: activityDate,
     organization_id: organizationId ? String(organizationId) : undefined,
   })
@@ -91,7 +98,7 @@ export function parseRpcRow(data: unknown): EmissionEntry | null {
 
 function hydrate(rows: EmissionEntry[]): EmissionEntry[] {
   return rows.map((row) => {
-    const next = applyMeta({ ...extrasFrom(row), ...row, files: [] })
+    const next = applyMeta({ ...row, ...extrasFrom(row) })
     return { ...next, scope2: parseScope2Meta(next.customFields) }
   })
 }
@@ -493,10 +500,10 @@ export async function saveEntry(
   input: Omit<EmissionEntry, 'id' | 'created_at'>,
 ): Promise<EmissionEntry> {
   const extras = extrasFrom(input)
+  void stashEvidenceBlobs(input.files ?? [])
   const localEntry: EmissionEntry = {
     ...input,
     ...extras,
-    files: [],
     id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     created_at: new Date().toISOString(),
     organization_id: isLocalOrganizationId(tenant.organizationId) ? undefined : tenant.organizationId,
