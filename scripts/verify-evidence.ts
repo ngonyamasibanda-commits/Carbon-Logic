@@ -38,11 +38,11 @@ check('file picker lists .csv', EVIDENCE_ACCEPT.includes('.csv'))
 check('file picker lists .doc', EVIDENCE_ACCEPT.includes('.doc'))
 check('file picker includes CSV MIME type', EVIDENCE_ACCEPT.includes('text/csv'))
 check('file picker includes Word MIME type', EVIDENCE_ACCEPT.includes('application/msword'))
+check('helper copy names CSV and Word', EVIDENCE_TYPES_LABEL.includes('CSV') && EVIDENCE_TYPES_LABEL.includes('Word'))
 check(
-  'helper copy names CSV and Word',
-  EVIDENCE_TYPES_LABEL.includes('CSV') && EVIDENCE_TYPES_LABEL.includes('.doc'),
+  'activity form mentions CSV and Word documents',
+  additional.includes('CSVs') && additional.includes('Word documents'),
 )
-check('activity form mentions the supported types', additional.includes('EVIDENCE_TYPES_LABEL'))
 check('CSV meter readings are allowed', isAllowedEvidenceFile('meter-readings.CSV'))
 check('legacy Word delivery notes are allowed', isAllowedEvidenceFile('delivery note.doc'))
 check('PDF invoices stay allowed', isAllowedEvidenceFile('invoice.pdf'))

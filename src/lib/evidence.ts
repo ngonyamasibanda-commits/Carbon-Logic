@@ -21,8 +21,7 @@ const EVIDENCE_TYPES: { ext: string; mime: string }[] = [
 
 const MIME_BY_EXT = Object.fromEntries(EVIDENCE_TYPES.map((row) => [row.ext, row.mime]))
 
-export const EVIDENCE_TYPES_LABEL =
-  'PDF, image, CSV, Word (.doc or .docx), Excel, or text'
+export const EVIDENCE_TYPES_LABEL = 'PDF, image, CSV, Word, Excel, or text'
 
 export const EVIDENCE_ACCEPT = [
   ...EVIDENCE_TYPES.map((row) => `.${row.ext}`),
