@@ -2,6 +2,7 @@ import { Paperclip, Plus, Tag, Upload, X } from 'lucide-react'
 import {
   attachedFromFile,
   EVIDENCE_ACCEPT,
+  EVIDENCE_TYPES_LABEL,
   formatFileSize,
   MAX_EVIDENCE_FILES,
 } from '../../lib/evidence'
@@ -92,8 +93,8 @@ export default function AdditionalData({ value, onChange }: Props) {
           Evidence files
         </div>
         <p className="mt-2 text-xs leading-5 text-muted">
-          Upload invoices, delivery notes, or EPDs (PDF or image, up to 8 MB each). Completeness on
-          the dashboard counts rows that have a file or a link.
+          Upload invoices, delivery notes, or EPDs ({EVIDENCE_TYPES_LABEL}, up to 8 MB each).
+          Completeness on the dashboard counts rows that have a file or a link.
         </p>
         {value.files.length > 0 ? (
           <ul className="mt-2 space-y-1">
