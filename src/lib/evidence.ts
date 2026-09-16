@@ -4,8 +4,42 @@ import type { AttachedFile, CustomField } from './types'
 export const EVIDENCE_FILES_LABEL = '_evidence_files'
 export const MAX_EVIDENCE_FILES = 5
 export const MAX_EVIDENCE_BYTES = 8 * 1024 * 1024
-export const EVIDENCE_ACCEPT =
-  '.pdf,.png,.jpg,.jpeg,.webp,.csv,.txt,.doc,.docx,.xls,.xlsx,application/pdf,image/png,image/jpeg,image/webp'
+
+const EVIDENCE_TYPES: { ext: string; mime: string }[] = [
+  { ext: 'pdf', mime: 'application/pdf' },
+  { ext: 'png', mime: 'image/png' },
+  { ext: 'jpg', mime: 'image/jpeg' },
+  { ext: 'jpeg', mime: 'image/jpeg' },
+  { ext: 'webp', mime: 'image/webp' },
+  { ext: 'csv', mime: 'text/csv' },
+  { ext: 'txt', mime: 'text/plain' },
+  { ext: 'doc', mime: 'application/msword' },
+  { ext: 'docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+  { ext: 'xls', mime: 'application/vnd.ms-excel' },
+  { ext: 'xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+]
+
+const MIME_BY_EXT = Object.fromEntries(EVIDENCE_TYPES.map((row) => [row.ext, row.mime]))
+
+export const EVIDENCE_TYPES_LABEL = 'PDF, image, CSV, Word, Excel, or text'
+
+export const EVIDENCE_ACCEPT = [
+  ...EVIDENCE_TYPES.map((row) => `.${row.ext}`),
+  ...new Set(EVIDENCE_TYPES.map((row) => row.mime)),
+].join(',')
+
+export function fileExtension(name: string) {
+  const match = /\.([a-z0-9]+)$/i.exec(name.trim())
+  return match ? match[1].toLowerCase() : ''
+}
+
+export function isAllowedEvidenceFile(name: string) {
+  return Boolean(MIME_BY_EXT[fileExtension(name)])
+}
+
+export function evidenceContentType(file: { name: string; type?: string }) {
+  return MIME_BY_EXT[fileExtension(file.name)] || file.type || 'application/octet-stream'
+}
 
 const DB_NAME = 'carbon-logic-evidence'
 const STORE = 'files'
@@ -48,12 +82,15 @@ export async function attachedFromFile(file: File): Promise<AttachedFile> {
   if (file.size > MAX_EVIDENCE_BYTES) {
     throw new Error(`“${file.name}” is larger than 8 MB. Compress it or attach a smaller scan.`)
   }
+  if (!isAllowedEvidenceFile(file.name)) {
+    throw new Error(`“${file.name}” is not a supported evidence file. Use ${EVIDENCE_TYPES_LABEL}.`)
+  }
   const dataUrl = await readAsDataUrl(file)
   return {
     id: newFileId(),
     name: file.name,
     size: file.size,
-    type: file.type || 'application/octet-stream',
+    type: evidenceContentType(file),
     dataUrl,
   }
 }
@@ -198,9 +235,11 @@ export async function uploadEvidenceFiles(
       next.push(file)
       continue
     }
+    const contentType = evidenceContentType(file)
+    const typed = contentType && contentType !== blob.type ? new Blob([blob], { type: contentType }) : blob
     const path = `${organizationId}/${file.id}/${safeFileName(file.name)}`
-    const { error } = await supabase.storage.from('evidence').upload(path, blob, {
-      contentType: file.type || blob.type || 'application/octet-stream',
+    const { error } = await supabase.storage.from('evidence').upload(path, typed, {
+      contentType,
       upsert: true,
     })
     next.push(error ? file : { ...file, storagePath: path })

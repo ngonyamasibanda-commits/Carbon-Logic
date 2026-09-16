@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { buildTemplate, parseCsv } from '../../lib/csv'
 import { lookupFactor } from '../../lib/calculate'
@@ -20,6 +20,8 @@ export default function BulkUpload({ category, onClose }: Props) {
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [fileName, setFileName] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const headers = [
     ...category.fields.map((field) => field.key),
@@ -132,16 +134,33 @@ export default function BulkUpload({ category, onClose }: Props) {
           <button
             type="button"
             onClick={downloadTemplate}
-            className="rounded-md border border-line px-3 py-2"
+            className="rounded-md border border-line bg-white px-3 py-2 hover:bg-page"
           >
             Download CSV template
           </button>
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            className="block w-full text-sm"
-            onChange={(event) => void onFile(event.target.files?.[0])}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={importing}
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-md border border-line bg-white px-3 py-2 hover:bg-page disabled:opacity-60"
+            >
+              Choose file
+            </button>
+            <span className="text-muted">{fileName ?? 'No file chosen'}</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                setFileName(file?.name ?? null)
+                void onFile(file)
+                event.target.value = ''
+              }}
+            />
+          </div>
           {importing ? <p className="text-muted">Importing…</p> : null}
           {status ? <p className="text-brand-dark">{status}</p> : null}
           {error ? <p className="text-red-700">{error}</p> : null}

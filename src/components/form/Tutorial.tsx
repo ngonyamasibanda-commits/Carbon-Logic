@@ -12,7 +12,7 @@ const STEPS = [
   },
   {
     title: 'Add evidence',
-    body: 'Upload invoices or delivery notes, or paste a document-system link. Add custom fields such as project codes, and tag the row for later filtering.',
+    body: 'Upload invoices, delivery notes, CSVs, or Word documents, or paste a document-system link. Add custom fields such as project codes, and tag the row for later filtering.',
   },
   {
     title: 'Calculate',
