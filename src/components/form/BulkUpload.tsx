@@ -1,6 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
-import { buildTemplate, parseCsv } from '../../lib/csv'
+import { parseCsv } from '../../lib/csv'
+import {
+  activityAmountFromBulkRow,
+  buildCategoryTemplate,
+  bulkColumnsForCategory,
+  normalizeBulkRow,
+} from '../../lib/bulk-upload'
 import { calculateTco2e, lookupFactor } from '../../lib/calculate'
 import { downloadText } from '../../lib/export'
 import type { CategoryConfig, EmissionEntry } from '../../lib/types'
@@ -18,16 +24,22 @@ export default function BulkUpload({ category, onClose }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
 
-  const headers = [
-    ...category.fields.map((field) => field.key),
-    'site',
-    'comment',
-    'link',
-    'tags',
-  ]
+  const columns = useMemo(() => bulkColumnsForCategory(category), [category])
+  const requiredHints = useMemo(
+    () =>
+      columns
+        .filter((column) => column.key !== 'site' && column.key !== 'comment' && column.key !== 'link' && column.key !== 'tags')
+        .map((column) => {
+          const options = column.options?.length
+            ? ` (${column.options.slice(0, 4).join(' / ')}${column.options.length > 4 ? '…' : ''})`
+            : ''
+          return `${column.header}${options}`
+        }),
+    [columns],
+  )
 
   function downloadTemplate() {
-    downloadText(`${category.id}-template.csv`, buildTemplate(headers), 'text/csv')
+    downloadText(`${category.id}-template.csv`, buildCategoryTemplate(category), 'text/csv')
   }
 
   async function onFile(file: File | undefined) {
@@ -37,7 +49,7 @@ export default function BulkUpload({ category, onClose }: Props) {
     const text = await file.text()
     const rows = parseCsv(text)
     if (rows.length === 0) {
-      setError('No data rows found. Use the template and include a header row.')
+      setError('No data rows found. Download the template and keep the header row.')
       return
     }
 
@@ -47,20 +59,24 @@ export default function BulkUpload({ category, onClose }: Props) {
     const failures: string[] = []
 
     for (const [index, row] of rows.entries()) {
-      const values = { ...row }
-      const amount = Number(values[category.amountField] ?? values.amount)
-      const activityAmount = category.resolveActivityAmount
-        ? category.resolveActivityAmount(values, amount)
-        : amount
-      const factor = lookupFactor(
-        factors,
-        category.resolveFactorKey(values),
-        Number(values.conversion),
-      )
+      const values = normalizeBulkRow(row, category)
 
-      if (!Number.isFinite(activityAmount) || activityAmount <= 0 || !factor) {
+      const activityAmount = activityAmountFromBulkRow(values, category)
+      if (!Number.isFinite(activityAmount) || activityAmount <= 0) {
         skipped += 1
-        failures.push(`Row ${index + 2}: factor needed or invalid amount`)
+        failures.push(
+          `Row ${index + 2}: Enter a valid activity amount greater than zero (column “${category.amountField}”).`,
+        )
+        continue
+      }
+
+      const factorKey = category.resolveFactorKey(values)
+      const factor = lookupFactor(factors, factorKey, Number(values.conversion))
+      if (!factor) {
+        skipped += 1
+        failures.push(
+          `Row ${index + 2}: Factor needed for ${factorKey}. Check select values match the form options.`,
+        )
         continue
       }
 
@@ -107,12 +123,17 @@ export default function BulkUpload({ category, onClose }: Props) {
           <div>
             <h2 className="text-lg font-semibold">Bulk Upload — {category.name}</h2>
             <p className="mt-1 text-sm text-muted">
-              Import a CSV. Invalid rows are skipped so the rest still save.
+              Download this category’s template. It includes every field on the form, plus unit of
+              measure where needed, and one example row you can replace or keep.
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
+        </div>
+        <div className="mt-3 rounded-md border border-line bg-page px-3 py-2 text-xs text-muted">
+          <p className="font-semibold text-ink">Columns in this template</p>
+          <p className="mt-1 leading-5">{requiredHints.join(' · ')}</p>
         </div>
         <div className="mt-4 space-y-3 text-sm">
           <button
