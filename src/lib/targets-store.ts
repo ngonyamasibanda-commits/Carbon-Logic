@@ -58,3 +58,11 @@ export function saveSbtiConfig(config: SbtiConfig, organizationId?: string | nul
   const key = organizationId ? `${TARGET_KEY}:${organizationId}` : TARGET_KEY
   localStorage.setItem(key, JSON.stringify(config))
 }
+
+/** True once the user has explicitly saved a target for this organisation. */
+export function hasSavedSbtiConfig(organizationId?: string | null): boolean {
+  const key = organizationId ? `${TARGET_KEY}:${organizationId}` : TARGET_KEY
+  if (localStorage.getItem(key)) return true
+  if (organizationId && localStorage.getItem(TARGET_KEY)) return true
+  return false
+}

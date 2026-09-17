@@ -4,6 +4,7 @@ import {
   Briefcase,
   Building2,
   Bus,
+  ClipboardList,
   Droplets,
   FileText,
   Flame,
@@ -62,6 +63,7 @@ export const CATEGORY_ICONS: Record<string, LucideIcon> = {
   targets: Target,
   users: Users,
   sites: Building2,
+  organization: ClipboardList,
   factors: SlidersHorizontal,
   learn: HelpCircle,
 }

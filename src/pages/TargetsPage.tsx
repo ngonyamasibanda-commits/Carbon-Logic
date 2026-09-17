@@ -9,7 +9,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { AlertTriangle, Check, Copy, Download, Info, Save, X } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Download, Info, Play, Save, X } from 'lucide-react'
+import Tutorial from '../components/form/Tutorial'
 import { downloadText } from '../lib/export'
 import {
   NET_ZERO_MIN_REDUCTION,
@@ -38,6 +39,7 @@ export default function TargetsPage() {
   const [config, setConfig] = useState<SbtiConfig>(() => loadSbtiConfig(organization?.id))
   const [status, setStatus] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(false)
 
   useEffect(() => {
     setConfig(loadSbtiConfig(organization?.id))
@@ -114,32 +116,45 @@ export default function TargetsPage() {
 
   return (
     <div className="space-y-6">
+      {showTutorial ? (
+        <Tutorial topicId="sbti" subtitle="Science Based Targets" onClose={() => setShowTutorial(false)} />
+      ) : null}
+
       <section className="overflow-hidden rounded-2xl bg-brand text-white">
-        <div className="px-6 py-7">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-            Science Based Targets initiative
+        <div className="flex flex-wrap items-start justify-between gap-4 px-6 py-7">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+              Science Based Targets initiative
+            </div>
+            <h1 className="mt-2 text-3xl font-semibold">Set a science based target</h1>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-white/80">
+              Models a near-term target with the absolute contraction approach and a long-term
+              net-zero target, then checks the result against the SBTi corporate criteria. Rates use
+              the dynamic linear annual reduction rate introduced in Corporate Net-Zero Standard
+              v1.3.1, effective 14 April 2026, which replaced the earlier post-2020 base year
+              ratchet.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-4 text-xs">
+              {Object.values(SBTI_SOURCES).map((source) => (
+                <a
+                  key={source.url}
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent underline-offset-4 hover:underline"
+                >
+                  {source.label}
+                </a>
+              ))}
+            </div>
           </div>
-          <h1 className="mt-2 text-3xl font-semibold">Set a science based target</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/80">
-            Models a near-term target with the absolute contraction approach and a long-term
-            net-zero target, then checks the result against the SBTi corporate criteria. Rates use
-            the dynamic linear annual reduction rate introduced in Corporate Net-Zero Standard
-            v1.3.1, effective 14 April 2026, which replaced the earlier post-2020 base year
-            ratchet.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-4 text-xs">
-            {Object.values(SBTI_SOURCES).map((source) => (
-              <a
-                key={source.url}
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent underline-offset-4 hover:underline"
-              >
-                {source.label}
-              </a>
-            ))}
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowTutorial(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+          >
+            <Play size={14} /> Tutorial
+          </button>
         </div>
         <div className="h-1.5 bg-accent" />
       </section>

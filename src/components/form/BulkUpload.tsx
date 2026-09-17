@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
-import { X } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { Upload, X } from 'lucide-react'
 import { parseCsv } from '../../lib/csv'
 import {
   activityAmountFromBulkRow,
   buildCategoryTemplate,
   bulkColumnsForCategory,
-  normalizeBulkRow,
+  formatBulkCellError,
+  prepareBulkRow,
 } from '../../lib/bulk-upload'
 import { calculateTco2e, lookupFactor } from '../../lib/calculate'
 import { downloadText } from '../../lib/export'
@@ -22,13 +23,15 @@ export default function BulkUpload({ category, onClose }: Props) {
   const { factors, addEntry } = useEntries()
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [fileName, setFileName] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const columns = useMemo(() => bulkColumnsForCategory(category), [category])
   const requiredHints = useMemo(
     () =>
       columns
-        .filter((column) => column.key !== 'site' && column.key !== 'comment' && column.key !== 'link' && column.key !== 'tags')
+        .filter((column) => column.kind !== 'meta')
         .map((column) => {
           const options = column.options?.length
             ? ` (${column.options.slice(0, 4).join(' / ')}${column.options.length > 4 ? '…' : ''})`
@@ -46,6 +49,7 @@ export default function BulkUpload({ category, onClose }: Props) {
     if (!file) return
     setError(null)
     setStatus(null)
+    setFileName(file.name)
     const text = await file.text()
     const rows = parseCsv(text)
     if (rows.length === 0) {
@@ -59,13 +63,27 @@ export default function BulkUpload({ category, onClose }: Props) {
     const failures: string[] = []
 
     for (const [index, row] of rows.entries()) {
-      const values = normalizeBulkRow(row, category)
+      const spreadsheetRow = index + 2
+      const { values, errors } = prepareBulkRow(row, category, spreadsheetRow)
+      if (errors.length > 0) {
+        skipped += 1
+        for (const cellError of errors) {
+          failures.push(formatBulkCellError(category, cellError))
+        }
+        continue
+      }
 
       const activityAmount = activityAmountFromBulkRow(values, category)
       if (!Number.isFinite(activityAmount) || activityAmount <= 0) {
         skipped += 1
         failures.push(
-          `Row ${index + 2}: Enter a valid activity amount greater than zero (column “${category.amountField}”).`,
+          formatBulkCellError(category, {
+            row: spreadsheetRow,
+            column: columnIndexHint(category, category.amountField),
+            header: columns.find((column) => column.key === category.amountField)?.header ?? category.amountField,
+            value: values[category.amountField] ?? '',
+            message: 'enter a valid activity amount greater than zero.',
+          }),
         )
         continue
       }
@@ -75,7 +93,7 @@ export default function BulkUpload({ category, onClose }: Props) {
       if (!factor) {
         skipped += 1
         failures.push(
-          `Row ${index + 2}: Factor needed for ${factorKey}. Check select values match the form options.`,
+          `${category.name} — Row ${spreadsheetRow}: no emission factor for “${factorKey}”. Check select values match the form options.`,
         )
         continue
       }
@@ -107,27 +125,30 @@ export default function BulkUpload({ category, onClose }: Props) {
         imported += 1
       } catch (err) {
         skipped += 1
-        failures.push(`Row ${index + 2}: ${err instanceof Error ? err.message : 'could not save'}`)
+        failures.push(
+          `${category.name} — Row ${spreadsheetRow}: ${err instanceof Error ? err.message : 'could not save'}`,
+        )
       }
     }
 
     setImporting(false)
     setStatus(`${imported} rows imported, ${skipped} skipped.`)
-    if (failures.length) setError(failures.slice(0, 5).join(' · '))
+    if (failures.length) setError(failures.slice(0, 8).join('\n'))
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Bulk Upload — {category.name}</h2>
             <p className="mt-1 text-sm text-muted">
-              Download this category’s template. It includes every field on the form, plus unit of
-              measure where needed, and one example row you can replace or keep.
+              Download this category’s template, then upload a CSV. Every cell is checked against the
+              form rules. Invalid values are listed by row and column and are not calculated.
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close">
+          <button type="button" onClick={onClose} aria-label="Close" className="shrink-0">
             <X size={18} />
           </button>
         </div>
@@ -143,17 +164,41 @@ export default function BulkUpload({ category, onClose }: Props) {
           >
             Download CSV template
           </button>
-          <input
-            type="file"
-            accept=".csv,text/csv"
-            className="block w-full text-sm"
-            onChange={(event) => void onFile(event.target.files?.[0])}
-          />
+          <div className="rounded-md border border-line bg-page px-3 py-3">
+            <p className="mb-2 font-semibold text-ink">Upload completed CSV</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="sr-only"
+              onChange={(event) => void onFile(event.target.files?.[0])}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
+            >
+              <Upload size={14} /> Choose file
+            </button>
+            {fileName ? <p className="mt-2 text-muted">Selected: {fileName}</p> : (
+              <p className="mt-2 text-xs text-muted">CSV only. Keep the template header row.</p>
+            )}
+          </div>
           {importing ? <p className="text-muted">Importing…</p> : null}
           {status ? <p className="text-brand-dark">{status}</p> : null}
-          {error ? <p className="text-red-700">{error}</p> : null}
+          {error ? (
+            <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              {error}
+            </pre>
+          ) : null}
         </div>
       </div>
     </div>
   )
+}
+
+function columnIndexHint(category: CategoryConfig, key: string): number {
+  const index = bulkColumnsForCategory(category).findIndex((column) => column.key === key)
+  return index >= 0 ? index + 1 : 1
 }

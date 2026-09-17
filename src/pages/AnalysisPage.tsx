@@ -33,11 +33,8 @@ const SOURCE_PALETTE = ['#02234e', '#6cbe2c', '#14396d', '#55a01f', '#4b6ea8', '
 
 export default function AnalysisPage() {
   const { entries } = useEntries()
-  const { sites } = useOrg()
+  const { sites, profile, updateProfile } = useOrg()
   const { organization } = useAuth()
-  const revenueKey = organization?.id
-    ? `carbon-logic-revenue:${organization.id}`
-    : 'carbon-logic-revenue'
   const [mode, setMode] = useState<'scope' | 'source'>('scope')
   const [openScopes, setOpenScopes] = useState<Record<string, boolean>>({
     'Scope 1': true,
@@ -51,26 +48,17 @@ export default function AnalysisPage() {
   const [tag, setTag] = useState('all')
   const [reporting, setReporting] = useState('All')
 
-  // Revenue for intensity metrics (persisted to localStorage)
-  const [revenue, setRevenue] = useState(() => {
-    const saved = localStorage.getItem(revenueKey) ?? localStorage.getItem('carbon-logic-revenue')
-    return saved ? Number(saved) : 0
-  })
+  const revenue = profile.annualTurnover || 0
   const [revenueDraft, setRevenueDraft] = useState(String(revenue || ''))
 
   useEffect(() => {
-    const saved = localStorage.getItem(revenueKey) ?? localStorage.getItem('carbon-logic-revenue')
-    const next = saved ? Number(saved) : 0
-    setRevenue(next)
-    setRevenueDraft(String(next || ''))
-  }, [revenueKey])
+    setRevenueDraft(String(profile.annualTurnover || ''))
+  }, [profile.annualTurnover, organization?.id])
 
   function saveRevenue() {
     const value = Number(revenueDraft)
-    if (Number.isFinite(value) && value > 0) {
-      setRevenue(value)
-      localStorage.setItem(revenueKey, String(value))
-    }
+    const next = Number.isFinite(value) && value > 0 ? value : 0
+    updateProfile({ ...profile, annualTurnover: next })
   }
 
   const months = useMemo(() => {
@@ -317,7 +305,8 @@ export default function AnalysisPage() {
       <section className="rounded-xl border border-line bg-white p-5 shadow-sm">
         <h2 className="mb-3 text-lg font-semibold">Intensity Metrics</h2>
         <p className="mb-3 text-xs text-muted">
-          Used for SECR reporting (tCO₂e per £M revenue) and benchmarking. Enter annual revenue to calculate.
+          Used for SECR reporting (tCO₂e per £M revenue) and benchmarking. Enter annual revenue here
+          or under Organisation.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm font-medium">

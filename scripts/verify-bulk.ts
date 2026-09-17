@@ -8,11 +8,15 @@
 import { CATEGORIES, getCategory } from '../src/lib/categories'
 import {
   activityAmountFromBulkRow,
+  applyUnitFactors,
   buildCategoryTemplate,
   bulkColumnsForCategory,
+  formatBulkCellError,
   normalizeBulkRow,
   parseBulkAmount,
+  prepareBulkRow,
   resolveBulkHeader,
+  validateBulkRow,
 } from '../src/lib/bulk-upload'
 import { parseCsv } from '../src/lib/csv'
 
@@ -96,12 +100,15 @@ function main() {
       resolveBulkHeader('Unit of measure', siteFuel) === 'unit',
   )
 
-  const labelled = normalizeBulkRow(
-    {
-      'Fuel category': 'Diesel / gas oil',
-      'Fuel amount': '1,250',
-      'Unit of measure': 'm³',
-    },
+  const labelled = applyUnitFactors(
+    normalizeBulkRow(
+      {
+        'Fuel category': 'Diesel / gas oil',
+        'Fuel amount': '1,250',
+        'Unit of measure': 'm³',
+      },
+      siteFuel,
+    ),
     siteFuel,
   )
   check('label headers map onto keys', labelled.fuel === 'Diesel / gas oil')
@@ -111,14 +118,17 @@ function main() {
     activityAmountFromBulkRow(labelled, siteFuel) === 1_250_000,
   )
 
-  const freight = normalizeBulkRow(
-    {
-      mode: 'HGV rigid',
-      weight: '10',
-      weight_unit: 't',
-      distance: '50',
-      distance_unit: 'mi',
-    },
+  const freight = applyUnitFactors(
+    normalizeBulkRow(
+      {
+        mode: 'HGV rigid',
+        weight: '10',
+        weight_unit: 't',
+        distance: '50',
+        distance_unit: 'mi',
+      },
+      road,
+    ),
     road,
   )
   const tkm = activityAmountFromBulkRow(freight, road)
@@ -126,6 +136,133 @@ function main() {
     'road freight applies distance unit conversion to tkm',
     Math.abs(tkm - 10 * 50 * 1.60934) < 0.001,
     `got ${tkm}`,
+  )
+
+  const invalidSelect = validateBulkRow(
+    {
+      'Fuel category': 'Banana fuel',
+      'Fuel amount': '100',
+      'Unit of measure': 'L',
+    },
+    siteFuel,
+    2,
+  )
+  check('invalid fuel category is rejected', invalidSelect.length >= 1)
+  check(
+    'invalid fuel error names row and column',
+    invalidSelect.some(
+      (error) =>
+        error.row === 2 &&
+        error.header === 'Fuel category' &&
+        error.value === 'Banana fuel' &&
+        error.column >= 1,
+    ),
+  )
+  check(
+    'invalid fuel is not prepared for calculation',
+    prepareBulkRow(
+      {
+        'Fuel category': 'Banana fuel',
+        'Fuel amount': '100',
+        'Unit of measure': 'L',
+      },
+      siteFuel,
+      2,
+    ).errors.length > 0,
+  )
+
+  const invalidAmount = validateBulkRow(
+    {
+      'Fuel category': 'Diesel / gas oil',
+      'Fuel amount': 'abc',
+      'Unit of measure': 'L',
+    },
+    siteFuel,
+    3,
+  )
+  check(
+    'non-numeric amount is rejected with column location',
+    invalidAmount.some(
+      (error) =>
+        error.row === 3 && error.header === 'Fuel amount' && error.message.includes('not a valid number'),
+    ),
+  )
+
+  const invalidUnit = validateBulkRow(
+    {
+      'Fuel category': 'Diesel / gas oil',
+      'Fuel amount': '100',
+      'Unit of measure': 'gallons',
+    },
+    siteFuel,
+    4,
+  )
+  check(
+    'invalid unit is rejected instead of defaulting',
+    invalidUnit.some((error) => error.header === 'Unit of measure' && error.value === 'gallons'),
+  )
+
+  const emptyUnit = validateBulkRow(
+    {
+      'Fuel category': 'Diesel / gas oil',
+      'Fuel amount': '100',
+      'Unit of measure': '',
+    },
+    siteFuel,
+    5,
+  )
+  check(
+    'empty unit is rejected so a calculation is not invented',
+    emptyUnit.some((error) => error.header === 'Unit of measure'),
+  )
+
+  const lettersInAmount = validateBulkRow(
+    {
+      'Fuel category': 'Diesel / gas oil',
+      'Fuel amount': '100L',
+      'Unit of measure': 'L',
+    },
+    siteFuel,
+    6,
+  )
+  check(
+    'amount with letters is rejected',
+    lettersInAmount.some((error) => error.header === 'Fuel amount' && error.value === '100L'),
+  )
+
+  const partialSelect = validateBulkRow(
+    {
+      'Fuel category': 'gas',
+      'Fuel amount': '100',
+      'Unit of measure': 'L',
+    },
+    siteFuel,
+    7,
+  )
+  check(
+    'partial select text is not fuzzy-matched into a real option',
+    partialSelect.some((error) => error.header === 'Fuel category' && error.value === 'gas'),
+  )
+
+  const valid = prepareBulkRow(
+    {
+      'Fuel category': 'Diesel / gas oil',
+      'Fuel amount': '100',
+      'Unit of measure': 'L',
+    },
+    siteFuel,
+    8,
+  )
+  check('valid site_fuel row prepares cleanly', valid.errors.length === 0)
+  check(
+    'valid row formats a clear error message shape',
+    formatBulkCellError(siteFuel, {
+      row: 2,
+      column: 1,
+      header: 'Fuel category',
+      value: 'nope',
+      message: 'not allowed.',
+    }).includes('Site Fuel — Row 2, Column 1'),
   )
 
   console.log(`\n${passed} passed, ${failed} failed\n`)

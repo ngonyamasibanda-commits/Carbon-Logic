@@ -95,6 +95,18 @@ export default function Sidebar() {
           }}
         </NavLink>
 
+        <NavLink to="/organization" className={({ isActive }) => navClass(isActive)}>
+          {({ isActive }) => {
+            const Icon = CATEGORY_ICONS.organization
+            return (
+              <>
+                <Icon size={16} className={isActive ? 'text-brand' : 'text-muted'} />
+                Organisation
+              </>
+            )
+          }}
+        </NavLink>
+
         <NavLink to="/factors" className={({ isActive }) => navClass(isActive)}>
           {({ isActive }) => {
             const Icon = CATEGORY_ICONS.factors

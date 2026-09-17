@@ -185,6 +185,9 @@ export default function DashboardPage() {
           ) : null}
         </form>
         <div className="mt-4 flex flex-wrap gap-4">
+          <Link to="/organization" className="text-brand hover:underline">
+            Organisation setup
+          </Link>
           <Link to="/factors" className="text-brand hover:underline">
             Manage emission factors
           </Link>

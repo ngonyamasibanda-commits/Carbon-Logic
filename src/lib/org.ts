@@ -17,6 +17,8 @@ export type OrgProfile = {
   organisation: string
   country: string
   intensityMetric: string
+  /** Annual turnover / revenue in £ — used for SECR intensity (tCO₂e per £m). */
+  annualTurnover: number
   baselineYtdTco2e: number
 }
 
@@ -48,7 +50,19 @@ const DEFAULT_PROFILE: OrgProfile = {
   organisation: 'Carbon Logic',
   country: 'United Kingdom',
   intensityMetric: 'tCO2e per £m turnover',
+  annualTurnover: 0,
   baselineYtdTco2e: 0,
+}
+
+/** Revenue key used by Analysis (legacy) — kept in sync when turnover is saved. */
+export function revenueStorageKey(organizationId?: string | null) {
+  return organizationId ? `carbon-logic-revenue:${organizationId}` : 'carbon-logic-revenue'
+}
+
+export function syncRevenueFromTurnover(turnover: number, organizationId?: string | null) {
+  const key = revenueStorageKey(organizationId)
+  if (turnover > 0) localStorage.setItem(key, String(turnover))
+  else localStorage.removeItem(key)
 }
 
 function scopedKey(base: string, organizationId?: string | null) {
@@ -96,11 +110,22 @@ export function saveTeam(team: TeamMember[], organizationId?: string | null) {
 }
 
 export function loadProfile(organizationId?: string | null): OrgProfile {
-  return { ...DEFAULT_PROFILE, ...readScoped(PROFILE_KEY, organizationId, DEFAULT_PROFILE) }
+  const stored = { ...DEFAULT_PROFILE, ...readScoped(PROFILE_KEY, organizationId, DEFAULT_PROFILE) }
+  // Prefer explicit turnover; fall back to legacy Analysis revenue key once.
+  if (!stored.annualTurnover || stored.annualTurnover <= 0) {
+    const legacy = Number(
+      localStorage.getItem(revenueStorageKey(organizationId)) ??
+        localStorage.getItem('carbon-logic-revenue') ??
+        0,
+    )
+    if (Number.isFinite(legacy) && legacy > 0) stored.annualTurnover = legacy
+  }
+  return stored
 }
 
 export function saveProfile(profile: OrgProfile, organizationId?: string | null) {
   write(scopedKey(PROFILE_KEY, organizationId), profile)
+  syncRevenueFromTurnover(profile.annualTurnover || 0, organizationId)
 }
 
 export function loadOrders(organizationId?: string | null): CreditOrder[] {
