@@ -71,6 +71,7 @@ export default function App() {
             <Route path="/combined" element={<CombinedResultsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/organisation" element={<OrganisationPage />} />
+            <Route path="/organization" element={<Navigate to="/organisation" replace />} />
             <Route path="/faqs" element={<FaqsPage />} />
             <Route path="/learn" element={<LearningHubPage />} />
             <Route path="/sites" element={<SitesPage />} />

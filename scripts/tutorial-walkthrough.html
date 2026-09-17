@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tutorial walkthrough</title>
+</head>
+<body>
+<script>
+/**
+ * Silent UI walkthrough pages recorded into public/tutorials/*.webm
+ * Open with ?topic=data-entry|organization|sbti
+ */
+const topics = {
+  'data-entry': {
+    title: 'Log emissions',
+    frames: [
+      { label: 'Open a category form', ui: 'form' },
+      { label: 'Pick a facility', ui: 'site' },
+      { label: 'Enter activity amount', ui: 'amount' },
+      { label: 'Calculate & add', ui: 'calc' },
+      { label: 'Row appears in Results', ui: 'result' },
+    ],
+  },
+  organization: {
+    title: 'Organisation setup',
+    frames: [
+      { label: 'Open Organisation', ui: 'org' },
+      { label: 'Enter annual turnover', ui: 'turnover' },
+      { label: 'Set baseline YTD', ui: 'baseline' },
+      { label: 'Checklist ticks as you go', ui: 'checks' },
+      { label: 'Reporting setup ready', ui: 'done' },
+    ],
+  },
+  sbti: {
+    title: 'Science based targets',
+    frames: [
+      { label: 'Open Science Based Targets', ui: 'sbti' },
+      { label: 'Confirm inventory years', ui: 'inventory' },
+      { label: 'Set target years', ui: 'years' },
+      { label: 'Review criteria checks', ui: 'checks' },
+      { label: 'Save the target', ui: 'save' },
+    ],
+  },
+}
+
+const params = new URLSearchParams(location.search)
+const topicId = params.get('topic') || 'data-entry'
+const topic = topics[topicId] || topics['data-entry']
+
+document.title = 'Tutorial · ' + topic.title
+document.body.innerHTML =
+  '<style>' +
+  '* { box-sizing: border-box; margin: 0; font-family: "Segoe UI", system-ui, sans-serif; }' +
+  'body { background: #0f1e33; color: #0f1e33; width: 1280px; height: 720px; overflow: hidden; }' +
+  '.stage { width: 1280px; height: 720px; background: linear-gradient(160deg, #e8eef5, #f7faf7); padding: 48px 56px; position: relative; }' +
+  '.brand { color: #02234e; font-weight: 800; letter-spacing: -0.02em; font-size: 22px; }' +
+  '.sub { color: #6cbe2c; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; margin-top: 4px; }' +
+  '.card { margin-top: 28px; background: #fff; border: 1px solid #d5dde8; border-radius: 16px; padding: 28px; box-shadow: 0 12px 40px rgba(2,35,78,0.08); min-height: 420px; position: relative; }' +
+  '.label { font-size: 13px; color: #64748b; font-weight: 600; margin-bottom: 8px; }' +
+  '.headline { font-size: 28px; font-weight: 700; color: #02234e; margin-bottom: 18px; }' +
+  '.row { display: flex; gap: 16px; margin-bottom: 14px; align-items: center; }' +
+  '.field { flex: 1; border: 1.5px solid #d5dde8; border-radius: 10px; padding: 14px 16px; font-size: 16px; background: #f8fafc; transition: border-color .25s, background .25s, box-shadow .25s; }' +
+  '.field.active { border-color: #6cbe2c; background: #fff; box-shadow: 0 0 0 3px rgba(108,190,44,0.2); }' +
+  '.btn { display: inline-flex; align-items: center; gap: 8px; background: #02234e; color: #fff; border: 0; border-radius: 10px; padding: 12px 18px; font-weight: 700; font-size: 15px; opacity: 0.45; }' +
+  '.btn.active { opacity: 1; background: #6cbe2c; }' +
+  '.check { display: flex; align-items: center; gap: 10px; padding: 10px 0; font-size: 16px; color: #334155; }' +
+  '.tick { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #cbd5e1; display: grid; place-items: center; }' +
+  '.tick.on { background: #6cbe2c; border-color: #6cbe2c; }' +
+  '.tick.on::after { content: "✓"; color: #fff; font-weight: 700; font-size: 14px; }' +
+  '.cursor { position: absolute; width: 22px; height: 22px; border-radius: 50% 50% 50% 0; background: #02234e; transform: rotate(-45deg); box-shadow: 0 4px 12px rgba(0,0,0,.25); transition: left .7s ease, top .7s ease; z-index: 5; }' +
+  '.banner { position: absolute; left: 56px; right: 56px; bottom: 36px; background: #02234e; color: #fff; border-radius: 12px; padding: 14px 18px; font-size: 18px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }' +
+  '.banner span.soft { color: #b7f07a; font-size: 14px; font-weight: 600; }' +
+  '.result { margin-top: 18px; border-top: 1px solid #e2e8f0; padding-top: 16px; opacity: 0; }' +
+  '.result.show { opacity: 1; }' +
+  'table { width: 100%; border-collapse: collapse; font-size: 14px; }' +
+  'th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid #e2e8f0; }' +
+  'th { color: #64748b; }' +
+  '</style>' +
+  '<div class="stage"><div class="brand">Carbon Logic</div><div class="sub">Tutorial walkthrough</div>' +
+  '<div class="card" id="card"></div>' +
+  '<div class="cursor" id="cursor" style="left:200px;top:220px"></div>' +
+  '<div class="banner"><span id="caption">' +
+  topic.frames[0].label +
+  '</span><span class="soft">' +
+  topic.title +
+  '</span></div></div>'
+
+const card = document.getElementById('card')
+const cursor = document.getElementById('cursor')
+const caption = document.getElementById('caption')
+
+function setTicks(states) {
+  card.querySelectorAll('.tick').forEach(function (el, i) {
+    el.classList.toggle('on', !!states[i])
+  })
+}
+
+function moveCursor(ui) {
+  const map = {
+    form: [280, 260],
+    site: [420, 300],
+    amount: [420, 360],
+    calc: [220, 430],
+    result: [520, 500],
+    org: [400, 290],
+    turnover: [480, 300],
+    baseline: [480, 360],
+    checks: [260, 480],
+    done: [300, 520],
+    sbti: [360, 280],
+    inventory: [480, 300],
+    years: [480, 360],
+    save: [200, 520],
+  }
+  const pos = map[ui] || [300, 300]
+  cursor.style.left = pos[0] + 'px'
+  cursor.style.top = pos[1] + 'px'
+}
+
+function render(ui) {
+  if (topicId === 'data-entry') {
+    card.innerHTML =
+      '<div class="label">Data input · Site fuel</div>' +
+      '<div class="headline">Log diesel for a construction site</div>' +
+      '<div class="row"><div class="field ' +
+      (ui !== 'form' ? 'active' : '') +
+      '">' +
+      (ui === 'form' ? 'Select facility…' : 'Construction site A') +
+      '</div></div>' +
+      '<div class="row"><div class="field ' +
+      (ui === 'amount' || ui === 'calc' || ui === 'result' ? 'active' : '') +
+      '">' +
+      (ui === 'form' || ui === 'site' ? 'Litres' : '12,500 L Diesel') +
+      '</div></div>' +
+      '<button class="btn ' +
+      (ui === 'calc' || ui === 'result' ? 'active' : '') +
+      '">Calculate & add to footprint</button>' +
+      '<div class="result ' +
+      (ui === 'result' ? 'show' : '') +
+      '"><table><thead><tr><th>Details</th><th>tCO₂e</th></tr></thead><tbody><tr><td>12,500 L Diesel · Site A</td><td>33.812</td></tr></tbody></table></div>'
+  } else if (topicId === 'organization') {
+    card.innerHTML =
+      '<div class="label">Organisation</div>' +
+      '<div class="headline">Reporting setup</div>' +
+      '<div class="row"><div class="field ' +
+      (ui !== 'org' ? 'active' : '') +
+      '">Annual turnover: ' +
+      (ui === 'org' ? '£' : '£48,200,000') +
+      '</div></div>' +
+      '<div class="row"><div class="field ' +
+      (ui === 'baseline' || ui === 'checks' || ui === 'done' ? 'active' : '') +
+      '">Baseline YTD: ' +
+      (ui === 'org' || ui === 'turnover' ? 'tCO₂e' : '4,180 tCO₂e') +
+      '</div></div>' +
+      '<div style="margin-top:18px">' +
+      '<div class="check"><div class="tick"></div>Add facility</div>' +
+      '<div class="check"><div class="tick"></div>Log first emissions</div>' +
+      '<div class="check"><div class="tick"></div>Set baseline</div>' +
+      '<div class="check"><div class="tick"></div>Enter annual turnover</div>' +
+      '<div class="check"><div class="tick"></div>Save science-based target</div>' +
+      '</div>'
+    setTicks(
+      {
+        org: [true, false, false, false, false],
+        turnover: [true, false, false, true, false],
+        baseline: [true, false, true, true, false],
+        checks: [true, true, true, true, false],
+        done: [true, true, true, true, true],
+      }[ui] || [false, false, false, false, false],
+    )
+  } else {
+    card.innerHTML =
+      '<div class="label">Science Based Targets</div>' +
+      '<div class="headline">Set a near-term pathway</div>' +
+      '<div class="row"><div class="field ' +
+      (ui !== 'sbti' ? 'active' : '') +
+      '">Base year ' +
+      (ui === 'sbti' ? '—' : '2023') +
+      ' · Recent ' +
+      (ui === 'sbti' ? '—' : '2025') +
+      '</div></div>' +
+      '<div class="row"><div class="field ' +
+      (ui === 'years' || ui === 'checks' || ui === 'save' ? 'active' : '') +
+      '">Target year ' +
+      (ui === 'sbti' || ui === 'inventory' ? '—' : '2034') +
+      ' · Net-zero 2050</div></div>' +
+      '<div style="margin-top:12px">' +
+      '<div class="check"><div class="tick"></div>Criteria: base year coverage</div>' +
+      '<div class="check"><div class="tick"></div>Criteria: target horizon 5–10 years</div>' +
+      '<div class="check"><div class="tick"></div>Target language ready</div>' +
+      '</div>' +
+      '<div style="margin-top:18px"><button class="btn ' +
+      (ui === 'save' ? 'active' : '') +
+      '">Save target</button></div>'
+    setTicks(
+      {
+        sbti: [false, false, false],
+        inventory: [false, false, false],
+        years: [false, false, false],
+        checks: [true, true, false],
+        save: [true, true, true],
+      }[ui] || [false, false, false],
+    )
+  }
+  moveCursor(ui)
+}
+
+let i = 0
+render(topic.frames[0].ui)
+document.documentElement.dataset.ready = '1'
+
+setInterval(function () {
+  i = (i + 1) % topic.frames.length
+  const frame = topic.frames[i]
+  caption.textContent = frame.label
+  render(frame.ui)
+}, 2000)
+</script>
+</body>
+</html>

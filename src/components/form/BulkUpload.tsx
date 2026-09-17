@@ -1,8 +1,14 @@
-import { useRef, useState } from 'react'
-import { X } from 'lucide-react'
-import { buildTemplate, parseCsv } from '../../lib/csv'
-import { lookupFactor } from '../../lib/calculate'
-import { workingFromForm } from '../../lib/emissions'
+import { useMemo, useRef, useState } from 'react'
+import { Upload, X } from 'lucide-react'
+import { parseCsv } from '../../lib/csv'
+import {
+  activityAmountFromBulkRow,
+  buildCategoryTemplate,
+  bulkColumnsForCategory,
+  formatBulkCellError,
+  prepareBulkRow,
+} from '../../lib/bulk-upload'
+import { calculateTco2e, lookupFactor } from '../../lib/calculate'
 import { downloadText } from '../../lib/export'
 import type { CategoryConfig, EmissionEntry } from '../../lib/types'
 import { emptyAdditional } from '../../lib/types'
@@ -19,32 +25,39 @@ export default function BulkUpload({ category, onClose }: Props) {
   const toast = useToast()
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [importing, setImporting] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const headers = [
-    ...category.fields.map((field) => field.key),
-    'site',
-    'comment',
-    'link',
-    'tags',
-    'activity_date',
-  ]
+  const columns = useMemo(() => bulkColumnsForCategory(category), [category])
+  const requiredHints = useMemo(
+    () =>
+      columns
+        .filter((column) => column.kind !== 'meta')
+        .map((column) => {
+          const options = column.options?.length
+            ? ` (${column.options.slice(0, 4).join(' / ')}${column.options.length > 4 ? '…' : ''})`
+            : ''
+          return `${column.header}${options}`
+        }),
+    [columns],
+  )
 
   function downloadTemplate() {
-    downloadText(`${category.id}-template.csv`, buildTemplate(headers), 'text/csv')
+    downloadText(`${category.id}-template.csv`, buildCategoryTemplate(category), 'text/csv')
   }
 
   async function onFile(file: File | undefined) {
     if (!file) return
     setError(null)
     setStatus(null)
+    setFileName(file.name)
     const text = await file.text()
     const rows = parseCsv(text)
     if (rows.length === 0) {
-      setError('No data rows found. Use the template and include a header row.')
-      toast.error('No data rows found. Use the template and include a header row.')
+      const message = 'No data rows found. Download the template and keep the header row.'
+      setError(message)
+      toast.error(message)
       return
     }
 
@@ -54,22 +67,37 @@ export default function BulkUpload({ category, onClose }: Props) {
     const failures: string[] = []
 
     for (const [index, row] of rows.entries()) {
-      const values = { ...row }
-      const factor = lookupFactor(
-        factors,
-        category.resolveFactorKey(values),
-        Number(values.conversion),
-      )
-      const working = factor ? workingFromForm(category, values, factor) : null
+      const spreadsheetRow = index + 2
+      const { values, errors } = prepareBulkRow(row, category, spreadsheetRow)
+      if (errors.length > 0) {
+        skipped += 1
+        for (const cellError of errors) {
+          failures.push(formatBulkCellError(category, cellError))
+        }
+        continue
+      }
 
-      if (!working || working.error || working.activityAmount <= 0 || !factor) {
+      const activityAmount = activityAmountFromBulkRow(values, category)
+      if (!Number.isFinite(activityAmount) || activityAmount <= 0) {
         skipped += 1
         failures.push(
-          `Row ${index + 2}: ${
-            !factor
-              ? 'factor needed — add an EPD on Emission factors, or include a conversion column'
-              : working?.error || 'invalid amount'
-          }`,
+          formatBulkCellError(category, {
+            row: spreadsheetRow,
+            column: columnIndexHint(category, category.amountField),
+            header: columns.find((column) => column.key === category.amountField)?.header ?? category.amountField,
+            value: values[category.amountField] ?? '',
+            message: 'enter a valid activity amount greater than zero.',
+          }),
+        )
+        continue
+      }
+
+      const factorKey = category.resolveFactorKey(values)
+      const factor = lookupFactor(factors, factorKey, Number(values.conversion))
+      if (!factor) {
+        skipped += 1
+        failures.push(
+          `${category.name} — Row ${spreadsheetRow}: no emission factor for “${factorKey}”. Check select values match the form options.`,
         )
         continue
       }
@@ -83,16 +111,16 @@ export default function BulkUpload({ category, onClose }: Props) {
         .map((tag) => tag.trim())
         .filter(Boolean)
       extras.activity_date = (values.activity_date || extras.activity_date).slice(0, 10)
-      extras.files = []
 
+      const totalTco2e = calculateTco2e(activityAmount, factor.conversionValue)
       const entry: Omit<EmissionEntry, 'id' | 'created_at'> = {
         category: category.id,
         scope: category.resolveScope?.(values) ?? category.scope,
-        emissions_tco2e: working.tco2e,
-        details: `${category.resolveDetails(values, working.activityAmount)}${
+        emissions_tco2e: totalTco2e,
+        details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
-        } | ${working.formula} | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
-        amount: working.activityAmount,
+        } | ${activityAmount.toLocaleString()} ${factor.unit} × ${factor.conversionValue} kg CO₂e/${factor.unit} ÷ 1000 = ${totalTco2e.toFixed(4)} tCO₂e | Factor: ${factor.name} (${factor.sourceFamily}${factor.source && factor.source !== factor.sourceFamily ? ' — ' + factor.source : ''})`,
+        amount: activityAmount,
         unit: category.resolveUnit(values),
         ...extras,
       }
@@ -102,7 +130,9 @@ export default function BulkUpload({ category, onClose }: Props) {
         imported += 1
       } catch (err) {
         skipped += 1
-        failures.push(`Row ${index + 2}: ${err instanceof Error ? err.message : 'could not save'}`)
+        failures.push(
+          `${category.name} — Row ${spreadsheetRow}: ${err instanceof Error ? err.message : 'could not save'}`,
+        )
       }
     }
 
@@ -111,61 +141,72 @@ export default function BulkUpload({ category, onClose }: Props) {
     setStatus(summary)
     if (imported > 0) toast.success(summary)
     else toast.error(summary)
-    if (failures.length) setError(failures.slice(0, 5).join(' · '))
+    if (failures.length) setError(failures.slice(0, 8).join('\n'))
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Bulk Upload — {category.name}</h2>
             <p className="mt-1 text-sm text-muted">
-              Import a CSV. Invalid rows are skipped so the rest still save. Steel, rebar, cement,
-              aluminium, copper, lime, and grinding media need an EPD factor in the library first,
-              or a conversion column on the row.
+              Download this category’s template, then upload a CSV. Every cell is checked against the
+              form rules. Invalid values are listed by row and column and are not calculated.
             </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close">
+          <button type="button" onClick={onClose} aria-label="Close" className="shrink-0">
             <X size={18} />
           </button>
+        </div>
+        <div className="mt-3 rounded-md border border-line bg-page px-3 py-2 text-xs text-muted">
+          <p className="font-semibold text-ink">Columns in this template</p>
+          <p className="mt-1 leading-5">{requiredHints.join(' · ')}</p>
         </div>
         <div className="mt-4 space-y-3 text-sm">
           <button
             type="button"
             onClick={downloadTemplate}
-            className="rounded-md border border-line bg-white px-3 py-2 hover:bg-page"
+            className="rounded-md border border-line px-3 py-2"
           >
             Download CSV template
           </button>
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled={importing}
-              onClick={() => fileInputRef.current?.click()}
-              className="rounded-md border border-line bg-white px-3 py-2 hover:bg-page disabled:opacity-60"
-            >
-              Choose file
-            </button>
-            <span className="text-muted">{fileName ?? 'No file chosen'}</span>
+          <div className="rounded-md border border-line bg-page px-3 py-3">
+            <p className="mb-2 font-semibold text-ink">Upload completed CSV</p>
             <input
               ref={fileInputRef}
               type="file"
               accept=".csv,text/csv"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                setFileName(file?.name ?? null)
-                void onFile(file)
-                event.target.value = ''
-              }}
+              className="sr-only"
+              onChange={(event) => void onFile(event.target.files?.[0])}
             />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              className="inline-flex items-center gap-2 rounded-md bg-brand px-4 py-2 font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
+            >
+              <Upload size={14} /> Choose file
+            </button>
+            {fileName ? <p className="mt-2 text-muted">Selected: {fileName}</p> : (
+              <p className="mt-2 text-xs text-muted">CSV only. Keep the template header row.</p>
+            )}
           </div>
           {importing ? <p className="text-muted">Importing…</p> : null}
           {status ? <p className="text-brand-dark">{status}</p> : null}
-          {error ? <p className="text-red-700">{error}</p> : null}
+          {error ? (
+            <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+              {error}
+            </pre>
+          ) : null}
         </div>
       </div>
     </div>
   )
+}
+
+function columnIndexHint(category: CategoryConfig, key: string): number {
+  const index = bulkColumnsForCategory(category).findIndex((column) => column.key === key)
+  return index >= 0 ? index + 1 : 1
 }

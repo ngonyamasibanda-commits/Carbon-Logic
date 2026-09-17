@@ -342,7 +342,7 @@ export default function CategoryForm({ category }: Props) {
         </p>
       ) : null}
       {showTutorial ? (
-        <Tutorial categoryName={category.name} onClose={() => setShowTutorial(false)} />
+        <Tutorial topicId="data-entry" subtitle={category.name} onClose={() => setShowTutorial(false)} />
       ) : null}
       {showBulk ? <BulkUpload category={category} onClose={() => setShowBulk(false)} /> : null}
 

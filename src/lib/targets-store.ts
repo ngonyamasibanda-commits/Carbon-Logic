@@ -71,3 +71,11 @@ export async function loadSbtiConfigCloud(organizationId: string): Promise<SbtiC
   }
   return loadSbtiConfig(organizationId)
 }
+
+/** True once the user has explicitly saved a target for this organisation. */
+export function hasSavedSbtiConfig(organizationId?: string | null): boolean {
+  const key = organizationId ? `${TARGET_KEY}:${organizationId}` : TARGET_KEY
+  if (localStorage.getItem(key)) return true
+  if (organizationId && localStorage.getItem(TARGET_KEY)) return true
+  return false
+}

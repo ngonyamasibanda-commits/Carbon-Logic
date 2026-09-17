@@ -1,19 +1,25 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { Lock, Unlock } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Check, Circle, Lock, Play, Unlock } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import Tutorial from '../components/form/Tutorial'
 import { PROFESSIONAL_PLAN } from '../lib/commercial'
 import { useAuth } from '../lib/auth-context'
+import { useEntries } from '../lib/entries-context'
+import { hasSavedSbtiConfig } from '../lib/targets-store'
 import { useToast } from '../lib/toast-context'
 import { useOrg } from '../providers/OrgProvider'
 
 export default function OrganisationPage() {
   const { organization, can } = useAuth()
-  const { profile, updateProfile, setYearLock, error } = useOrg()
+  const { profile, updateProfile, setYearLock, error, sites } = useOrg()
+  const { entries } = useEntries()
   const toast = useToast()
   const canEdit = can('settings:write')
   const [draft, setDraft] = useState(profile)
   const [status, setStatus] = useState<string | null>(null)
   const [lockReason, setLockReason] = useState('')
   const [lockBusy, setLockBusy] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(false)
 
   useEffect(() => {
     setDraft(profile)
@@ -21,6 +27,54 @@ export default function OrganisationPage() {
 
   const year = draft.reportingYear || new Date().getFullYear()
   const closed = profile.lockedYears.includes(year)
+
+  const checklist = useMemo(() => {
+    return [
+      {
+        id: 'facility',
+        label: 'Add a facility',
+        detail: 'Define at least one site, mine, depot, or office under Facilities.',
+        done: sites.length > 0,
+        to: '/facilities',
+      },
+      {
+        id: 'emissions',
+        label: 'Log first emissions',
+        detail: 'Calculate and add at least one activity under Data Input.',
+        done: entries.length > 0,
+        to: '/input',
+      },
+      {
+        id: 'baseline',
+        label: 'Set a baseline',
+        detail: 'Enter a baseline tCO₂e so the dashboard can show reduction progress.',
+        done: (profile.baselineYtdTco2e || 0) > 0,
+        to: '#baseline',
+      },
+      {
+        id: 'turnover',
+        label: 'Enter annual turnover',
+        detail: 'Needed for SECR intensity (tCO₂e per £ million turnover).',
+        done: (profile.annualRevenue || 0) > 0,
+        to: '#turnover',
+      },
+      {
+        id: 'target',
+        label: 'Save a science-based target',
+        detail: 'Configure and save a pathway on Science Based Targets.',
+        done: hasSavedSbtiConfig(organization?.id),
+        to: '/targets',
+      },
+    ]
+  }, [
+    sites.length,
+    entries.length,
+    profile.baselineYtdTco2e,
+    profile.annualRevenue,
+    organization?.id,
+  ])
+
+  const completeCount = checklist.filter((item) => item.done).length
 
   async function save(event: FormEvent) {
     event.preventDefault()
@@ -64,14 +118,27 @@ export default function OrganisationPage() {
 
   return (
     <div className="space-y-6">
+      {showTutorial ? (
+        <Tutorial topicId="organization" subtitle="Organisation" onClose={() => setShowTutorial(false)} />
+      ) : null}
+
       <section className="overflow-hidden rounded-2xl border border-line bg-white">
-        <div className="px-6 py-7">
-          <h1 className="text-2xl font-semibold text-brand">Organisation</h1>
-          <p className="mt-2 max-w-3xl text-sm text-muted">
-            Reporting year, baseline, turnover, headcount, and year-end close for{' '}
-            {organization?.name ?? 'this organisation'}. These figures feed the board dashboard, SECR
-            intensity ratios, and the PPN 06/21 Carbon Reduction Plan.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4 px-6 py-7">
+          <div>
+            <h1 className="text-2xl font-semibold text-brand">Organisation</h1>
+            <p className="mt-2 max-w-3xl text-sm text-muted">
+              Reporting year, baseline, turnover, headcount, and year-end close for{' '}
+              {organization?.name ?? 'this organisation'}. These figures feed the board dashboard, SECR
+              intensity ratios, and the PPN 06/21 Carbon Reduction Plan.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowTutorial(true)}
+            className="inline-flex items-center gap-1 text-sm text-brand hover:underline"
+          >
+            <Play size={14} /> Tutorial
+          </button>
         </div>
         <div className="h-1.5 bg-gradient-to-r from-brand to-accent" />
       </section>
@@ -79,6 +146,61 @@ export default function OrganisationPage() {
       {error ? (
         <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>
       ) : null}
+
+      <section className="rounded-2xl border border-line bg-white p-5">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">Reporting setup checklist</h2>
+            <p className="mt-1 text-sm text-muted">
+              {completeCount} of {checklist.length} complete — items tick automatically when done.
+            </p>
+          </div>
+          <div className="h-2 w-40 overflow-hidden rounded-full bg-page">
+            <div
+              className="h-full rounded-full bg-accent transition-all"
+              style={{ width: `${(completeCount / checklist.length) * 100}%` }}
+            />
+          </div>
+        </div>
+        <ul className="space-y-3">
+          {checklist.map((item) => (
+            <li
+              key={item.id}
+              className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-line px-4 py-3"
+            >
+              <div className="flex gap-3">
+                <span
+                  className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                    item.done ? 'bg-accent text-white' : 'border border-line text-muted'
+                  }`}
+                  aria-hidden
+                >
+                  {item.done ? <Check size={14} /> : <Circle size={12} />}
+                </span>
+                <div>
+                  <p className={`text-sm font-semibold ${item.done ? 'text-brand' : 'text-ink'}`}>
+                    {item.label}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">{item.detail}</p>
+                </div>
+              </div>
+              {!item.done ? (
+                item.to.startsWith('#') ? (
+                  <a href={item.to} className="text-sm text-brand hover:underline">
+                    Complete below
+                  </a>
+                ) : (
+                  <Link to={item.to} className="text-sm text-brand hover:underline">
+                    Go
+                  </Link>
+                )
+              ) : (
+                <span className="text-xs font-medium text-accent-dark">Done</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section className="rounded-2xl border border-line bg-white p-5">
         <h2 className="text-lg font-semibold text-ink">What this workspace includes</h2>
@@ -124,28 +246,32 @@ export default function OrganisationPage() {
                 className={inputClass}
               />
             </Field>
-            <Field label="Baseline tCO₂e">
-              <input
-                type="number"
-                min={0}
-                step="any"
-                value={draft.baselineYtdTco2e || ''}
-                onChange={(event) => setDraft({ ...draft, baselineYtdTco2e: Number(event.target.value) })}
-                disabled={!canEdit}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Annual turnover (£)">
-              <input
-                type="number"
-                min={0}
-                step="any"
-                value={draft.annualRevenue || ''}
-                onChange={(event) => setDraft({ ...draft, annualRevenue: Number(event.target.value) })}
-                disabled={!canEdit}
-                className={inputClass}
-              />
-            </Field>
+            <div id="baseline" className="scroll-mt-24">
+              <Field label="Baseline tCO₂e">
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={draft.baselineYtdTco2e || ''}
+                  onChange={(event) => setDraft({ ...draft, baselineYtdTco2e: Number(event.target.value) })}
+                  disabled={!canEdit}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <div id="turnover" className="scroll-mt-24">
+              <Field label="Annual turnover (£)">
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={draft.annualRevenue || ''}
+                  onChange={(event) => setDraft({ ...draft, annualRevenue: Number(event.target.value) })}
+                  disabled={!canEdit}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
             <Field label="Average FTE">
               <input
                 type="number"

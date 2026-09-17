@@ -85,3 +85,15 @@ coverage/
 # Temporary files
 *.tmp
 *.temp
+
+# Tutorial video build (screenshots, encoder, generated MP4)
+tutorial/.tools/node_modules/
+tutorial/.tools/tmp/
+tutorial/.tools/package-lock.json
+tutorial/.work/
+tutorial/shots/
+tutorial/*.mp4
+tutorial/*.aiff
+tutorial/test.aiff
+
+public/*.mp4
