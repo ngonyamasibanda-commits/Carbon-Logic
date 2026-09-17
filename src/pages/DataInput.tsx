@@ -29,8 +29,9 @@ export default function DataInput() {
       <section className="rounded-xl bg-white px-6 py-8">
         <h1 className="text-3xl font-semibold text-ink">Data input</h1>
         <p className="mt-2 text-sm text-muted">
-          Choose a category to log construction, mining, and logistics activity. Each entry uses
-          published conversion values from the emission factors database.
+          Choose a category to log construction, mining, and logistics activity. Most entries use
+          published DESNZ/DEFRA conversion values. Steel, cement, aluminium, and a few other
+          materials need a supplier EPD on the form or on Emission factors.
         </p>
         <label className="mt-5 flex max-w-xl items-center gap-2 rounded-full border border-line bg-page px-4 py-2.5">
           <Search size={16} className="text-muted" />

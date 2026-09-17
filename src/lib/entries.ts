@@ -1,7 +1,9 @@
 import { isLocalOrganizationId } from './auth'
+import { readJson, writeJson } from './browser-storage'
 import { applyMeta, deleteEntryMeta, setEntryMeta } from './entry-meta'
+import { customFieldsWithEvidence, fileMeta, filesForEntry, stashEvidenceBlobs } from './evidence'
+import { parseScope2Meta } from './scope2'
 import {
-  CloudSaveError,
   PermissionDeniedError,
   RateLimitError,
   throwIfUnsafeToFallback,
@@ -27,17 +29,34 @@ export { CloudSaveError, PermissionDeniedError, RateLimitError } from './securit
 type PostgrestLikeError = { message?: string; code?: string } | null
 
 function extrasFrom(row: Partial<EmissionEntry>) {
+  const files = filesForEntry({ files: row.files, customFields: row.customFields }).map(fileMeta)
   return {
     site: row.site ?? '',
     tags: row.tags ?? [],
-    customFields: row.customFields ?? [],
-    files: row.files ?? [],
+    customFields: customFieldsWithEvidence(row.customFields ?? [], files),
+    files,
+    activity_date: row.activity_date,
+  }
+}
+
+function lightEntry(entry: EmissionEntry): EmissionEntry {
+  const files = filesForEntry(entry).map(fileMeta)
+  return {
+    ...entry,
+    files,
+    customFields: customFieldsWithEvidence(entry.customFields, files),
   }
 }
 
 function fromRow(row: Record<string, unknown>): EmissionEntry {
   const organizationId = row.organization_id ?? row.organizationId
-  return applyMeta({
+  const activityDate = row.activity_date ? String(row.activity_date).slice(0, 10) : undefined
+  const customFields = Array.isArray(row.custom_fields)
+    ? (row.custom_fields as EmissionEntry['customFields'])
+    : Array.isArray(row.customFields)
+      ? (row.customFields as EmissionEntry['customFields'])
+      : []
+  const entry = applyMeta({
     id: String(row.id),
     category: String(row.category ?? ''),
     scope: String(row.scope ?? ''),
@@ -50,30 +69,38 @@ function fromRow(row: Record<string, unknown>): EmissionEntry {
     created_at: String(row.created_at ?? new Date().toISOString()),
     site: String(row.site ?? ''),
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
-    customFields: Array.isArray(row.custom_fields)
-      ? (row.custom_fields as EmissionEntry['customFields'])
-      : [],
-    files: [],
+    customFields,
+    files: filesForEntry({ customFields }),
+    activity_date: activityDate,
     organization_id: organizationId ? String(organizationId) : undefined,
   })
+  return { ...entry, scope2: parseScope2Meta(entry.customFields) }
 }
 
 function asEntry(row: unknown): EmissionEntry | null {
-  if (!row || typeof row !== 'object') return null
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null
   return fromRow(row as Record<string, unknown>)
 }
 
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
+/** PostgREST may return a jsonb RPC result as an object, a JSON string, or a one-row array. */
+export function parseRpcRow(data: unknown): EmissionEntry | null {
+  let row: unknown = data
+  if (typeof row === 'string') {
+    try {
+      row = JSON.parse(row) as unknown
+    } catch {
+      return null
+    }
   }
+  if (Array.isArray(row)) row = row[0]
+  return asEntry(row)
 }
 
 function hydrate(rows: EmissionEntry[]): EmissionEntry[] {
-  return rows.map((row) => applyMeta({ ...extrasFrom(row), ...row }))
+  return rows.map((row) => {
+    const next = applyMeta({ ...row, ...extrasFrom(row) })
+    return { ...next, scope2: parseScope2Meta(next.customFields) }
+  })
 }
 
 function readOrgLocal(organizationId: string): EmissionEntry[] {
@@ -91,14 +118,19 @@ function uniqueById(rows: EmissionEntry[]): EmissionEntry[] {
 }
 
 function persistOrg(tenant: Tenant, entries: EmissionEntry[]) {
-  const tagged = entries.map((row) => ({
-    ...row,
-    organization_id: row.organization_id ?? tenant.organizationId,
-  }))
-  localStorage.setItem(orgKey(tenant.organizationId), JSON.stringify(tagged))
+  const tagged = entries.map((row) =>
+    lightEntry({
+      ...row,
+      organization_id: row.organization_id ?? tenant.organizationId,
+    }),
+  )
+  const unsynced = tagged.filter(isUnsynced)
+  if (!writeJson(orgKey(tenant.organizationId), tagged)) {
+    writeJson(orgKey(tenant.organizationId), unsynced)
+  }
   const backup = readUserBackup(tenant.userId)
-  backup[tenant.organizationId] = tagged
-  localStorage.setItem(userKey(tenant.userId), JSON.stringify(backup))
+  backup[tenant.organizationId] = unsynced
+  writeJson(userKey(tenant.userId), backup)
 }
 
 function readMergedLocal(tenant: Tenant): EmissionEntry[] {
@@ -213,37 +245,51 @@ function basePayload(input: Omit<EmissionEntry, 'id' | 'created_at'>) {
   }
 }
 
+function extrasPayload(input: Omit<EmissionEntry, 'id' | 'created_at'>) {
+  return {
+    site: input.site ?? '',
+    tags: input.tags ?? [],
+    custom_fields: input.customFields ?? [],
+    activity_date: input.activity_date || null,
+  }
+}
+
+function isRetryableInsertError(error: PostgrestLikeError) {
+  if (!error) return false
+  if (isMissingColumnError(error) || isNotNullViolation(error) || isMissingRpc(error)) return true
+  const message = (error.message ?? '').toLowerCase()
+  return (
+    message.includes('malformed array') ||
+    message.includes('invalid input syntax') ||
+    message.includes('could not choose the best candidate') ||
+    message.includes('function public.log_emission_entry')
+  )
+}
+
 function insertAttempts(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>): Record<string, unknown>[] {
   const base = basePayload(input)
+  const extras = extrasPayload(input)
+  const owner = { organization_id: tenant.organizationId, owner_id: tenant.userId }
+  const ownerAndUser = { ...owner, user_id: tenant.userId }
   if (isLocalOrganizationId(tenant.organizationId)) {
     return [
+      { ...base, ...extras, user_id: tenant.userId, owner_id: tenant.userId },
       { ...base, user_id: tenant.userId, owner_id: tenant.userId },
       { ...base, user_id: tenant.userId },
     ]
   }
-  // Never save against the user alone: those rows vanish for other members and
-  // are hidden by organisation RLS after logout.
+  // Always include owner_id: RLS requires owner_id = auth.uid().
+  // Include user_id on some attempts in case that legacy column is still NOT NULL.
   return [
-    {
-      ...base,
-      organization_id: tenant.organizationId,
-      owner_id: tenant.userId,
-      user_id: tenant.userId,
-    },
-    {
-      ...base,
-      organization_id: tenant.organizationId,
-      owner_id: tenant.userId,
-    },
-    { ...base, organization_id: tenant.organizationId },
+    { ...base, ...extras, ...ownerAndUser },
+    { ...base, ...extras, ...owner },
+    { ...base, ...ownerAndUser },
+    { ...base, ...owner },
   ]
 }
 
-async function insertViaRpc(
-  tenant: Tenant,
-  input: Omit<EmissionEntry, 'id' | 'created_at'>,
-): Promise<EmissionEntry | null> {
-  const { data, error } = await supabase.rpc('log_emission_entry', {
+function compactRpcArgs(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>) {
+  return {
     p_organization_id: isLocalOrganizationId(tenant.organizationId) ? null : tenant.organizationId,
     p_category: input.category,
     p_scope: input.scope,
@@ -253,13 +299,37 @@ async function insertViaRpc(
     p_unit: input.unit,
     p_comment: input.comment,
     p_link: input.link,
-  })
-  if (error) {
-    if (isMissingRpc(error)) return null
-    throwIfUnsafeToFallback(error)
+  }
+}
+
+function fullRpcArgs(tenant: Tenant, input: Omit<EmissionEntry, 'id' | 'created_at'>) {
+  return {
+    ...compactRpcArgs(tenant, input),
+    p_site: input.site ?? '',
+    p_tags: input.tags ?? [],
+    p_custom_fields: input.customFields ?? [],
+    p_activity_date: input.activity_date || null,
+  }
+}
+
+async function insertViaRpc(
+  tenant: Tenant,
+  input: Omit<EmissionEntry, 'id' | 'created_at'>,
+): Promise<EmissionEntry | null> {
+  const full = await supabase.rpc('log_emission_entry', fullRpcArgs(tenant, input))
+  if (!full.error) return parseRpcRow(full.data)
+
+  throwIfUnsafeToFallback(full.error)
+  if (!isMissingRpc(full.error) && !isRetryableInsertError(full.error)) {
     return null
   }
-  return asEntry(data)
+
+  // Live databases that never applied 0006 still have the 9-argument function.
+  const compact = await supabase.rpc('log_emission_entry', compactRpcArgs(tenant, input))
+  if (!compact.error) return parseRpcRow(compact.data)
+  if (isMissingRpc(compact.error)) return null
+  throwIfUnsafeToFallback(compact.error)
+  return null
 }
 
 async function insertRemote(
@@ -291,7 +361,7 @@ async function insertRemote(
       }
     }
 
-    if (!isMissingColumnError(error) && !isNotNullViolation(error)) break
+    if (!isRetryableInsertError(error)) break
   }
 
   throwIfUnsafeToFallback(lastError)
@@ -430,6 +500,7 @@ export async function saveEntry(
   input: Omit<EmissionEntry, 'id' | 'created_at'>,
 ): Promise<EmissionEntry> {
   const extras = extrasFrom(input)
+  void stashEvidenceBlobs(input.files ?? [])
   const localEntry: EmissionEntry = {
     ...input,
     ...extras,
@@ -450,12 +521,15 @@ export async function saveEntry(
       return entry
     }
   } catch (error) {
-    removeLocal(tenant, localEntry.id)
-    if (error instanceof RateLimitError || error instanceof PermissionDeniedError) throw error
-    throw new CloudSaveError()
+    if (error instanceof RateLimitError || error instanceof PermissionDeniedError) {
+      removeLocal(tenant, localEntry.id)
+      throw error
+    }
+    console.warn('Organisation save failed; keeping the activity and retrying.', error)
+    return localEntry
   }
-  removeLocal(tenant, localEntry.id)
-  throw new CloudSaveError()
+  console.warn('Organisation save did not confirm; keeping the activity and retrying.')
+  return localEntry
 }
 
 export async function deleteEntry(tenant: Tenant, id: string): Promise<void> {

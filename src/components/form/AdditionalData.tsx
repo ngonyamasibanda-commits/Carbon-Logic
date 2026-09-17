@@ -1,6 +1,12 @@
-import { Paperclip, Plus, Tag, X } from 'lucide-react'
-import { safeDownloadUrl } from '../../lib/safe'
-import type { AdditionalState, AttachedFile } from '../../lib/types'
+import { Paperclip, Plus, Tag, Upload, X } from 'lucide-react'
+import {
+  attachedFromFile,
+  EVIDENCE_ACCEPT,
+  formatFileSize,
+  MAX_EVIDENCE_FILES,
+} from '../../lib/evidence'
+import { useToast } from '../../lib/toast-context'
+import type { AdditionalState } from '../../lib/types'
 import { useOrg } from '../../providers/OrgProvider'
 
 type Props = {
@@ -8,10 +14,9 @@ type Props = {
   onChange: (next: AdditionalState) => void
 }
 
-const MAX_FILE_BYTES = 1_500_000
-
 export default function AdditionalData({ value, onChange }: Props) {
   const { sites } = useOrg()
+  const toast = useToast()
 
   function update(partial: Partial<AdditionalState>) {
     onChange({ ...value, ...partial })
@@ -23,23 +28,47 @@ export default function AdditionalData({ value, onChange }: Props) {
     update({ tags: [...value.tags, tag] })
   }
 
-  async function onFiles(fileList: FileList | null) {
-    if (!fileList) return
-    const next: AttachedFile[] = [...value.files]
-    for (const file of Array.from(fileList)) {
-      if (file.size > MAX_FILE_BYTES) {
-        window.alert(`${file.name} is larger than 1.5 MB and was skipped.`)
-        continue
-      }
-      const dataUrl = await readFile(file)
-      next.push({ name: file.name, size: file.size, type: file.type, dataUrl })
+  async function onFiles(list: FileList | null) {
+    if (!list?.length) return
+    const room = MAX_EVIDENCE_FILES - value.files.length
+    if (room <= 0) {
+      toast.error(`You can attach up to ${MAX_EVIDENCE_FILES} files on one activity.`)
+      return
     }
-    update({ files: next })
+    const incoming = [...list].slice(0, room)
+    const attached = [...value.files]
+    for (const file of incoming) {
+      try {
+        attached.push(await attachedFromFile(file))
+        toast.success(`${file.name} attached.`)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : `Could not attach ${file.name}.`)
+      }
+    }
+    if (list.length > room) {
+      toast.info(`Only the first ${room} file${room === 1 ? '' : 's'} were added (maximum ${MAX_EVIDENCE_FILES}).`)
+    }
+    update({ files: attached })
   }
 
   return (
     <aside className="space-y-4">
       <h3 className="text-base font-semibold text-ink">Additional Data</h3>
+
+      <label className="block text-sm font-semibold text-ink">
+        Activity date
+        <input
+          type="date"
+          value={value.activity_date}
+          onChange={(event) => update({ activity_date: event.target.value })}
+          className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
+          required
+        />
+        <span className="mt-1 block text-xs font-normal text-muted">
+          The date this activity happened. Totals, YTD, and science-based targets use this, not the
+          moment you typed it in.
+        </span>
+      </label>
 
       <label className="block text-sm font-semibold text-ink">
         Site
@@ -57,12 +86,60 @@ export default function AdditionalData({ value, onChange }: Props) {
         </select>
       </label>
 
+      <div className="rounded-md border border-brand/30 bg-brand-soft/40 px-3 py-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-brand-dark">
+          <Paperclip size={14} />
+          Evidence files
+        </div>
+        <p className="mt-2 text-xs leading-5 text-muted">
+          Upload invoices, delivery notes, CSVs, Word documents, or EPDs — PDF, image, CSV, Word,
+          Excel, or text, up to 8 MB each. Completeness on the dashboard counts rows that have a
+          file or a link.
+        </p>
+        {value.files.length > 0 ? (
+          <ul className="mt-2 space-y-1">
+            {value.files.map((file) => (
+              <li
+                key={file.id}
+                className="flex items-center justify-between gap-2 rounded border border-brand/20 bg-white px-2 py-1.5 text-xs"
+              >
+                <span className="min-w-0 truncate font-medium text-ink" title={file.name}>
+                  {file.name}
+                  <span className="ml-1 font-normal text-muted">({formatFileSize(file.size)})</span>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => update({ files: value.files.filter((item) => item.id !== file.id) })}
+                >
+                  <X size={12} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-brand/30 bg-white px-2.5 py-1.5 text-xs font-medium text-brand">
+          <Upload size={12} />
+          {value.files.length ? 'Add another file' : 'Upload document'}
+          <input
+            type="file"
+            accept={EVIDENCE_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              void onFiles(event.target.files)
+              event.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+
       <label className="block text-sm font-semibold text-ink">
-        Link
+        Evidence link (optional)
         <input
           value={value.link}
           onChange={(event) => update({ link: event.target.value })}
-          placeholder="e.g. Sharepoint or Google Drive"
+          placeholder="SharePoint, Drive, or invoice URL"
           className="mt-1 w-full rounded-md border border-line bg-page px-3 py-2 text-sm font-normal"
         />
       </label>
@@ -77,39 +154,13 @@ export default function AdditionalData({ value, onChange }: Props) {
         />
       </label>
 
-      <div className="rounded-md border border-brand/30 bg-brand-soft/40 px-3 py-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-brand-dark">
-          <Paperclip size={14} />
-          File Uploads & Storage
-        </div>
-        <input
-          type="file"
-          multiple
-          className="mt-2 w-full text-xs"
-          onChange={(event) => void onFiles(event.target.files)}
-        />
-        <ul className="mt-2 space-y-1 text-xs text-ink">
-          {value.files.map((file, index) => (
-            <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2">
-              <a href={safeDownloadUrl(file.dataUrl)} download={file.name} className="truncate text-sky-700 hover:underline">
-                {file.name}
-              </a>
-              <button
-                type="button"
-                onClick={() => update({ files: value.files.filter((_, i) => i !== index) })}
-                aria-label={`Remove ${file.name}`}
-              >
-                <X size={12} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-
       <div className="rounded-md border border-brand/30 px-3 py-3">
         <div className="text-sm font-semibold text-brand-dark">Custom Fields</div>
         <div className="mt-2 space-y-2">
-          {value.customFields.map((field, index) => (
+          {value.customFields
+            .map((field, index) => ({ field, index }))
+            .filter(({ field }) => !field.label.startsWith('_'))
+            .map(({ field, index }) => (
             <div key={index} className="flex gap-2">
               <input
                 value={field.label}
@@ -185,13 +236,4 @@ export default function AdditionalData({ value, onChange }: Props) {
       </div>
     </aside>
   )
-}
-
-function readFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
 }

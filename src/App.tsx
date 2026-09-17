@@ -11,8 +11,9 @@ import DataInput from './pages/DataInput'
 import FactorsPage from './pages/FactorsPage'
 import FaqsPage from './pages/FaqsPage'
 import LearningHubPage from './pages/LearningHubPage'
-import OrganizationPage from './pages/OrganizationPage'
+import OrganisationPage from './pages/OrganisationPage'
 import PeoplePage from './pages/PeoplePage'
+import ReportsPage from './pages/ReportsPage'
 import SitesPage from './pages/SitesPage'
 import TargetsPage from './pages/TargetsPage'
 import TermsPage from './pages/TermsPage'
@@ -22,6 +23,7 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import { AuthProvider } from './providers/AuthProvider'
 import { EntriesProvider } from './providers/EntriesProvider'
 import { OrgProvider } from './providers/OrgProvider'
+import { ToastProvider } from './providers/ToastProvider'
 import { useAuth } from './lib/auth-context'
 
 function SignedOutOnly({ children }: { children: React.ReactNode }) {
@@ -46,8 +48,9 @@ function ProtectedShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
           <Route
             path="/login"
             element={
@@ -66,18 +69,20 @@ export default function App() {
             <Route path="/input/:categoryId" element={<CategoryPage />} />
             <Route path="/analysis" element={<AnalysisPage />} />
             <Route path="/combined" element={<CombinedResultsPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/organisation" element={<OrganisationPage />} />
+            <Route path="/organization" element={<Navigate to="/organisation" replace />} />
             <Route path="/faqs" element={<FaqsPage />} />
             <Route path="/learn" element={<LearningHubPage />} />
             <Route path="/sites" element={<SitesPage />} />
             <Route path="/facilities" element={<SitesPage />} />
-            <Route path="/organization" element={<OrganizationPage />} />
             <Route path="/factors" element={<FactorsPage />} />
             <Route path="/targets" element={<TargetsPage />} />
             <Route path="/account" element={<AccountPage />} />
             <Route
               path="/people"
               element={
-                <RequireRole permission="members:manage">
+                <RequireRole permission="members:read">
                   <PeoplePage />
                 </RequireRole>
               }
@@ -85,7 +90,8 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

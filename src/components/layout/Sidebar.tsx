@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, Scale, Users } from 'lucide-react'
+import { ChevronDown, FileBarChart, Scale, Settings, Users } from 'lucide-react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { LogoMark } from '../brand/Logo'
 import { SCOPE_NAV_ORDER, categoriesForScope } from '../../lib/categories'
@@ -95,16 +95,13 @@ export default function Sidebar() {
           }}
         </NavLink>
 
-        <NavLink to="/organization" className={({ isActive }) => navClass(isActive)}>
-          {({ isActive }) => {
-            const Icon = CATEGORY_ICONS.organization
-            return (
-              <>
-                <Icon size={16} className={isActive ? 'text-brand' : 'text-muted'} />
-                Organisation
-              </>
-            )
-          }}
+        <NavLink to="/organisation" className={({ isActive }) => navClass(isActive)}>
+          {({ isActive }) => (
+            <>
+              <Settings size={16} className={isActive ? 'text-brand' : 'text-muted'} />
+              Organisation
+            </>
+          )}
         </NavLink>
 
         <NavLink to="/factors" className={({ isActive }) => navClass(isActive)}>
@@ -182,6 +179,14 @@ export default function Sidebar() {
               )
             }}
           </NavLink>
+          <NavLink to="/reports" className={({ isActive }) => navClass(isActive)}>
+            {({ isActive }) => (
+              <>
+                <FileBarChart size={16} className={isActive ? 'text-brand' : 'text-muted'} />
+                Reports
+              </>
+            )}
+          </NavLink>
           <NavLink to="/learn" className={({ isActive }) => navClass(isActive)}>
             {({ isActive }) => {
               const Icon = CATEGORY_ICONS.learn
@@ -213,7 +218,7 @@ export default function Sidebar() {
             <Scale size={16} className="text-muted" />
             Terms &amp; Conditions
           </a>
-          {can('members:manage') ? (
+          {can('members:read') ? (
             <NavLink to="/people" className={({ isActive }) => navClass(isActive)}>
               {({ isActive }) => (
                 <>

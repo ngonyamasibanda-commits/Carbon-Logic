@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { LogoLockup } from '../components/brand/Logo'
 
-const LAST_UPDATED = '3 September 2026'
+const LAST_UPDATED = '11 September 2026'
 const LEGAL_EMAILS = ['founders@usecarbonlogic.com', 'founders@carbonlogichq.com'] as const
 
 const SECTIONS = [
@@ -119,8 +119,8 @@ export default function TermsPage() {
             <p>
               Emission estimates are generated using activity data you supply and conversion factors
               drawn from published sources (including, where applicable, UK DESNZ/DEFRA GHG conversion
-              factors, ICE Database values, and other third-party datasets) and/or factors you upload
-              or configure yourself.
+              factors, supplier Environmental Product Declarations, and other third-party datasets)
+              and/or factors you upload or configure yourself.
             </p>
             <p>
               We take reasonable care in curating default factors and documenting sources, but we do
@@ -344,10 +344,17 @@ export default function TermsPage() {
 
           <Section id="fees" title="14. Fees, refunds, and cooling-off">
             <p>
-              Where paid plans or professional services are offered, fees, billing periods, and
-              cancellation terms will be stated at the point of purchase or in a separate order form.
+              Fees, if any, are those agreed in writing between Carbon Logic and the customer. This
+              application does not process card payments. The fee, where agreed, covers one
+              organisation workspace, unlimited colleagues in that organisation, the published
+              emission-factor library, reporting outputs, and the features described in that
+              agreement. It does not include third-party verification, professional assurance, or
+              file hosting.
+            </p>
+            <p>
               Except where mandatory consumer law provides otherwise, fees are non-refundable once
-              access to paid features has been granted.
+              access to paid features has been granted. Additional organisations, implementation
+              support, or custom factor work are charged separately if agreed in writing.
             </p>
             <p>
               If you are a consumer entitled to a statutory cooling-off period for distance

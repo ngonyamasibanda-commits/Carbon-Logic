@@ -1,3 +1,6 @@
+import { readJson, writeJson } from './browser-storage'
+import { supabase } from './supabase'
+
 export type Site = {
   id: string
   name: string
@@ -5,133 +8,275 @@ export type Site = {
   region: string
 }
 
-export type TeamMember = {
-  id: string
-  name: string
-  email: string
-  role: 'admin' | 'editor' | 'viewer'
-}
-
 export type OrgProfile = {
   displayName: string
   organisation: string
   country: string
   intensityMetric: string
-  /** Annual turnover / revenue in £ — used for SECR intensity (tCO₂e per £m). */
-  annualTurnover: number
   baselineYtdTco2e: number
-}
-
-export type CreditOrder = {
-  id: string
-  project: string
-  tco2e: number
-  trees: number
-  created_at: string
+  annualRevenue: number
+  employeeCount: number
+  reportingYear: number
+  lockedYears: number[]
+  residualMixKgPerKwh: number
 }
 
 const SITES_KEY = 'carbon-logic-sites'
-const TEAM_KEY = 'carbon-logic-team'
 const PROFILE_KEY = 'carbon-logic-profile'
-const ORDERS_KEY = 'carbon-logic-credit-orders'
 
-const DEFAULT_SITES: Site[] = [
-  { id: 'site-hq', name: 'Head office', type: 'office', region: 'United Kingdom' },
-  { id: 'site-a', name: 'Construction site A', type: 'construction_site', region: 'United Kingdom' },
-  { id: 'site-depot', name: 'Central depot', type: 'depot', region: 'United Kingdom' },
-]
-
-const DEFAULT_TEAM: TeamMember[] = [
-  { id: 'user-h', name: 'Hlulani Logic', email: 'hlulani@carbonlogic.local', role: 'admin' },
-]
-
-const DEFAULT_PROFILE: OrgProfile = {
-  displayName: 'Hlulani Logic',
-  organisation: 'Carbon Logic',
-  country: 'United Kingdom',
-  intensityMetric: 'tCO2e per £m turnover',
-  annualTurnover: 0,
-  baselineYtdTco2e: 0,
+export function emptyOrgProfile(organisation = ''): OrgProfile {
+  return {
+    displayName: organisation,
+    organisation,
+    country: 'United Kingdom',
+    intensityMetric: 'tCO2e per £m turnover',
+    baselineYtdTco2e: 0,
+    annualRevenue: 0,
+    employeeCount: 0,
+    reportingYear: new Date().getFullYear(),
+    lockedYears: [],
+    residualMixKgPerKwh: 0,
+  }
 }
 
-/** Revenue key used by Analysis (legacy) — kept in sync when turnover is saved. */
-export function revenueStorageKey(organizationId?: string | null) {
-  return organizationId ? `carbon-logic-revenue:${organizationId}` : 'carbon-logic-revenue'
+function asYearList(value: unknown): number[] {
+  if (!Array.isArray(value)) return []
+  return value.map((year) => Number(year)).filter((year) => Number.isFinite(year))
 }
 
-export function syncRevenueFromTurnover(turnover: number, organizationId?: string | null) {
-  const key = revenueStorageKey(organizationId)
-  if (turnover > 0) localStorage.setItem(key, String(turnover))
-  else localStorage.removeItem(key)
+function isMissingColumnError(error: { message?: string; code?: string } | null) {
+  if (!error) return false
+  const message = (error.message ?? '').toLowerCase()
+  const code = error.code ?? ''
+  return (
+    code === 'PGRST204' ||
+    code === '42703' ||
+    (message.includes('column') && (message.includes('does not exist') || message.includes('schema cache')))
+  )
+}
+
+function isMissingRpc(error: { message?: string; code?: string } | null) {
+  if (!error) return false
+  const message = (error.message ?? '').toLowerCase()
+  const code = error.code ?? ''
+  return code === 'PGRST202' || code === '42883' || message.includes('could not find the function')
 }
 
 function scopedKey(base: string, organizationId?: string | null) {
   return organizationId ? `${base}:${organizationId}` : base
 }
 
-function read<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key)
-    return raw ? (JSON.parse(raw) as T) : fallback
-  } catch {
-    return fallback
+function cacheSites(organizationId: string, sites: Site[]) {
+  writeJson(scopedKey(SITES_KEY, organizationId), sites)
+}
+
+function cacheProfile(organizationId: string, profile: OrgProfile) {
+  writeJson(scopedKey(PROFILE_KEY, organizationId), profile)
+}
+
+function cachedSites(organizationId: string): Site[] {
+  return readJson<Site[]>(scopedKey(SITES_KEY, organizationId), [])
+}
+
+function cachedProfile(organizationId: string, organisationName: string): OrgProfile {
+  return {
+    ...emptyOrgProfile(organisationName),
+    ...readJson<Partial<OrgProfile>>(scopedKey(PROFILE_KEY, organizationId), {}),
   }
 }
 
-function write<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value))
-}
-
-function readScoped<T>(base: string, organizationId: string | null | undefined, fallback: T): T {
-  const scoped = read<T | null>(scopedKey(base, organizationId), null)
-  if (scoped) return scoped
-  const legacy = read<T | null>(base, null)
-  if (legacy && organizationId) {
-    write(scopedKey(base, organizationId), legacy)
-    return legacy
+function fromSiteRow(row: Record<string, unknown>): Site {
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    type: (String(row.type ?? 'office') as Site['type']) || 'office',
+    region: String(row.region ?? ''),
   }
-  return fallback
 }
 
-export function loadSites(organizationId?: string | null): Site[] {
-  return readScoped(SITES_KEY, organizationId, DEFAULT_SITES)
+export async function fetchSites(organizationId: string): Promise<Site[]> {
+  const { data, error } = await supabase
+    .from('sites')
+    .select('id, name, type, region')
+    .eq('organization_id', organizationId)
+    .order('name', { ascending: true })
+
+  if (error || !data) return cachedSites(organizationId)
+  const sites = data.map((row) => fromSiteRow(row as Record<string, unknown>))
+  cacheSites(organizationId, sites)
+  return sites
 }
 
-export function saveSites(sites: Site[], organizationId?: string | null) {
-  write(scopedKey(SITES_KEY, organizationId), sites)
-}
+export async function createSite(
+  organizationId: string,
+  input: Omit<Site, 'id'>,
+): Promise<{ site: Site | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('sites')
+    .insert({
+      organization_id: organizationId,
+      name: input.name,
+      type: input.type,
+      region: input.region,
+    })
+    .select('id, name, type, region')
+    .single()
 
-export function loadTeam(organizationId?: string | null): TeamMember[] {
-  return readScoped(TEAM_KEY, organizationId, DEFAULT_TEAM)
-}
-
-export function saveTeam(team: TeamMember[], organizationId?: string | null) {
-  write(scopedKey(TEAM_KEY, organizationId), team)
-}
-
-export function loadProfile(organizationId?: string | null): OrgProfile {
-  const stored = { ...DEFAULT_PROFILE, ...readScoped(PROFILE_KEY, organizationId, DEFAULT_PROFILE) }
-  // Prefer explicit turnover; fall back to legacy Analysis revenue key once.
-  if (!stored.annualTurnover || stored.annualTurnover <= 0) {
-    const legacy = Number(
-      localStorage.getItem(revenueStorageKey(organizationId)) ??
-        localStorage.getItem('carbon-logic-revenue') ??
-        0,
-    )
-    if (Number.isFinite(legacy) && legacy > 0) stored.annualTurnover = legacy
+  if (error || !data) {
+    return { site: null, error: error?.message ?? 'Could not save this facility to the organisation.' }
   }
-  return stored
+  const site = fromSiteRow(data as Record<string, unknown>)
+  cacheSites(organizationId, [...cachedSites(organizationId).filter((row) => row.id !== site.id), site])
+  return { site, error: null }
 }
 
-export function saveProfile(profile: OrgProfile, organizationId?: string | null) {
-  write(scopedKey(PROFILE_KEY, organizationId), profile)
-  syncRevenueFromTurnover(profile.annualTurnover || 0, organizationId)
+export async function deleteSite(organizationId: string, id: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('sites').delete().eq('id', id).eq('organization_id', organizationId)
+  if (error) return { error: error.message }
+  cacheSites(
+    organizationId,
+    cachedSites(organizationId).filter((site) => site.id !== id),
+  )
+  return { error: null }
 }
 
-export function loadOrders(organizationId?: string | null): CreditOrder[] {
-  return readScoped(ORDERS_KEY, organizationId, [])
+type SettingsRow = {
+  display_name: string | null
+  country: string | null
+  intensity_metric: string | null
+  baseline_ytd_tco2e: number | null
+  annual_revenue: number | null
+  sbti_config: Record<string, unknown> | null
+  employee_count?: number | null
+  reporting_year?: number | null
+  locked_years?: number[] | null
+  residual_mix_kg_per_kwh?: number | null
 }
 
-export function saveOrders(orders: CreditOrder[], organizationId?: string | null) {
-  write(scopedKey(ORDERS_KEY, organizationId), orders)
+const SETTINGS_SELECT_FULL =
+  'display_name, country, intensity_metric, baseline_ytd_tco2e, annual_revenue, sbti_config, employee_count, reporting_year, locked_years, residual_mix_kg_per_kwh'
+const SETTINGS_SELECT_CORE =
+  'display_name, country, intensity_metric, baseline_ytd_tco2e, annual_revenue, sbti_config'
+
+function profileFromSettings(row: SettingsRow | null, organisationName: string, cached?: OrgProfile): OrgProfile {
+  const fallback = cached ?? emptyOrgProfile(organisationName)
+  if (!row) return fallback
+  return {
+    displayName: row.display_name || organisationName || fallback.displayName,
+    organisation: organisationName || fallback.organisation,
+    country: row.country || fallback.country,
+    intensityMetric: row.intensity_metric || fallback.intensityMetric,
+    baselineYtdTco2e: Number(row.baseline_ytd_tco2e) || 0,
+    annualRevenue: Number(row.annual_revenue) || 0,
+    employeeCount: Number(row.employee_count ?? fallback.employeeCount) || 0,
+    reportingYear: Number(row.reporting_year ?? fallback.reportingYear) || new Date().getFullYear(),
+    lockedYears: row.locked_years ? asYearList(row.locked_years) : fallback.lockedYears,
+    residualMixKgPerKwh: Number(row.residual_mix_kg_per_kwh ?? fallback.residualMixKgPerKwh) || 0,
+  }
+}
+
+function coreSettingsPayload(organizationId: string, profile: OrgProfile) {
+  return {
+    organization_id: organizationId,
+    display_name: profile.displayName,
+    country: profile.country,
+    intensity_metric: profile.intensityMetric,
+    baseline_ytd_tco2e: profile.baselineYtdTco2e,
+    annual_revenue: profile.annualRevenue,
+    updated_at: new Date().toISOString(),
+  }
+}
+
+function fullSettingsPayload(organizationId: string, profile: OrgProfile) {
+  return {
+    ...coreSettingsPayload(organizationId, profile),
+    employee_count: profile.employeeCount,
+    reporting_year: profile.reportingYear,
+    locked_years: profile.lockedYears,
+    residual_mix_kg_per_kwh: profile.residualMixKgPerKwh,
+  }
+}
+
+export async function fetchOrgSettings(
+  organizationId: string,
+  organisationName: string,
+): Promise<{ profile: OrgProfile; sbtiConfig: Record<string, unknown> | null }> {
+  const cached = cachedProfile(organizationId, organisationName)
+  let result = await supabase
+    .from('organization_settings')
+    .select(SETTINGS_SELECT_FULL)
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+
+  if (result.error && isMissingColumnError(result.error)) {
+    result = await supabase
+      .from('organization_settings')
+      .select(SETTINGS_SELECT_CORE)
+      .eq('organization_id', organizationId)
+      .maybeSingle()
+  }
+
+  if (result.error || !result.data) {
+    return { profile: cached, sbtiConfig: null }
+  }
+  const profile = profileFromSettings(result.data as SettingsRow, organisationName, cached)
+  cacheProfile(organizationId, profile)
+  return { profile, sbtiConfig: (result.data.sbti_config as Record<string, unknown> | null) ?? null }
+}
+
+export async function saveOrgSettings(
+  organizationId: string,
+  profile: OrgProfile,
+  sbtiConfig?: Record<string, unknown> | null,
+): Promise<{ error: string | null }> {
+  const full: Record<string, unknown> = fullSettingsPayload(organizationId, profile)
+  if (sbtiConfig) full.sbti_config = sbtiConfig
+
+  let { error } = await supabase.from('organization_settings').upsert(full, { onConflict: 'organization_id' })
+  if (error && isMissingColumnError(error)) {
+    const core: Record<string, unknown> = coreSettingsPayload(organizationId, profile)
+    if (sbtiConfig) core.sbti_config = sbtiConfig
+    const retry = await supabase.from('organization_settings').upsert(core, { onConflict: 'organization_id' })
+    error = retry.error
+  }
+  cacheProfile(organizationId, profile)
+  if (error) return { error: error.message }
+  return { error: null }
+}
+
+export async function setReportingYearLock(
+  organizationId: string,
+  year: number,
+  locked: boolean,
+  reason = '',
+): Promise<{ lockedYears: number[] | null; error: string | null }> {
+  const rpc = await supabase.rpc('set_reporting_year_lock', {
+    p_organization_id: organizationId,
+    p_year: year,
+    p_locked: locked,
+    p_reason: reason,
+  })
+  if (!rpc.error) {
+    const years = asYearList((rpc.data as { locked_years?: unknown } | null)?.locked_years)
+    return { lockedYears: years, error: null }
+  }
+  if (!isMissingRpc(rpc.error) && !isMissingColumnError(rpc.error)) {
+    return { lockedYears: null, error: rpc.error.message }
+  }
+  return { lockedYears: null, error: null }
+}
+
+export async function saveOrgSbtiConfig(
+  organizationId: string,
+  sbtiConfig: Record<string, unknown>,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('organization_settings').upsert(
+    {
+      organization_id: organizationId,
+      sbti_config: sbtiConfig,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'organization_id' },
+  )
+  return { error: error?.message ?? null }
 }

@@ -20,7 +20,7 @@ import DataInput from '../pages/DataInput'
 import FactorsPage from '../pages/FactorsPage'
 import FaqsPage from '../pages/FaqsPage'
 import LearningHubPage from '../pages/LearningHubPage'
-import OrganizationPage from '../pages/OrganizationPage'
+import OrganisationPage from '../pages/OrganisationPage'
 import PeoplePage from '../pages/PeoplePage'
 import SitesPage from '../pages/SitesPage'
 import TargetsPage from '../pages/TargetsPage'
@@ -162,7 +162,8 @@ export default function DemoApp() {
             <Route path="/learn" element={<LearningHubPage />} />
             <Route path="/sites" element={<SitesPage />} />
             <Route path="/facilities" element={<SitesPage />} />
-            <Route path="/organization" element={<OrganizationPage />} />
+            <Route path="/organisation" element={<OrganisationPage />} />
+            <Route path="/organization" element={<Navigate to="/organisation" replace />} />
             <Route path="/factors" element={<FactorsPage />} />
             <Route path="/targets" element={<TargetsPage />} />
             <Route path="/account" element={<AccountPage />} />

@@ -8,8 +8,33 @@ get you from here to a working login.
 
 ### 1. Run the migration
 
-Open the Supabase SQL editor and run `supabase/migrations/0001_auth_and_tenancy.sql`.
-It is idempotent, so re-running it is safe.
+Open the Supabase SQL editor and run these in order:
+
+1. `supabase/migrations/0001_auth_and_tenancy.sql`
+2. `supabase/migrations/0002_quotas_and_hardening.sql`
+3. `supabase/migrations/0003_ip_rate_limits.sql`
+4. `supabase/migrations/0004_platform_owner_access.sql`
+5. `supabase/migrations/0005_org_scoped_entries.sql`
+6. `supabase/migrations/0006_saas_cloud_workspace.sql`
+7. `supabase/migrations/0007_inventory_governance.sql`
+
+They are idempotent, so re-running is safe.
+
+If year-end close is on in the app but Postgres still lets you edit a closed year, paste
+`supabase/fix_inventory_governance.sql`. Deploying the Vite app does not update the
+database.
+
+If the live database already has organisations / memberships (0001) but you have not run the later files, do **not** paste `0006` or `fix_saas_workspace.sql` on their own. Those files raise write limits on `org_quotas`, which is created in 0002. Paste `supabase/fix_live_database.sql` once instead — it is 0002 through 0006.
+
+If a run stops with `memberships_user_id_profiles_fkey` / `Key (user_id)=(...) is not present in table "profiles"`, paste `supabase/fix_memberships_profiles.sql` first, then `fix_live_database.sql`. A membership exists for an auth user who never got a `profiles` row; the SQL editor is not a superuser, so FORCE RLS otherwise blocks the backfill.
+
+If a run stops with `relation "public.org_quotas" does not exist`, 0002 was never applied. Paste `supabase/fix_live_database.sql`.
+
+If logging an activity fails with *Could not save this activity to your organisation*,
+paste `supabase/fix_entry_save.sql`. The live app calls `log_emission_entry` with
+site / tags / activity date; a database that never got migration 0006 does not have
+that function signature, so the save was being discarded. This repair adds the
+columns, recreates the function, and reloads PostgREST's schema cache.
 
 If inviting people fails with *Could not find the function
 public.invite_member(p_email, p_org, p_role) in the schema cache*, paste
@@ -63,8 +88,43 @@ have selected**, not every organisation in the app.
 - **Someone already invited** signs up with the same email. They skip the empty
   workspace screen and land in that organisation.
 
-Data never crosses organisations. Switching in the header only changes which
-workspace you are looking at.
+Data never crosses organisations. Switching in the header changes which
+workspace you are looking at. Anyone who belongs to more than one organisation
+can switch; Carbon Logic owners can switch across every company.
+
+Facilities, baselines, science-based targets, and logged activities (including
+site, tags, and activity date) are stored in the organisation database. They are
+not kept as files in the browser, so adding staff or logging a year of invoices
+does not fill device storage. Evidence should be a SharePoint or Drive link, not
+an uploaded file.
+
+## Vercel: Production vs Preview
+
+The live customer URL is https://carbon-logic.vercel.app. That hostname is attached
+only to deployments labelled **Production**.
+
+| What you pushed | Vercel label | Updates the live URL? |
+| --- | --- | --- |
+| GitHub branch `main` | Production | Yes |
+| Any other branch (Cursor branches, PRs) | Preview | No |
+
+Redeploying a **Preview** row does not refresh the live site. Preview often has no
+`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (those are scoped per environment), so
+that rebuild shows “App is not configured”. Promoting that Preview then copies the
+broken build onto the live URL.
+
+To ship a working Production deployment:
+
+1. Put `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` on Production, Preview, and
+   Development in Vercel → Settings → Environment Variables.
+2. Merge the work into `main` and push. Wait until Deployments shows a new row that
+   says **Production**, not Preview.
+3. Open https://carbon-logic.vercel.app — that is the site to share. Ignore hashed
+   `*.vercel.app` URLs from Preview rows; those are not the customer site.
+
+If you must rebuild without a git push: Deployments → filter Production → Redeploy
+that Production row, and uncheck “Use existing Build Cache”. Never Redeploy Preview
+to “fix” the live app.
 
 ## Supabase dashboard settings worth changing
 
@@ -183,4 +243,4 @@ npm run verify:migration
 Runs the migration against a real Postgres (PGlite, compiled to WASM) layered on a
 replica of the pre-migration schema, then exercises the rules as ordinary users: tenant
 isolation, role enforcement, privilege escalation attempts, and the legacy data
-handover. 35 checks.
+handover. 92 checks.

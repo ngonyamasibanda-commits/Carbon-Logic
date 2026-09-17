@@ -6,18 +6,31 @@ export default function MissingConfigPage() {
         <div className="px-7 py-7">
           <h1 className="text-xl font-semibold text-brand">App is not configured</h1>
           <p className="mt-2 text-sm text-muted">
-            This deployment was built without Supabase keys, so the page cannot sign anyone in.
-            Add these variables in Vercel, then redeploy.
+            This build was compiled without Supabase keys, so nobody can sign in. That usually
+            happens when a <strong className="font-medium text-ink">Preview</strong> deployment is
+            rebuilt. The customer site is the row labelled{' '}
+            <strong className="font-medium text-ink">Production</strong> — do not Redeploy Preview
+            to update it.
           </p>
           <ol className="mt-5 list-decimal space-y-2 pl-5 text-sm text-ink">
             <li>Open the Vercel project → Settings → Environment Variables</li>
             <li>
               Add <code className="rounded bg-page px-1">VITE_SUPABASE_URL</code> and{' '}
-              <code className="rounded bg-page px-1">VITE_SUPABASE_ANON_KEY</code> for Production
+              <code className="rounded bg-page px-1">VITE_SUPABASE_ANON_KEY</code>
             </li>
-            <li>Use the same values as your local <code className="rounded bg-page px-1">.env</code> file</li>
-            <li>Deployments → Redeploy the latest production deployment (rebuild, do not reuse the old build)</li>
+            <li>
+              Enable all three environments: Production, Preview, and Development (same values as
+              your local <code className="rounded bg-page px-1">.env</code>)
+            </li>
+            <li>
+              Deployments → filter to <strong className="font-medium">Production</strong> → Redeploy
+              that row, and uncheck “Use existing Build Cache”
+            </li>
           </ol>
+          <p className="mt-5 text-sm text-muted">
+            New Production builds are created by pushing GitHub branch <code className="rounded bg-page px-1">main</code>.
+            Other branches only create Preview.
+          </p>
         </div>
       </div>
     </div>

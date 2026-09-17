@@ -1,6 +1,10 @@
 -- Fix emission entries so they belong to the organisation, not the browser session.
 --
--- ONE-TIME database setup. Paste into the Supabase SQL editor and run once.
+-- If logging an activity fails with "Could not save this activity to your
+-- organisation", paste this file into the Supabase SQL editor and run it once.
+-- It adds the inventory columns the app writes, recreates log_emission_entry,
+-- and stops a missing quota table from aborting the save.
+--
 -- Safe to re-run. Never run this when logging an activity — after this exists,
 -- every save writes to the organisation automatically.
 --
@@ -30,6 +34,11 @@ create table if not exists public.emission_entries (
 
 alter table public.emission_entries add column if not exists organization_id uuid;
 alter table public.emission_entries add column if not exists owner_id uuid;
+alter table public.emission_entries
+  add column if not exists site text not null default '',
+  add column if not exists tags text[] not null default '{}',
+  add column if not exists custom_fields jsonb not null default '[]'::jsonb,
+  add column if not exists activity_date date not null default current_date;
 
 create index if not exists emission_entries_org_idx
   on public.emission_entries (organization_id, created_at desc);
@@ -152,6 +161,9 @@ create policy "entries must belong to an organisation" on public.emission_entrie
   using (organization_id is not null)
   with check (organization_id is not null);
 
+drop function if exists public.log_emission_entry(uuid, text, text, double precision, text, double precision, text, text, text);
+drop function if exists public.log_emission_entry(uuid, text, text, double precision, text, double precision, text, text, text, text, text[], jsonb, date);
+
 create or replace function public.log_emission_entry(
   p_organization_id uuid,
   p_category text,
@@ -161,7 +173,11 @@ create or replace function public.log_emission_entry(
   p_amount double precision default null,
   p_unit text default '',
   p_comment text default '',
-  p_link text default ''
+  p_link text default '',
+  p_site text default '',
+  p_tags text[] default '{}',
+  p_custom_fields jsonb default '[]'::jsonb,
+  p_activity_date date default null
 )
 returns jsonb
 language plpgsql
@@ -173,6 +189,7 @@ declare
   v_org uuid := p_organization_id;
   v_id bigint;
   v_created timestamptz;
+  v_date date := coalesce(p_activity_date, current_date);
   v_has_user_id boolean;
 begin
   if v_user is null then
@@ -200,27 +217,54 @@ begin
     where table_schema = 'public' and table_name = 'emission_entries' and column_name = 'user_id'
   ) into v_has_user_id;
 
-  if v_has_user_id then
-    execute $q$
+  begin
+    if v_has_user_id then
+      execute $q$
+        insert into public.emission_entries (
+          organization_id, owner_id, user_id, category, scope, emissions_tco2e,
+          details, amount, unit, comment, link, site, tags, custom_fields, activity_date
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        returning id, created_at
+      $q$
+      into v_id, v_created
+      using v_org, v_user, v_user::text, p_category, p_scope, p_emissions_tco2e,
+            p_details, p_amount, p_unit, p_comment, p_link,
+            coalesce(p_site, ''), coalesce(p_tags, '{}'), coalesce(p_custom_fields, '[]'::jsonb), v_date;
+    else
       insert into public.emission_entries (
-        organization_id, owner_id, user_id, category, scope, emissions_tco2e,
-        details, amount, unit, comment, link
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      returning id, created_at
-    $q$
-    into v_id, v_created
-    using v_org, v_user, v_user::text, p_category, p_scope, p_emissions_tco2e,
-          p_details, p_amount, p_unit, p_comment, p_link;
-  else
-    insert into public.emission_entries (
-      organization_id, owner_id, category, scope, emissions_tco2e,
-      details, amount, unit, comment, link
-    ) values (
-      v_org, v_user, p_category, p_scope, p_emissions_tco2e,
-      p_details, p_amount, p_unit, p_comment, p_link
-    )
-    returning id, created_at into v_id, v_created;
-  end if;
+        organization_id, owner_id, category, scope, emissions_tco2e,
+        details, amount, unit, comment, link, site, tags, custom_fields, activity_date
+      ) values (
+        v_org, v_user, p_category, p_scope, p_emissions_tco2e,
+        p_details, p_amount, p_unit, p_comment, p_link,
+        coalesce(p_site, ''), coalesce(p_tags, '{}'), coalesce(p_custom_fields, '[]'::jsonb), v_date
+      )
+      returning id, created_at into v_id, v_created;
+    end if;
+  exception
+    when undefined_column then
+      if v_has_user_id then
+        execute $q$
+          insert into public.emission_entries (
+            organization_id, owner_id, user_id, category, scope, emissions_tco2e,
+            details, amount, unit, comment, link
+          ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          returning id, created_at
+        $q$
+        into v_id, v_created
+        using v_org, v_user, v_user::text, p_category, p_scope, p_emissions_tco2e,
+              p_details, p_amount, p_unit, p_comment, p_link;
+      else
+        insert into public.emission_entries (
+          organization_id, owner_id, category, scope, emissions_tco2e,
+          details, amount, unit, comment, link
+        ) values (
+          v_org, v_user, p_category, p_scope, p_emissions_tco2e,
+          p_details, p_amount, p_unit, p_comment, p_link
+        )
+        returning id, created_at into v_id, v_created;
+      end if;
+  end;
 
   return jsonb_build_object(
     'id', v_id,
@@ -234,6 +278,10 @@ begin
     'unit', p_unit,
     'comment', p_comment,
     'link', p_link,
+    'site', coalesce(p_site, ''),
+    'tags', to_jsonb(coalesce(p_tags, '{}')),
+    'custom_fields', coalesce(p_custom_fields, '[]'::jsonb),
+    'activity_date', v_date,
     'created_at', v_created
   );
 end;
@@ -291,10 +339,10 @@ begin
 end;
 $$;
 
-revoke all on function public.log_emission_entry(uuid, text, text, double precision, text, double precision, text, text, text) from public, anon;
+revoke all on function public.log_emission_entry(uuid, text, text, double precision, text, double precision, text, text, text, text, text[], jsonb, date) from public, anon;
 revoke all on function public.list_emission_entries(uuid) from public, anon;
 revoke all on function public.delete_emission_entry(bigint) from public, anon;
-grant execute on function public.log_emission_entry(uuid, text, text, double precision, text, double precision, text, text, text) to authenticated;
+grant execute on function public.log_emission_entry(uuid, text, text, double precision, text, double precision, text, text, text, text, text[], jsonb, date) to authenticated;
 grant execute on function public.list_emission_entries(uuid) to authenticated;
 grant execute on function public.delete_emission_entry(bigint) to authenticated;
 

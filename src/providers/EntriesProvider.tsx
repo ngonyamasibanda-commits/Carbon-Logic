@@ -10,13 +10,17 @@ import {
 } from '../lib/entries'
 import { FACTOR_CATALOG } from '../lib/factor-catalog'
 import { persistFactors } from '../lib/factors-store'
+import { customFieldsWithEvidence, stashEvidenceBlobs, uploadEvidenceFiles } from '../lib/evidence'
 import { EntriesContext } from '../lib/entries-context'
-import { isLocalOrganizationId } from '../lib/auth'
+import { isLocalOrganizationId, recordAuditEvent } from '../lib/auth'
 import { useAuth } from '../lib/auth-context'
+import { assertYearUnlocked } from '../lib/period-lock'
 import type { EmissionEntry, EmissionFactor } from '../lib/types'
+import { useOrg } from './OrgProvider'
 
 export function EntriesProvider({ children }: { children: ReactNode }) {
   const { organization, user } = useAuth()
+  const { profile } = useOrg()
   const [entries, setEntries] = useState<EmissionEntry[]>([])
   const [factors, setFactors] = useState<Map<string, EmissionFactor>>(
     () => new Map(FACTOR_CATALOG.map((factor) => [factor.key, factor])),
@@ -35,7 +39,7 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
     setLoading(true)
     setError(null)
     try {
-      const nextFactors = await loadFactors()
+      const nextFactors = await loadFactors(tenant.organizationId)
       setFactors(nextFactors)
       const nextEntries = await fetchEntries(tenant)
       setEntries(nextEntries)
@@ -72,19 +76,45 @@ export function EntriesProvider({ children }: { children: ReactNode }) {
   const addEntry = useCallback(
     async (input: Omit<EmissionEntry, 'id' | 'created_at'>) => {
       if (!tenant) throw new Error('No active organisation')
-      const saved = await saveEntry(tenant, input)
+      assertYearUnlocked(profile.lockedYears, input.activity_date)
+      const uploaded = await uploadEvidenceFiles(
+        isLocalOrganizationId(tenant.organizationId) ? undefined : tenant.organizationId,
+        input.files ?? [],
+      )
+      await stashEvidenceBlobs(uploaded)
+      const saved = await saveEntry(tenant, {
+        ...input,
+        files: uploaded,
+        customFields: customFieldsWithEvidence(input.customFields, uploaded),
+      })
       setEntries((prev) => [saved, ...prev])
+      if (!isLocalOrganizationId(tenant.organizationId)) {
+        void recordAuditEvent(tenant.organizationId, 'inventory.entry_created', 'emission_entry', saved.id, {
+          category: saved.category,
+          tco2e: saved.emissions_tco2e,
+          activity_date: saved.activity_date,
+        })
+      }
     },
-    [tenant],
+    [tenant, profile.lockedYears],
   )
 
   const removeEntry = useCallback(
     async (id: string) => {
       if (!tenant) throw new Error('No active organisation')
+      const existing = entries.find((row) => row.id === id)
+      if (existing) assertYearUnlocked(profile.lockedYears, existing.activity_date || existing.created_at)
       await deleteEntry(tenant, id)
       setEntries((prev) => prev.filter((row) => row.id !== id))
+      if (existing && !isLocalOrganizationId(tenant.organizationId)) {
+        void recordAuditEvent(tenant.organizationId, 'inventory.entry_deleted', 'emission_entry', id, {
+          category: existing.category,
+          tco2e: existing.emissions_tco2e,
+          activity_date: existing.activity_date,
+        })
+      }
     },
-    [tenant],
+    [tenant, entries, profile.lockedYears],
   )
 
   const saveFactors = useCallback(

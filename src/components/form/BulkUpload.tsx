@@ -13,6 +13,7 @@ import { downloadText } from '../../lib/export'
 import type { CategoryConfig, EmissionEntry } from '../../lib/types'
 import { emptyAdditional } from '../../lib/types'
 import { useEntries } from '../../lib/entries-context'
+import { useToast } from '../../lib/toast-context'
 
 type Props = {
   category: CategoryConfig
@@ -21,6 +22,7 @@ type Props = {
 
 export default function BulkUpload({ category, onClose }: Props) {
   const { factors, addEntry } = useEntries()
+  const toast = useToast()
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
@@ -53,7 +55,9 @@ export default function BulkUpload({ category, onClose }: Props) {
     const text = await file.text()
     const rows = parseCsv(text)
     if (rows.length === 0) {
-      setError('No data rows found. Download the template and keep the header row.')
+      const message = 'No data rows found. Download the template and keep the header row.'
+      setError(message)
+      toast.error(message)
       return
     }
 
@@ -106,11 +110,12 @@ export default function BulkUpload({ category, onClose }: Props) {
         .split(/[;|]/)
         .map((tag) => tag.trim())
         .filter(Boolean)
+      extras.activity_date = (values.activity_date || extras.activity_date).slice(0, 10)
 
       const totalTco2e = calculateTco2e(activityAmount, factor.conversionValue)
       const entry: Omit<EmissionEntry, 'id' | 'created_at'> = {
         category: category.id,
-        scope: category.scope,
+        scope: category.resolveScope?.(values) ?? category.scope,
         emissions_tco2e: totalTco2e,
         details: `${category.resolveDetails(values, activityAmount)}${
           factor.isPlaceholder ? ' [PLACEHOLDER factor]' : ''
@@ -132,7 +137,10 @@ export default function BulkUpload({ category, onClose }: Props) {
     }
 
     setImporting(false)
-    setStatus(`${imported} rows imported, ${skipped} skipped.`)
+    const summary = `${imported} rows imported, ${skipped} skipped.`
+    setStatus(summary)
+    if (imported > 0) toast.success(summary)
+    else toast.error(summary)
     if (failures.length) setError(failures.slice(0, 8).join('\n'))
     if (fileInputRef.current) fileInputRef.current.value = ''
   }

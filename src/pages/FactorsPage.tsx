@@ -1,10 +1,14 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { downloadText } from '../lib/export'
+import { epdTemplateCsv, EPD_REQUIRED_MATERIALS } from '../lib/epd-materials'
+import { formatFactor } from '../lib/format'
 import { factorsToCsv, monthsStale, parseFactorSpreadsheet } from '../lib/factors-store'
 import { safeHttpUrl } from '../lib/safe'
 import { SOURCE_FAMILIES, type EmissionFactor, type Scope, type SourceFamily } from '../lib/types'
 import { useEntries } from '../lib/entries-context'
+import { useToast } from '../lib/toast-context'
+import Callout from '../components/ui/Callout'
 
 const SCOPES: Array<Scope | 'Custom'> = ['Scope 1', 'Scope 2', 'Scope 3', 'Custom']
 
@@ -13,6 +17,7 @@ const FAMILY_STYLE: Record<SourceFamily, string> = {
   DESNZ: 'bg-teal-100 text-teal-800',
   BEIS: 'bg-sky-100 text-sky-800',
   ICE: 'bg-violet-100 text-violet-800',
+  EPD: 'bg-indigo-100 text-indigo-800',
   EIO: 'bg-amber-100 text-amber-900',
   EPA: 'bg-orange-100 text-orange-800',
   IPCC: 'bg-slate-200 text-slate-800',
@@ -37,6 +42,7 @@ const emptyForm = (): EmissionFactor => ({
 
 export default function FactorsPage() {
   const { factors, saveFactors } = useEntries()
+  const toast = useToast()
   const [query, setQuery] = useState('')
   const [editing, setEditing] = useState<EmissionFactor | null>(null)
   const [form, setForm] = useState<EmissionFactor>(emptyForm)
@@ -57,15 +63,18 @@ export default function FactorsPage() {
 
   const staleCount = rows.filter((factor) => monthsStale(factor) || factor.isPlaceholder).length
 
-  async function persist(next: EmissionFactor[]) {
+  async function persist(next: EmissionFactor[], message?: string) {
     await saveFactors(next)
-    setStatus(`Saved ${next.length} emission factors.`)
+    const text = message ?? `Saved ${next.length} emission factors.`
+    setStatus(text)
+    toast.success(text)
   }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
     if (!form.key.trim() || !Number.isFinite(form.conversionValue)) {
       setStatus('Key and conversion value are required.')
+      toast.error('Key and conversion value are required.')
       return
     }
     const next = new Map(factors)
@@ -83,18 +92,19 @@ export default function FactorsPage() {
     if (!file) return
     if (/\.xlsx?$/i.test(file.name)) {
       setStatus('Save the workbook as CSV or TSV first. Excel binary files cannot be imported directly.')
+      toast.error('Save the workbook as CSV or TSV first. Excel binary files cannot be imported directly.')
       return
     }
     const text = await file.text()
     const imported = parseFactorSpreadsheet(text)
     if (imported.length === 0) {
       setStatus('No valid rows found. Use columns key (or activity_type) and conversion_value (or co2e_factor).')
+      toast.error('No valid rows found in that spreadsheet.')
       return
     }
     const next = new Map(factors)
     for (const factor of imported) next.set(factor.key, factor)
-    await persist([...next.values()])
-    setStatus(`Imported ${imported.length} rows from ${file.name}.`)
+    await persist([...next.values()], `Imported ${imported.length} rows from ${file.name}.`)
   }
 
   function startEdit(factor: EmissionFactor) {
@@ -117,10 +127,12 @@ export default function FactorsPage() {
         <div>
           <h1 className="text-3xl font-bold text-ink">Emission factors</h1>
           <p className="mt-2 max-w-3xl text-sm text-muted">
-            Conversion values are kg CO₂e per activity unit. tCO₂e = (activity × conversion
-            value) / 1000. Each row shows the publisher: DEFRA / DESNZ (UK government
-            conversion factors 2025, formerly BEIS), ICE (Circular Ecology), or EIO / EPA /
-            IPCC when you import spend-based or GWP sources.
+            Conversion values are the published kg CO₂e per activity unit (or GWP for refrigerants
+            and methane). Waste and materials are per tonne, UK spend is per £, CEDA spend is per
+            2023 producer-price US dollar, freight is per tkm, flights and taxis are per
+            passenger-km. The last step is always tCO₂e = activity × factor ÷ 1,000. Each row shows
+            the publisher: DEFRA / DESNZ 2026, CEDA by Watershed (EIO), EPA Hub 2026, or an EPD /
+            user factor for steel, cement, and similar.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -132,7 +144,7 @@ export default function FactorsPage() {
             <Download size={14} /> Export spreadsheet
           </button>
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-brand px-3 py-2 text-sm font-semibold text-white">
-            <Upload size={14} /> Import spreadsheet
+            <Upload size={14} /> Import EPD or spreadsheet
             <input
               type="file"
               accept=".csv,text/csv,.tsv,text/tab-separated-values"
@@ -140,6 +152,13 @@ export default function FactorsPage() {
               onChange={(event) => void onImport(event.target.files?.[0])}
             />
           </label>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-md border border-line bg-white px-3 py-2 text-sm"
+            onClick={() => downloadText('epd-material-factors.csv', epdTemplateCsv(), 'text/csv')}
+          >
+            <Download size={14} /> EPD template
+          </button>
           <button
             type="button"
             className="rounded-md border border-line px-3 py-2 text-sm"
@@ -153,12 +172,34 @@ export default function FactorsPage() {
         </div>
       </div>
 
+      <Callout tone="info">
+        Spend-based Open CEDA rows are CEDA by Watershed (CEDA 2025, CC BY-SA 4.0), in kg CO₂e per
+        2023 producer-price US dollar. Defra SIC-19 rows stay in kg CO₂e per £. US EPA Hub 2026
+        electricity and AR6 GWPs are catalogued separately and do not replace DESNZ 2026 UK
+        activity factors. Steel, cement, aluminium, copper, lime, and rebar still need a supplier
+        EPD — this library does not vendor ICE, and the EC3 country files supplied here are EPD
+        counts, not GWP values.
+      </Callout>
+
       {staleCount > 0 ? (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {staleCount} factor{staleCount === 1 ? '' : 's'} are older than 12 months or still
           marked as seed/placeholder. Update them before using figures in a filing.
         </p>
       ) : null}
+      <Callout tone="info">
+        Steel, rebar, cement, aluminium, copper, and lime are not in the published DESNZ 2026
+        library. Add them here from a supplier EPD (keep the keys{' '}
+        {EPD_REQUIRED_MATERIALS.map((row) => row.key).join(', ')}
+        ) so Bulk Materials can calculate. Generic ICE database values are not shipped in this
+        product.
+      </Callout>
+      <Callout tone="tip">
+        Download the EPD template, paste GWP A1–A3 into <span className="font-semibold">gwp_a1_a3</span>{' '}
+        and set <span className="font-semibold">declared_unit</span> to kg CO2e/kg or kg CO2e per
+        tonne. Import converts per-kg figures to kg CO₂e per tonne automatically. You can also
+        fill conversion_value yourself if the EPD is already per tonne.
+      </Callout>
       {status ? <p className="text-sm text-brand-dark">{status}</p> : null}
 
       <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -222,7 +263,7 @@ export default function FactorsPage() {
       <input
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search factors or source (DEFRA, DESNZ, ICE, EIO)..."
+        placeholder="Search factors or source (DEFRA, DESNZ, EPD, EIO)..."
         className="w-full rounded-md border border-line px-3 py-2 text-sm"
       />
 
@@ -255,7 +296,7 @@ export default function FactorsPage() {
                 <td className="px-3 py-2 font-mono text-xs">{factor.key}</td>
                 <td className="px-3 py-2">{factor.category}</td>
                 <td className="px-3 py-2">{factor.scope}</td>
-                <td className="px-3 py-2">{factor.conversionValue}</td>
+                <td className="px-3 py-2 tabular-nums">{formatFactor(factor.conversionValue)}</td>
                 <td className="px-3 py-2">{factor.unit}</td>
                 <td className="px-3 py-2">
                   <span

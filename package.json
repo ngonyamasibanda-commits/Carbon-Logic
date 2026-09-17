@@ -11,7 +11,12 @@
     "verify:sbti": "tsx scripts/verify-sbti.ts",
     "verify:migration": "tsx scripts/verify-migration.ts",
     "verify:entries": "tsx scripts/verify-entries.ts",
-    "verify:bulk": "tsx scripts/verify-bulk.ts"
+    "verify:bulk": "tsx scripts/verify-bulk.ts",
+    "verify:format": "tsx scripts/verify-format.ts",
+    "verify:factors": "tsx scripts/verify-factors.ts",
+    "verify:emissions": "tsx scripts/verify-emissions.ts",
+    "verify:professional": "tsx scripts/verify-professional.ts",
+    "verify:evidence": "tsx scripts/verify-evidence.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",

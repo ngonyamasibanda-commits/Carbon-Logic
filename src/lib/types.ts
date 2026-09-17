@@ -5,6 +5,7 @@ export const SOURCE_FAMILIES = [
   'DESNZ',
   'BEIS',
   'ICE',
+  'EPD',
   'EIO',
   'EPA',
   'IPCC',
@@ -20,8 +21,15 @@ export type FormField = {
   label: string
   type: FieldType
   options?: string[]
+  optionGroups?: Array<{ label: string; options: string[] }>
+  optionsFrom?: (values: Record<string, string>) => string[]
+  visibleWhen?:
+    | { field: string; equals: string | string[] }
+    | Array<{ field: string; equals: string | string[] }>
   hint?: string
   placeholder?: string
+  /** Skip HTML required when the field is supporting data (water-positive volumes, optional GWP set). */
+  optional?: boolean
   /** If set, a unit selector appears beside this number field. The chosen unit value is stored in `key + '_unit'`. */
   unitOptions?: UnitOption[]
 }
@@ -53,7 +61,18 @@ export type CategoryConfig = {
   resolveUnit: (values: Record<string, string>) => string
   resolveDetails: (values: Record<string, string>, amount: number) => string
   resolveActivityAmount?: (values: Record<string, string>, amount: number) => number
+  /** Hired fleet uses the same DESNZ km/litre rows but must be logged as Scope 3. */
+  resolveScope?: (values: Record<string, string>) => Scope
+  /** Optional extra lines to offer (WTT / T&D / wastewater) without mixing scopes on one row. */
+  chainExtras?: Array<'wtt' | 'td' | 'treatment' | 'ev' | 'ev_td'>
 }
+
+/**
+ * How a published factor is applied. DESNZ/EPA inventory factors are kg CO₂e
+ * per activity unit; refrigerant and methane rows are GWPs; CEDA EEIO rows
+ * convert spend into 2023 producer-price USD first.
+ */
+export type FactorMethod = 'kg_per_unit' | 'gwp' | 'spend'
 
 export type EmissionFactor = {
   key: string
@@ -69,6 +88,24 @@ export type EmissionFactor = {
   validFrom: string
   lastVerifiedAt: string
   isPlaceholder: boolean
+  method?: FactorMethod
+  /** Matching WTT factor for the same activity unit, when DESNZ publishes one. */
+  wttKey?: string
+  /** Matching T&D factor (electricity / heat), when DESNZ publishes one. */
+  tdKey?: string
+  /** DESNZ UK electricity for EVs (Scope 2), when the row is a PHEV/BEV km factor. */
+  evKey?: string
+  /** DESNZ UK electricity T&D for EVs (Scope 3). */
+  evTdKey?: string
+  /** CEDA / EEIO: published factor currency (Open CEDA GHG_t_Raw is USD). */
+  spendCurrency?: 'GBP' | 'USD'
+  /** Local currency units per 1 USD, from the CEDA exchange-rate sheet. */
+  fxGbpPerUsd?: number
+  /** BEA purchaser–producer ratio from Open CEDA (producer EF × ratio = purchaser EF). */
+  purchaserProducer?: number
+  /** Sector price index for the latest CEDA year (2025; base 2023 = 100). */
+  priceIndex?: number
+  cedaCode?: string
 }
 
 export type CustomField = {
@@ -77,10 +114,12 @@ export type CustomField = {
 }
 
 export type AttachedFile = {
+  id: string
   name: string
   size: number
   type: string
   dataUrl: string
+  storagePath?: string
 }
 
 export type EmissionEntry = {
@@ -98,8 +137,18 @@ export type EmissionEntry = {
   tags: string[]
   customFields: CustomField[]
   files: AttachedFile[]
+  /** Date the activity occurred (reporting period). Falls back to created_at. */
+  activity_date?: string
   /** Set when the row is stored for an organisation; omitted on unsynced local drafts. */
   organization_id?: string
+  /** Dual Scope 2 working for electricity and heat rows. */
+  scope2?: {
+    locationTco2e: number
+    marketTco2e: number
+    instrument: string
+    marketFactorKg: number
+    kwh: number
+  }
 }
 
 export type AdditionalState = {
@@ -109,6 +158,7 @@ export type AdditionalState = {
   tags: string[]
   customFields: CustomField[]
   files: AttachedFile[]
+  activity_date: string
 }
 
 export const emptyAdditional = (): AdditionalState => ({
@@ -118,4 +168,5 @@ export const emptyAdditional = (): AdditionalState => ({
   tags: [],
   customFields: [],
   files: [],
+  activity_date: new Date().toISOString().slice(0, 10),
 })

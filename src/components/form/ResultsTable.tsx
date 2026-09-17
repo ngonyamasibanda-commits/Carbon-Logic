@@ -1,11 +1,19 @@
 import { Paperclip, Trash2 } from 'lucide-react'
 import { getCategory } from '../../lib/categories'
-import { safeDownloadUrl } from '../../lib/safe'
+import { entryActivityDate } from '../../lib/entry-date'
+import { downloadEvidenceFile, filesForEntry, formatFileSize } from '../../lib/evidence'
+import { formatTco2e } from '../../lib/format'
+import { entryYearIsLocked } from '../../lib/period-lock'
+import { safeHttpUrl } from '../../lib/safe'
+import { parseScope2Meta } from '../../lib/scope2'
+import { useToast } from '../../lib/toast-context'
 import type { EmissionEntry } from '../../lib/types'
 
 type Props = {
   entries: EmissionEntry[]
   onDelete: (id: string) => void
+  lockedYears?: number[]
+  canDelete?: boolean
 }
 
 function formatDate(value: string) {
@@ -14,7 +22,8 @@ function formatDate(value: string) {
   return date.toISOString().slice(0, 10)
 }
 
-export default function ResultsTable({ entries, onDelete }: Props) {
+export default function ResultsTable({ entries, onDelete, lockedYears = [], canDelete = true }: Props) {
+  const toast = useToast()
   return (
     <section className="mt-8">
       <h2 className="mb-3 text-xl font-bold text-ink">Results</h2>
@@ -22,7 +31,7 @@ export default function ResultsTable({ entries, onDelete }: Props) {
         <table className="w-full text-left text-sm">
           <thead className="bg-page text-muted">
             <tr>
-              <th className="px-4 py-3 font-semibold">Date Added</th>
+              <th className="px-4 py-3 font-semibold">Activity date</th>
               <th className="px-4 py-3 font-semibold">Scope</th>
               <th className="px-4 py-3 font-semibold">Category</th>
               <th className="px-4 py-3 font-semibold">Emissions (tCO2e)</th>
@@ -35,51 +44,76 @@ export default function ResultsTable({ entries, onDelete }: Props) {
             {entries.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-muted">
-                  No entries, please add some data above.
+                  No entries yet. Log an activity above.
                 </td>
               </tr>
             ) : (
               entries.map((entry) => {
                 const category = getCategory(entry.category)
+                const evidence = safeHttpUrl(entry.link)
+                const files = filesForEntry(entry)
+                const locked = entryYearIsLocked(lockedYears, entry)
+                const scope2 = entry.scope2 ?? parseScope2Meta(entry.customFields)
                 return (
                   <tr key={entry.id} className="border-t border-line">
-                    <td className="px-4 py-3">{formatDate(entry.created_at)}</td>
+                    <td className="px-4 py-3">{formatDate(entryActivityDate(entry))}</td>
                     <td className="px-4 py-3">{entry.scope}</td>
                     <td className="px-4 py-3">{category?.name ?? entry.category}</td>
-                    <td className="px-4 py-3 font-semibold">{entry.emissions_tco2e.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-xs">
-                      <div>{entry.site || '—'}</div>
-                      <div className="mt-1 text-violet-700">{entry.tags.join(', ') || ''}</div>
-                      {entry.files.length > 0 ? (
-                        <div className="mt-1 flex flex-wrap gap-1 text-sky-700">
-                          {entry.files.map((file) => {
-                            const href = safeDownloadUrl(file.dataUrl)
-                            if (!href) return null
-                            return (
-                              <a
-                                key={file.name}
-                                href={href}
-                                download={file.name}
-                                className="inline-flex items-center gap-1 hover:underline"
-                              >
-                                <Paperclip size={11} />
-                                {file.name}
-                              </a>
-                            )
-                          })}
+                    <td className="px-4 py-3 font-semibold tabular-nums">
+                      {formatTco2e(entry.emissions_tco2e)}
+                      {scope2 ? (
+                        <div className="mt-1 text-[11px] font-normal text-muted">
+                          L {formatTco2e(scope2.locationTco2e)} · M {formatTco2e(scope2.marketTco2e)}
+                        </div>
+                      ) : null}
+                      {entry.id.startsWith('local-') || entry.id.startsWith('pending-') ? (
+                        <div className="mt-1 text-[11px] font-normal text-amber-800">
+                          Saving to organisation…
                         </div>
                       ) : null}
                     </td>
+                    <td className="px-4 py-3 text-xs">
+                      <div>{entry.site || '—'}</div>
+                      <div className="mt-1 text-violet-700">{entry.tags.join(', ') || ''}</div>
+                      {evidence ? (
+                        <a href={evidence} target="_blank" rel="noreferrer" className="mt-1 inline-block text-sky-700 hover:underline">
+                          Evidence link
+                        </a>
+                      ) : null}
+                      {files.map((file) => (
+                        <button
+                          key={file.id}
+                          type="button"
+                          className="mt-1 flex items-center gap-1 text-sky-700 hover:underline"
+                          onClick={() => {
+                            void downloadEvidenceFile(file).catch((err) =>
+                              toast.error(err instanceof Error ? err.message : `Could not open ${file.name}.`),
+                            )
+                          }}
+                        >
+                          <Paperclip size={11} />
+                          <span className="truncate" title={`${file.name} (${formatFileSize(file.size)})`}>
+                            {file.name}
+                          </span>
+                        </button>
+                      ))}
+                    </td>
                     <td className="px-4 py-3 text-muted">{entry.comment || '—'}</td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => onDelete(entry.id)}
-                        className="text-red-600 hover:text-red-700"
-                        aria-label="Delete entry"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {canDelete && !locked ? (
+                        <button
+                          type="button"
+                          onClick={() => onDelete(entry.id)}
+                          className="text-red-600 hover:text-red-700"
+                          aria-label="Delete entry"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      ) : locked ? (
+                        <span className="text-xs text-muted">Closed year</span>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                   </tr>
                 )

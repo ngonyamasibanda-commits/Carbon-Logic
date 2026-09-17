@@ -113,6 +113,20 @@ async function main() {
   await db.exec(migration)
   check('migration is idempotent (second run is clean)', true)
 
+  const saasWorkspace = readFileSync(join(root, 'supabase/migrations/0006_saas_cloud_workspace.sql'), 'utf8')
+  await expectFailure(
+    'SaaS workspace SQL refuses to run before quota tables exist',
+    async () => {
+      try {
+        await db.exec(saasWorkspace)
+      } catch (error) {
+        await db.exec('rollback').catch(() => undefined)
+        throw error
+      }
+    },
+    /org_quotas/,
+  )
+
   await db.exec(`
     grant usage on schema public to authenticated;
     grant select, insert, update, delete on all tables in schema public to authenticated;
@@ -145,6 +159,64 @@ async function main() {
 
   await db.exec(readFileSync(join(root, 'supabase/fix_entry_save.sql'), 'utf8'))
   check('entry-save repair script applies cleanly', true)
+
+  await db.exec(saasWorkspace)
+  check('SaaS cloud workspace migration applies cleanly', true)
+  await db.exec(saasWorkspace)
+  check('SaaS cloud workspace migration is idempotent (second run is clean)', true)
+
+  const governance = readFileSync(join(root, 'supabase/migrations/0007_inventory_governance.sql'), 'utf8')
+  await db.exec(governance)
+  check('inventory governance migration applies cleanly', true)
+  await db.exec(governance)
+  check('inventory governance migration is idempotent (second run is clean)', true)
+  check(
+    'fix_inventory_governance.sql matches migration 0007',
+    readFileSync(join(root, 'supabase/fix_inventory_governance.sql'), 'utf8') === governance,
+  )
+
+  const evidence = readFileSync(join(root, 'supabase/migrations/0008_evidence_storage.sql'), 'utf8')
+  await db.exec(evidence)
+  check('evidence storage migration applies cleanly without a Storage schema', true)
+  await db.exec(evidence)
+  check('evidence storage migration is idempotent (second run is clean)', true)
+  check(
+    'fix_evidence_storage.sql matches migration 0008',
+    readFileSync(join(root, 'supabase/fix_evidence_storage.sql'), 'utf8') === evidence,
+  )
+  const orgFromPath = await db.query<{ evidence_org_from_path: string | null }>(
+    `select public.evidence_org_from_path('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/file/invoice.pdf')`,
+  )
+  check(
+    'evidence path helper reads the organisation id',
+    orgFromPath.rows[0]?.evidence_org_from_path === 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  )
+
+  const liveFix = readFileSync(join(root, 'supabase/fix_live_database.sql'), 'utf8')
+  const liveFixMarker = '-- >>> BEGIN MIGRATIONS\n'
+  const markerAt = liveFix.indexOf(liveFixMarker)
+  const rebuiltLiveFix =
+    liveFix.slice(0, markerAt + liveFixMarker.length) +
+    [
+      '0002_quotas_and_hardening.sql',
+      '0003_ip_rate_limits.sql',
+      '0004_platform_owner_access.sql',
+      '0005_org_scoped_entries.sql',
+      '0006_saas_cloud_workspace.sql',
+    ]
+      .map((name) => readFileSync(join(root, 'supabase/migrations', name), 'utf8').replace(/\s+$/, ''))
+      .join('\n\n') +
+    '\n'
+  check(
+    'fix_live_database.sql is migrations 0002–0006 concatenated',
+    markerAt >= 0 && liveFix === rebuiltLiveFix,
+  )
+  check(
+    'fix_saas_workspace.sql matches migration 0006',
+    readFileSync(join(root, 'supabase/fix_saas_workspace.sql'), 'utf8') === saasWorkspace,
+  )
+  await db.exec(liveFix)
+  check('live-database catch-up script is idempotent on an already-migrated database', true)
 
   console.log('\nProvisioning users\n')
   const users = await db.query<{ id: string; email: string }>(`
@@ -526,6 +598,111 @@ async function main() {
     ),
   )
 
+  await asUser(id['editor@acme.test'], async () => {
+    await db.query(
+      `insert into public.sites (organization_id, name, type, region)
+       values ($1, 'Pit A', 'mine', 'United Kingdom')`,
+      [acme],
+    )
+    check('an editor can add a facility for the organisation', true)
+  })
+
+  await asUser(id['viewer@acme.test'], async () => {
+    const rows = await db.query<{ name: string }>('select name from public.sites')
+    check('a colleague sees the same facilities', rows.rows.some((row) => row.name === 'Pit A'))
+  })
+
+  await asUser(id['rival@other.test'], async () => {
+    const rows = await db.query('select * from public.sites')
+    check('another tenant cannot see those facilities', rows.rows.length === 0)
+  })
+
+  await asUser(id['owner@acme.test'], async () => {
+    const listed = await db.query<{ list_org_members: unknown }>('select public.list_org_members($1)', [acme])
+    const people = listedRows(listed.rows[0].list_org_members)
+    check(
+      'list_org_members returns people in this organisation',
+      people.length >= 3,
+      `got ${people.length}`,
+    )
+  })
+
+  const lateJoiner = await db.query<{ id: string }>(`
+    insert into auth.users (email) values ('latejoin@acme.test') returning id
+  `)
+  await db.query(
+    `insert into public.invitations (organization_id, email, role, expires_at)
+     values ($1, 'latejoin@acme.test', 'editor', now() + interval '30 days')`,
+    [acme],
+  )
+  await asUser(lateJoiner.rows[0].id, async () => {
+    await db.query('select public.redeem_my_invitations()')
+  })
+  const redeemedLater = await countOf(
+    'select count(*) from public.memberships where organization_id = $1 and user_id = $2',
+    [acme, lateJoiner.rows[0].id],
+  )
+  check('signing in redeems a pending invitation for an existing account', redeemedLater === 1)
+
+  const profileFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  check('memberships reference profiles so People & Access can list colleagues', profileFk === 1)
+
+  await db.exec('alter table public.memberships drop constraint memberships_user_id_profiles_fkey')
+  await db.query('delete from public.profiles where id = $1', [id['editor@acme.test']])
+  await db.exec(saasWorkspace)
+  const restoredProfile = await countOf('select count(*) from public.profiles where id = $1', [
+    id['editor@acme.test'],
+  ])
+  const restoredFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  check(
+    're-running the SaaS migration backfills missing profiles before adding the FK',
+    restoredProfile === 1 && restoredFk === 1,
+    `profile=${restoredProfile} fk=${restoredFk}`,
+  )
+
+  await db.exec('alter table public.memberships drop constraint memberships_user_id_profiles_fkey')
+  await db.query('delete from public.profiles where id = $1', [id['viewer@acme.test']])
+  await db.exec(readFileSync(join(root, 'supabase/fix_memberships_profiles.sql'), 'utf8'))
+  const repairedProfile = await countOf('select count(*) from public.profiles where id = $1', [
+    id['viewer@acme.test'],
+  ])
+  const repairedFk = await countOf(`
+    select count(*) from pg_constraint
+    where conname = 'memberships_user_id_profiles_fkey'
+  `)
+  const profilesForced = await db.query<{ relforcerowsecurity: boolean; relrowsecurity: boolean }>(`
+    select relforcerowsecurity, relrowsecurity
+    from pg_class
+    where oid = 'public.profiles'::regclass
+  `)
+  check(
+    'fix_memberships_profiles.sql backfills the missing profile, adds the FK, and leaves FORCE RLS on',
+    repairedProfile === 1 &&
+      repairedFk === 1 &&
+      profilesForced.rows[0]?.relrowsecurity === true &&
+      profilesForced.rows[0]?.relforcerowsecurity === true,
+    `profile=${repairedProfile} fk=${repairedFk} rls=${JSON.stringify(profilesForced.rows[0])}`,
+  )
+
+  await asUser(id['editor@acme.test'], async () => {
+    const logged = await db.query<{ log_emission_entry: Record<string, unknown> }>(
+      `select public.log_emission_entry($1, 'site_fuel', 'Scope 1', 2.2, 'diesel', 100, 'L', '', '', 'Pit A', array['ytd'], '[]'::jsonb, '2025-03-01')`,
+      [acme],
+    )
+    const row = logged.rows[0].log_emission_entry
+    check(
+      'logged activities keep the site and activity date on the organisation',
+      row.site === 'Pit A' && String(row.activity_date).includes('2025-03-01'),
+      `got ${JSON.stringify(row)}`,
+    )
+  })
+
   console.log('\nFactors, audit log and profiles\n')
 
   await asUser(id['viewer@acme.test'], async () => {
@@ -593,7 +770,7 @@ async function main() {
     const emails = rows.rows.map((r) => r.email).sort()
     check(
       'a member sees colleague profiles but not strangers',
-      emails.length === 4 && !emails.includes('rival@other.test'),
+      emails.length === 5 && !emails.includes('rival@other.test'),
       emails.join(', '),
     )
   })
@@ -858,7 +1035,7 @@ async function main() {
   check('quota repair script applies cleanly', true)
 
   await db.query(
-    'update public.org_quotas set entries_per_hour = 2000 where organization_id = $1',
+    'update public.org_quotas set entries_per_hour = 50000 where organization_id = $1',
     [acme],
   )
 
@@ -868,9 +1045,9 @@ async function main() {
       md5('203.0.113.9'),
       'write_minute',
       date_bin('1 minute', now(), timestamptz '2000-01-01+00'),
-      90
+      400
     )
-    on conflict (ip_hash, action, window_start) do update set count = 90
+    on conflict (ip_hash, action, window_start) do update set count = 400
   `)
   await asUser(
     id['editor@acme.test'],
@@ -893,6 +1070,44 @@ async function main() {
     const rows = await db.query('select * from public.ip_usage_windows')
     check('clients cannot read IP usage buckets', rows.rows.length === 0)
   })
+
+  await asUser(id['owner@acme.test'], async () => {
+    await db.query('select public.set_reporting_year_lock($1, $2, true, $3)', [
+      acme,
+      2026,
+      'year-end close',
+    ])
+  })
+  await asUser(id['editor@acme.test'], () =>
+    expectFailure(
+      'an editor cannot log activity into a closed reporting year',
+      () =>
+        db.query(
+          `insert into public.emission_entries
+             (organization_id, owner_id, category, scope, emissions_tco2e, activity_date)
+           values ($1, $2, 'fuels', 'Scope 1', 1, '2026-03-01')`,
+          [acme, id['editor@acme.test']],
+        ),
+      /closed/i,
+    ),
+  )
+  await asUser(id['editor@acme.test'], async () => {
+    const inserted = await db.query(
+      `insert into public.emission_entries
+         (organization_id, owner_id, category, scope, emissions_tco2e, activity_date)
+       values ($1, $2, 'fuels', 'Scope 1', 1, '2025-03-01')
+       returning id`,
+      [acme, id['editor@acme.test']],
+    )
+    check('an editor can still log activity in an open year', inserted.rows.length === 1)
+  })
+  await asUser(id['viewer@acme.test'], () =>
+    expectFailure(
+      'a viewer cannot close a reporting year',
+      () => db.query('select public.set_reporting_year_lock($1, $2, true, $3)', [acme, 2025, 'no']),
+      /administrator/i,
+    ),
+  )
 
   console.log(`\n${passed} passed, ${failed} failed\n`)
   await db.close()

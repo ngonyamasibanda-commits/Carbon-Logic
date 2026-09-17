@@ -116,7 +116,9 @@ export default function LoginPage() {
       if (result.error) setError(result.error)
       else if (result.needsConfirmation) {
         setAwaitingConfirmation(true)
-        setNotice('Your account is created. Sign in.')
+        setNotice(
+          'Account created. If a confirmation email arrives, open it, then sign in. If nothing arrives, Custom SMTP is not set — a Carbon Logic owner should turn Confirm email off until mail works. Then sign in with the same password.',
+        )
       }
     } finally {
       setBusy(false)

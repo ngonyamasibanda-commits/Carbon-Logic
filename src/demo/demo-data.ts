@@ -7,7 +7,7 @@
  */
 import { getCategory } from '../lib/categories'
 import { FACTOR_CATALOG } from '../lib/factor-catalog'
-import type { CreditOrder, OrgProfile, Site, TeamMember } from '../lib/org'
+import type { OrgProfile, Site } from '../lib/org'
 import type { SbtiConfig } from '../lib/sbti'
 import type { EmissionEntry, EmissionFactor, Scope } from '../lib/types'
 import type { Membership, Organization, Profile } from '../lib/auth'
@@ -48,7 +48,7 @@ export const DEMO_SITES: Site[] = [
   { id: 'site-yard', name: 'Meridian Plant Yard', type: 'warehouse', region: 'Rochdale' },
 ]
 
-export const DEMO_TEAM: TeamMember[] = [
+export const DEMO_TEAM = [
   { id: 'user-dana', name: 'Dana Okoye', email: 'dana.okoye@meridianconstruction.co.uk', role: 'admin' },
   { id: 'user-tom', name: 'Tom Halloran', email: 'tom.halloran@meridianconstruction.co.uk', role: 'editor' },
   { id: 'user-priya', name: 'Priya Raman', email: 'priya.raman@meridianconstruction.co.uk', role: 'editor' },
@@ -60,12 +60,16 @@ export const DEMO_ORG_PROFILE: OrgProfile = {
   organisation: 'Meridian Construction Group',
   country: 'United Kingdom',
   intensityMetric: 'tCO2e per £m turnover',
-  annualTurnover: 48_200_000,
+  annualRevenue: 48_200_000,
+  employeeCount: 412,
+  reportingYear: 2025,
+  lockedYears: [],
+  residualMixKgPerKwh: 0,
   /** Same period last year, so the dashboard shows a reduction against it. */
   baselineYtdTco2e: 4180,
 }
 
-export const DEMO_ORDERS: CreditOrder[] = [
+export const DEMO_ORDERS = [
   {
     id: 'order-demo-1',
     project: 'Peatland restoration — Yorkshire Dales',
